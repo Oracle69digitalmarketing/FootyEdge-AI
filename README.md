@@ -1,11 +1,25 @@
-<div align="center">
+# FootyEdge AI
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+## Enterprise AI Engine | Multi-Agent Architecture | PostgreSQL
 
-  <h1>Built with AI Studio</h2>
+**Powered by Oracle69 Systems**
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+Built on:
+- **Multi-Agent AI Architecture** (6 specialized agents)
+- **PostgreSQL Database** with TimescaleDB
+- **Real-time Data Pipeline**
+- **Kelly Criterion Bet Optimization**
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+### Agent Architecture
 
-</div>
+| Agent | Function |
+|-------|----------|
+| Data Ingestion | Collects from 3+ sources |
+| Team Strength | Bayesian Elo ratings |
+| Goal Distribution | Poisson modeling |
+| Value Detection | EV > 5% threshold |
+| Kelly Calculator | Optimal bet sizing |
+| Insight Generator | LLM-powered analysis |
+
+---
+© 2026 Oracle69 Systems. All rights reserved.
