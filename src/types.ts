@@ -15,6 +15,7 @@ export interface Team {
   goals_scored: number;
   goals_conceded: number;
   updated_at: string;
+  ratings_history?: { rating_date: string; elo_rating: number; attack_strength: number; defense_strength: number; }[];
 }
 
 export interface Match {
@@ -53,7 +54,9 @@ export interface Prediction {
 
 export interface ValueBet {
   id?: string;
-  match: string;
+  match?: string;
+  home_team?: string;
+  away_team?: string;
   market: string;
   selection: string;
   odds: number;

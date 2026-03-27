@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { Team, Prediction, ValueBet } from './types';
+import TeamSearch from './components/TeamSearch';
 import { 
   Activity,
   LayoutDashboard, 
@@ -46,10 +47,13 @@ export default function App() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
+  const [liveValueBets, setLiveValueBets] = useState<ValueBet[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [showLiveBets, setShowLiveBets] = useState(false);
   const [selectedHome, setSelectedHome] = useState<string>('');
   const [selectedAway, setSelectedAway] = useState<string>('');
   const [predicting, setPredicting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'predictions' | 'value' | 'players' | 'portfolio' | 'acca' | 'premium' | 'admin'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'predictions' | 'value' | 'players' | 'portfolio' | 'acca' | 'premium' | 'admin' | 'teams'>('dashboard');
   const [error, setError] = useState<string | null>(null);
   const [playerQuery, setPlayerQuery] = useState('');
   const [players, setPlayers] = useState<any[]>([]);
@@ -365,6 +369,25 @@ export default function App() {
     }
   };
 
+  const handleScanValueBets = async () => {
+    setScanning(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/scan-value-bets');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to scan for live value bets');
+      }
+      const data = await response.json();
+      setLiveValueBets(data);
+      setShowLiveBets(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const updateBetStatus = async (id: string, status: 'won' | 'lost') => {
     try {
       const response = await fetch(`/api/value-bets/${id}`, {
@@ -545,6 +568,12 @@ export default function App() {
             onClick={() => setActiveTab('value')}
             icon={<TrendingUp />}
             label="Value Bets"
+          />
+           <NavItem 
+            active={activeTab === 'teams'} 
+            onClick={() => setActiveTab('teams')}
+            icon={<Database />}
+            label="Teams"
           />
           <NavItem 
             active={activeTab === 'players'} 
@@ -895,14 +924,26 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <h2 className="text-3xl font-bold tracking-tight">Value Bets</h2>
-                <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleScanValueBets}
+                    disabled={scanning}
+                    className="bg-orange-500 text-black font-bold px-6 py-2 rounded-xl hover:bg-orange-400 transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {scanning ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                    Live Scan
+                  </button>
+                  <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
                   {(['active', 'won', 'lost', 'all'] as const).map((status) => (
                     <button
                       key={status}
-                      onClick={() => setBetStatusFilter(status)}
+                      onClick={() => {
+                        setBetStatusFilter(status);
+                        setShowLiveBets(false);
+                      }}
                       className={cn(
                         "px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize",
-                        betStatusFilter === status 
+                        !showLiveBets && betStatusFilter === status 
                           ? "bg-zinc-800 text-white shadow-lg" 
                           : "text-zinc-500 hover:text-zinc-300"
                       )}
@@ -910,8 +951,10 @@ export default function App() {
                       {status}
                     </button>
                   ))}
+                  </div>
                 </div>
               </div>
+
               <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-zinc-900/50 border-b border-zinc-800">
@@ -926,9 +969,9 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
-                    {valueBets.map(bet => (
+                    {(showLiveBets ? liveValueBets : valueBets).map(bet => (
                       <tr key={bet.id} className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="p-6 font-bold">{bet.match}</td>
+                        <td className="p-6 font-bold">{showLiveBets ? `${bet.home_team} vs ${bet.away_team}`: bet.match}</td>
                         <td className="p-6 text-zinc-400">{bet.selection}</td>
                         <td className="p-6">
                           <span className={cn(
@@ -948,7 +991,7 @@ export default function App() {
                           </span>
                         </td>
                         <td className="p-6">
-                          {bet.status === 'active' && (
+                          {bet.status === 'active' && !showLiveBets &&(
                             <div className="flex gap-2">
                               <button 
                                 onClick={() => updateBetStatus(bet.id, 'won')}
@@ -973,6 +1016,10 @@ export default function App() {
                 </table>
               </div>
             </div>
+          )}
+
+          {activeTab === 'teams' && (
+            <TeamSearch teams={teams} />
           )}
 
           {activeTab === 'players' && (

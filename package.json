@@ -15,8 +15,10 @@
     "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.100.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/chart.js": "^2.9.41",
     "@vitejs/plugin-react": "^5.0.4",
     "axios": "^1.13.6",
+    "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
     "date-fns": "^4.1.0",
@@ -26,6 +28,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.38.0",
     "react": "^19.0.0",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.5.0",
     "vite": "^6.2.0"
