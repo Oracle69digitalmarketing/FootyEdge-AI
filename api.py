@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 import logging
 import os
 from supabase import create_client, Client
+from datetime import datetime
 
 from predictor import FootyEdgePredictor
 from football_api_client import FootballAPIClient
@@ -43,6 +44,28 @@ class AnalyzeBetRequest(BaseModel):
     market: str
     selection: str
     odds: float
+
+class UpdateBetStatusRequest(BaseModel):
+    status: str
+
+class TelegramBroadcastRequest(BaseModel):
+    prediction: Dict[str, Any]
+    valueBet: Dict[str, Any]
+    isPremium: bool
+
+class AccaSelection(BaseModel):
+    match_id: int
+    market: str
+    odds: float
+    selection: str
+
+class AccaRecordRequest(BaseModel):
+    user_id: str
+    selections: List[AccaSelection]
+    total_odds: float
+    stake: float
+    potential_return: float
+    bookmaker: str
 
 # --- API Endpoints ---
 @app.get("/")
@@ -84,6 +107,21 @@ async def get_value_bets(status: str = 'active'):
     response = query.execute()
     return response.data or []
 
+@router.patch("/value-bets/{bet_id}", summary="Update the status of a value bet")
+async def update_value_bet_status(bet_id: str, request: UpdateBetStatusRequest):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    
+    if request.status not in ['won', 'lost']:
+        raise HTTPException(status_code=400, detail="Invalid status. Must be 'won' or 'lost'.")
+
+    response = supabase.table("value_bets").update({"status": request.status}).eq("id", bet_id).execute()
+
+    if not response.data:
+        raise HTTPException(status_code=404, detail=f"Bet with id {bet_id} not found.")
+
+    return response.data
+
 @router.get("/teams/{team_name}", summary="Get detailed team statistics and history")
 async def team_stats(team_name: str):
     if not supabase: raise HTTPException(status_code=503, detail="Database not configured.")
@@ -94,10 +132,96 @@ async def team_stats(team_name: str):
     team_data['ratings_history'] = history_response.data or []
     return team_data
 
+# --- Premium Endpoints ---
+@router.get("/premium/performance", summary="Get premium signal performance metrics")
+async def get_premium_performance():
+    # Placeholder for fetching real performance data
+    return {
+        "avg_confidence": 87.4,
+        "roi_30d": 14.2,
+        "win_rate": 72.1
+    }
+
+@router.get("/premium/telegram-config", summary="Get premium Telegram alert configuration")
+async def get_premium_telegram_config():
+    # Placeholder for fetching real Telegram config
+    return {
+        "status": "active",
+        "channel_id": "@footyedge_premium",
+        "alerts_enabled": True
+    }
+
+@router.get("/premium/upcoming-matches", summary="Get upcoming high-value matches for premium members")
+async def get_premium_upcoming_matches():
+    # Placeholder for fetching real upcoming matches
+    return [
+        {"id": "match1", "home_team": "Team A", "away_team": "Team B", "edge": "+10.5%", "time_until": "2h 30m"},
+        {"id": "match2", "home_team": "Team C", "away_team": "Team D", "edge": "+8.2%", "time_until": "4h 15m"},
+        {"id": "match3", "home_team": "Team E", "away_team": "Team F", "edge": "+11.1%", "time_until": "5h 00m"},
+    ]
+
+# --- Admin Endpoints ---
+@router.get("/admin/stats", summary="Get admin dashboard statistics")
+async def get_admin_stats():
+    # Placeholder for fetching real admin stats
+    return {
+        "total_users": 1284,
+        "premium_subs": 412,
+        "daily_revenue": 84200,
+        "bot_health": 100
+    }
+
+@router.get("/admin/activity", summary="Get recent system activity logs")
+async def get_admin_activity():
+    # Placeholder for fetching real activity logs
+    return [
+        {"time": "14:22", "event": "Premium Signal Broadcasted", "status": "success"},
+        {"time": "14:15", "event": "New Subscription: Weekly Plan", "status": "success"},
+        {"time": "13:58", "event": "AI Engine: Deep Scan Completed", "status": "info"},
+        {"time": "13:42", "event": "Telegram Webhook: Message Delivered", "status": "success"}
+    ]
+
+@router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
+async def telegram_broadcast(request: TelegramBroadcastRequest):
+    # Placeholder for actual Telegram integration
+    logger.info(f"Broadcasting to Telegram: Prediction {request.prediction.get('home_team')} vs {request.prediction.get('away_team')}, Value: {request.valueBet.get('selection')}")
+    return {"success": True, "message": "Broadcast simulated successfully."}
+
+# --- Acca Endpoints ---
+@router.post("/accas/record", summary="Record a user's accumulator bet")
+async def record_acca(request: AccaRecordRequest):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    
+    # Store the acca selections in a simplified format for now
+    # In a real app, you'd want to store each selection individually and link them
+    acca_data = {
+        "user_id": request.user_id,
+        "selections_json": [s.dict() for s in request.selections], # Store as JSON
+        "total_odds": request.total_odds,
+        "stake": request.stake,
+        "potential_return": request.potential_return,
+        "bookmaker": request.bookmaker,
+        "created_at": datetime.now().isoformat(),
+        "status": "pending" # Default status
+    }
+
+    response = supabase.table("accas").insert(acca_data).execute()
+
+    if response.data:
+        return {"success": True, "message": "Acca recorded successfully!", "data": response.data[0]}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to record acca.")
+
+
 # --- External API Endpoints (Phase 1) ---
 @router.get("/search/teams", summary="Search for teams")
 async def search_teams_ext(q: str):
     return football_client.search_teams(q)
+
+@router.get("/search/players", summary="Search for players")
+async def search_players_ext(q: str):
+    return football_client.search_players(q)
 
 @router.get("/teams/{team_id}/detail", summary="Get team details from external API")
 async def get_team_detail_ext(team_id: int):

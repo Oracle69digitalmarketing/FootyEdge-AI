@@ -4,10 +4,10 @@ import requests
 class FootballAPIClient:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.environ.get('RAPIDAPI_KEY')
-        self.base_url = "https://free-api-live-football-data.p.rapidapi.com"
+        self.base_url = "https://api-football-v1.p.rapidapi.com/v3"
         self.headers = {
             'x-rapidapi-key': self.api_key,
-            'x-rapidapi-host': 'free-api-live-football-data.p.rapidapi.com'
+            'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
         }
 
     def _make_request(self, endpoint, params=None):
@@ -22,37 +22,52 @@ class FootballAPIClient:
             return {"error": str(e)}
 
     def search_teams(self, query: str):
-        return self._make_request("search-teams", params={"q": query})
+        return self._make_request("teams", params={"search": query})
 
     def get_team_detail(self, team_id: int):
-        return self._make_request(f"team-detail-by-team-id/{team_id}")
+        return self._make_request(f"teams", params={"id": team_id})
 
     def list_leagues(self):
-        return self._make_request("leagues-list-all")
+        return self._make_request("leagues")
 
     def get_league_detail(self, league_id: int):
-        return self._make_request(f"league-detail-by-league-id/{league_id}")
+        return self._make_request(f"leagues", params={"id": league_id})
 
     def search_leagues(self, query: str):
-        return self._make_request("search-leagues", params={"q": query})
+        return self._make_request("leagues", params={"search": query})
 
     def get_matches_by_date(self, date: str):
-        return self._make_request("matches-events-by-date", params={"date": date})
+        return self._make_request("fixtures", params={"date": date})
 
     def get_odds_by_event_id(self, event_id: int):
-        return self._make_request(f"odds-match-events-by-event-id/{event_id}")
+        return self._make_request("odds", params={"fixture": event_id})
 
     def get_stats_by_event_id(self, event_id: int):
-        return self._make_request(f"statistics-event-by-event-id/{event_id}")
+        return self._make_request(f"fixtures/statistics", params={"fixture": event_id})
 
     def get_h2h(self, team1_id: int, team2_id: int):
-        return self._make_request("head-to-head-by-teams", params={"team1_id": team1_id, "team2_id": team2_id})
+        # The h2h parameter format is 'ID-ID'
+        h2h_str = f"{team1_id}-{team2_id}"
+        return self._make_request("fixtures/headtohead", params={"h2h": h2h_str})
 
     def get_standings(self, league_id: int):
-        return self._make_request(f"standings-by-league-id/{league_id}")
+        # Requires a season parameter, let's assume current year
+        from datetime import datetime
+        season = datetime.now().year
+        return self._make_request("standings", params={"league": league_id, "season": season})
 
     def list_players_by_team(self, team_id: int):
-        return self._make_request(f"players-list-all-by-team-id/{team_id}")
+        # Requires a season parameter
+        from datetime import datetime
+        season = datetime.now().year
+        return self._make_request("players", params={"team": team_id, "season": season})
 
     def get_player_detail(self, player_id: int):
-        return self._make_request(f"player-detail-by-player-id/{player_id}")
+        from datetime import datetime
+        season = datetime.now().year
+        return self._make_request("players", params={"id": player_id, "season": season})
+        
+    def search_players(self, query: str):
+        from datetime import datetime
+        season = datetime.now().year
+        return self._make_request("players", params={"search": query, "season": season})

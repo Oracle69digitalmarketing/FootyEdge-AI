@@ -1,50 +1,89 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Team } from '../types';
 import TeamStats from './TeamStats';
+import { Loader2, Search } from 'lucide-react';
 
-interface TeamSearchProps {
-  teams: Team[];
-}
-
-const TeamSearch: React.FC<TeamSearchProps> = ({ teams }) => {
+const TeamSearch: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredTeams = searchTerm
-    ? teams.filter(team =>
-        team.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : [];
+  useEffect(() => {
+    if (searchTerm.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+
+    const debounce = setTimeout(() => {
+      const search = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const response = await fetch(`/api/search/teams?q=${encodeURIComponent(searchTerm)}`);
+          if (!response.ok) {
+            throw new Error('Failed to fetch teams');
+          }
+          const data = await response.json();
+          setResults(data.success ? data.data : []);
+        } catch (err: any) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+      search();
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(debounce);
+  }, [searchTerm]);
 
   const handleTeamClick = (team: Team) => {
     setSelectedTeam(team);
     setSearchTerm('');
+    setResults([]);
   };
-  
+
   if (selectedTeam) {
     return <TeamStats team={selectedTeam} onBack={() => setSelectedTeam(null)} />;
   }
 
   return (
-    <div className="p-4 md:p-8">
-      <h1 className="text-3xl font-bold mb-6 text-center">Team Search</h1>
+    <div className="space-y-8">
+      <div className="space-y-2 text-center">
+        <h2 className="text-3xl font-bold tracking-tight">Team Database</h2>
+        <p className="text-zinc-400">Search our entire database for detailed team statistics.</p>
+      </div>
+
       <div className="max-w-xl mx-auto">
-        <input
-          type="text"
-          placeholder="Search for a team..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-white focus:outline-none focus:border-orange-500 transition-colors"
-        />
-        {searchTerm && (
-          <div className="mt-4 bg-[#1a1a1a] rounded-lg max-h-60 overflow-y-auto">
-            {filteredTeams.map(team => (
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search for any team (e.g., Man City, Real Madrid)..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 pl-12 text-white focus:outline-none focus:border-orange-500 transition-colors"
+          />
+          {loading && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500 animate-spin" />}
+        </div>
+        
+        {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
+
+        {results.length > 0 && (
+          <div className="mt-4 bg-[#111] border border-zinc-800 rounded-2xl max-h-80 overflow-y-auto shadow-2xl">
+            {results.map(team => (
               <div
                 key={team.id}
                 onClick={() => handleTeamClick(team)}
-                className="p-4 cursor-pointer hover:bg-[#2a2a2a]"
+                className="p-4 cursor-pointer hover:bg-orange-500/10 flex items-center gap-4 transition-colors border-b border-zinc-800 last:border-b-0"
               >
-                {team.name}
+                <img src={team.logo || `https://ui-avatars.com/api/?name=${team.name}&background=random`} alt={team.name} className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
+                <div>
+                  <p className="font-bold">{team.name}</p>
+                  <p className="text-xs text-zinc-500">{team.country || 'Unknown'}</p>
+                </div>
               </div>
             ))}
           </div>

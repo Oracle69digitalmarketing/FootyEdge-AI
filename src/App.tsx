@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { Team, Prediction, ValueBet } from './types';
 import TeamSearch from './components/TeamSearch';
+import Portfolio from './components/Portfolio'; // Import the new Portfolio component
+import AccaBuilder from './components/AccaBuilder'; // Import the new AccaBuilder component
+import HowToUse from './components/HowToUse'; // Import the new HowToUse component
 import { 
   Activity,
   LayoutDashboard, 
@@ -31,15 +34,12 @@ import {
   ExternalLink,
   Crown,
   Bell,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon,
+  HelpCircle
 } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import { motion, AnimatePresence } from 'motion/react';
+import { cn } from './lib/utils'; // Import cn from utility file
 
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -53,7 +53,7 @@ export default function App() {
   const [selectedHome, setSelectedHome] = useState<string>('');
   const [selectedAway, setSelectedAway] = useState<string>('');
   const [predicting, setPredicting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'predictions' | 'value' | 'players' | 'portfolio' | 'acca' | 'premium' | 'admin' | 'teams'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'predictions' | 'value' | 'players' | 'portfolio' | 'acca' | 'premium' | 'admin' | 'teams' | 'pricing' | 'how-to-use'>('dashboard');
   const [error, setError] = useState<string | null>(null);
   const [playerQuery, setPlayerQuery] = useState('');
   const [players, setPlayers] = useState<any[]>([]);
@@ -74,6 +74,15 @@ export default function App() {
   const [isPremium, setIsPremium] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+
+  // State for premium data
+  const [premiumPerformance, setPremiumPerformance] = useState<any>(null);
+  const [premiumTelegramConfig, setPremiumTelegramConfig] = useState<any>(null);
+  const [premiumUpcomingMatches, setPremiumUpcomingMatches] = useState<any[]>([]);
+
+  // State for admin data
+  const [adminStats, setAdminStats] = useState<any>(null);
+  const [adminActivity, setAdminActivity] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user || !supabase) return;
@@ -145,6 +154,64 @@ export default function App() {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (activeTab === 'premium' && isPremium) {
+      const fetchPremiumData = async () => {
+        try {
+          // Fetch Premium Performance
+          const performanceRes = await fetch('/api/premium/performance');
+          if (performanceRes.ok) {
+            const data = await performanceRes.json();
+            setPremiumPerformance(data);
+          }
+
+          // Fetch Premium Telegram Config
+          const telegramRes = await fetch('/api/premium/telegram-config');
+          if (telegramRes.ok) {
+            const data = await telegramRes.json();
+            setPremiumTelegramConfig(data);
+          }
+
+          // Fetch Premium Upcoming Matches
+          const upcomingRes = await fetch('/api/premium/upcoming-matches');
+          if (upcomingRes.ok) {
+            const data = await upcomingRes.json();
+            setPremiumUpcomingMatches(data);
+          }
+
+        } catch (err: any) {
+          setError("Failed to fetch premium data: " + err.message);
+        }
+      };
+      fetchPremiumData();
+    }
+  }, [activeTab, isPremium]);
+
+  useEffect(() => {
+    if (activeTab === 'admin' && isAdmin) {
+      const fetchAdminData = async () => {
+        try {
+          // Fetch Admin Stats
+          const statsRes = await fetch('/api/admin/stats');
+          if (statsRes.ok) {
+            const data = await statsRes.json();
+            setAdminStats(data);
+          }
+
+          // Fetch Admin Activity
+          const activityRes = await fetch('/api/admin/activity');
+          if (activityRes.ok) {
+            const data = await activityRes.json();
+            setAdminActivity(data);
+          }
+        } catch (err: any) {
+          setError("Failed to fetch admin data: " + err.message);
+        }
+      };
+      fetchAdminData();
+    }
+  }, [activeTab, isAdmin]);
+
   const fetchTeams = async () => {
     if (!supabase) return;
     const { data, error } = await supabase.from('teams').select('*').order('name');
@@ -153,7 +220,7 @@ export default function App() {
   };
 
   const fetchPredictions = async () => {
-    const response = await fetch('/api/predictions');
+    const response = await fetch('/api/recent-predictions');
     if (response.ok) {
       const data = await response.json();
       setPredictions(data);
@@ -170,7 +237,8 @@ export default function App() {
 
   const fetchTodayMatches = async () => {
     try {
-      const response = await fetch('/api/matches/today');
+      const today = new Date().toISOString().split('T')[0];
+      const response = await fetch(`/api/matches?date=${today}`);
       if (response.ok) {
         const data = await response.json();
         setTodayMatches(data);
@@ -288,6 +356,10 @@ export default function App() {
   const handlePredict = async () => {
     if (!selectedHome || !selectedAway || selectedHome === selectedAway) return;
     
+    const homeTeam = teams.find(t => t.id === selectedHome);
+    const awayTeam = teams.find(t => t.id === selectedAway);
+    if (!homeTeam || !awayTeam) return;
+
     setPredicting(true);
     setError(null);
     setSimulationStep(0);
@@ -313,12 +385,20 @@ export default function App() {
       const response = await fetch('/api/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ home_team_id: selectedHome, away_team_id: selectedAway })
+        body: JSON.stringify({ 
+          home_team: homeTeam.name, 
+          away_team: awayTeam.name,
+          odds: {
+            "home_win": 1.85, "draw": 3.40, "away_win": 4.20,
+            "Over 2.5": 1.90, "Under 2.5": 1.90,
+            "BTTS Yes": 1.75, "BTTS No": 2.05
+          }
+        })
       });
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || 'Prediction failed');
+        throw new Error(errData.detail || 'Prediction failed');
       }
 
       const result = await response.json();
@@ -357,11 +437,10 @@ export default function App() {
     setSearchingPlayers(true);
     setError(null);
     try {
-      const response = await fetch(`/api/players/search?query=${encodeURIComponent(playerQuery)}`);
+      const response = await fetch(`/api/search/players?q=${encodeURIComponent(playerQuery)}`);
       if (!response.ok) throw new Error('Failed to search players');
       const data = await response.json();
-      // Based on typical RapidAPI responses, it might be data.data or data.results
-      setPlayers(data.data || data.results || []);
+      setPlayers(data.response || []);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -609,6 +688,21 @@ export default function App() {
               label="Admin Panel"
             />
           )}
+          <NavItem 
+            active={activeTab === 'pricing'} 
+            onClick={() => {
+              setActiveTab('pricing');
+              setShowPremiumModal(true);
+            }}
+            icon={<Crown />}
+            label="Pricing"
+          />
+          <NavItem 
+            active={activeTab === 'how-to-use'} 
+            onClick={() => setActiveTab('how-to-use')}
+            icon={<HelpCircle />}
+            label="How to Use"
+          />
           <div className="pt-4 mt-4 border-t border-zinc-800">
             <button 
               onClick={() => setShowPremiumModal(true)}
@@ -683,7 +777,10 @@ export default function App() {
                     <h2 className="text-2xl font-bold text-white">Join Our Telegram Signals</h2>
                   </div>
                   <p className="text-blue-100 max-w-md">Get instant value alerts, daily booking codes, and expert analysis directly on your phone. Join 5,000+ Oracle69 members.</p>
-                  <button className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-all flex items-center gap-2">
+                  <button 
+                    onClick={() => window.open('https://t.me/your_telegram_channel', '_blank')}
+                    className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-all flex items-center gap-2"
+                  >
                     Join Channel <ExternalLink className="w-4 h-4" />
                   </button>
                 </div>
@@ -902,8 +999,8 @@ export default function App() {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ 
-                            prediction, 
-                            valueBet,
+                            prediction: prediction, 
+                            valueBet: valueBet,
                             isPremium: prediction.is_premium
                           })
                         });
@@ -914,6 +1011,7 @@ export default function App() {
                         alert("Broadcast error: " + err);
                       }
                     }}
+                    setShowPremiumModal={setShowPremiumModal}
                   />
                 ))}
               </div>
@@ -1019,7 +1117,7 @@ export default function App() {
           )}
 
           {activeTab === 'teams' && (
-            <TeamSearch teams={teams} />
+            <TeamSearch />
           )}
 
           {activeTab === 'players' && (
@@ -1050,23 +1148,21 @@ export default function App() {
               </form>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {players.map((player, idx) => (
+                {players.map((p, idx) => (
                   <div key={idx} className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-4 hover:border-zinc-700 transition-colors">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center">
-                        <User className="w-6 h-6 text-zinc-500" />
-                      </div>
+                      <img src={p.player.photo} alt={p.player.name} className="w-12 h-12 rounded-full bg-zinc-800" referrerPolicy="no-referrer" />
                       <div>
-                        <h3 className="font-bold text-lg">{player.name || player.player_name}</h3>
-                        <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">{player.position || 'Player'}</p>
+                        <h3 className="font-bold text-lg">{p.player.name}</h3>
+                        <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">{p.statistics[0]?.games?.position || 'Player'}</p>
                       </div>
                     </div>
                     <div className="pt-4 border-t border-zinc-800 flex justify-between items-center">
                       <div className="text-xs text-zinc-500 font-mono">
-                        {player.team_name || player.team || 'Unknown Team'}
+                        {p.statistics[0]?.team?.name || 'Unknown Team'}
                       </div>
                       <div className="text-orange-500 text-xs font-bold">
-                        {player.nationality || player.country}
+                        {p.player.nationality}
                       </div>
                     </div>
                   </div>
@@ -1094,7 +1190,7 @@ export default function App() {
                         key={bookie}
                         onClick={() => setSelectedBookmaker(bookie)}
                         className={cn(
-                          "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+                          "px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize",
                           selectedBookmaker === bookie ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-500 hover:text-zinc-300"
                         )}
                       >
@@ -1121,9 +1217,40 @@ export default function App() {
                 <AccaBuilder 
                   selections={accaSelections} 
                   onRemove={(idx) => setAccaSelections(prev => prev.filter((_, i) => i !== idx))}
-                  onGenerateCode={() => {
+                  onGenerateCode={async (stake: number, totalOdds: number) => {
+                    if (!user) return alert("Please sign in to record an accumulator.");
                     if (accaSelections.length < 2) return alert("Select at least 2 matches for an accumulator.");
-                    alert(`${selectedBookmaker.toUpperCase()} Acca Generated! Code: ${selectedBookmaker === 'bet9ja' ? 'B9JA-' : selectedBookmaker === 'sportybet' ? 'SB-' : '1X-'}${Math.random().toString(36).substring(2, 10).toUpperCase()}`);
+                    
+                    try {
+                      const response = await fetch('/api/accas/record', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          user_id: user.id,
+                          selections: accaSelections.map(s => ({
+                            match_id: s.match.id,
+                            market: s.market,
+                            odds: s.odds,
+                            selection: `${s.match.homeTeam.name} vs ${s.match.awayTeam.name}: ${s.market.replace('_', ' ')}`
+                          })),
+                          total_odds: totalOdds,
+                          stake: stake,
+                          potential_return: totalOdds * stake,
+                          bookmaker: selectedBookmaker
+                        })
+                      });
+
+                      if (!response.ok) {
+                        const errData = await response.json();
+                        throw new Error(errData.detail || 'Failed to record accumulator.');
+                      }
+
+                      const result = await response.json();
+                      alert(`Acca recorded successfully! Generated Code: ${selectedBookmaker.toUpperCase()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`);
+                      setAccaSelections([]); // Clear selections after recording
+                    } catch (err: any) {
+                      setError(err.message);
+                    }
                   }}
                   bankroll={bankroll}
                 />
@@ -1165,15 +1292,15 @@ export default function App() {
                     <div className="grid grid-cols-3 gap-4">
                       <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
                         <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Avg. Confidence</p>
-                        <p className="text-2xl font-bold text-orange-500">87.4%</p>
+                        <p className="text-2xl font-bold text-orange-500">{premiumPerformance?.avg_confidence || 'N/A'}%</p>
                       </div>
                       <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
                         <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">ROI (30d)</p>
-                        <p className="text-2xl font-bold text-green-500">+14.2%</p>
+                        <p className="text-2xl font-bold text-green-500">+{premiumPerformance?.roi_30d || 'N/A'}%</p>
                       </div>
                       <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
                         <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Win Rate</p>
-                        <p className="text-2xl font-bold text-blue-500">72.1%</p>
+                        <p className="text-2xl font-bold text-blue-500">{premiumPerformance?.win_rate || 'N/A'}%</p>
                       </div>
                     </div>
                     <p className="text-sm text-zinc-400 leading-relaxed">
@@ -1187,7 +1314,7 @@ export default function App() {
                       Premium Telegram Alerts
                     </h3>
                     <p className="text-sm text-zinc-400">
-                      You are currently receiving **Elite Signals** on Telegram. These include full EV breakdowns and direct booking codes for Bet9ja and SportyBet.
+                      You are currently receiving **Elite Signals** on Telegram. These include full EV breakdowns and direct booking codes for Bet9ja and SportyBet. (Status: {premiumTelegramConfig?.status || 'N/A'}, Channel: {premiumTelegramConfig?.channel_id || 'N/A'})
                     </p>
                     <button className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
                   </div>
@@ -1197,15 +1324,18 @@ export default function App() {
                   <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-4">
                     <h4 className="font-bold text-sm uppercase tracking-widest text-zinc-500">Upcoming High-Value Matches</h4>
                     <div className="space-y-3">
-                      {[1, 2, 3].map(i => (
-                        <div key={i} className="p-3 bg-zinc-900 rounded-xl border border-zinc-800 flex items-center justify-between">
+                      {premiumUpcomingMatches.map((match, i) => (
+                        <div key={match.id} className="p-3 bg-zinc-900 rounded-xl border border-zinc-800 flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                            <span className="text-xs font-medium">Match Analysis Pending...</span>
+                            <span className="text-xs font-medium">{match.home_team} vs {match.away_team} ({match.edge} Edge, {match.time_until})</span>
                           </div>
-                          <Lock className="w-3 h-3 text-zinc-600" />
+                          <ChevronRight className="w-3 h-3 text-zinc-600" />
                         </div>
                       ))}
+                      {premiumUpcomingMatches.length === 0 && (
+                        <div className="p-3 text-center text-xs text-zinc-500">No upcoming high-value matches.</div>
+                      )}
                     </div>
                     <p className="text-[10px] text-zinc-500 italic">Next deep-scan in 14 minutes.</p>
                   </div>
@@ -1237,22 +1367,22 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
                   <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Total Users</p>
-                  <p className="text-3xl font-bold">1,284</p>
+                  <p className="text-3xl font-bold">{adminStats?.total_users || 'N/A'}</p>
                   <p className="text-xs text-green-500">+12% this week</p>
                 </div>
                 <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
                   <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Premium Subs</p>
-                  <p className="text-3xl font-bold">412</p>
+                  <p className="text-3xl font-bold">{adminStats?.premium_subs || 'N/A'}</p>
                   <p className="text-xs text-orange-500">32% conversion</p>
                 </div>
                 <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
                   <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Daily Revenue</p>
-                  <p className="text-3xl font-bold">₦84.2k</p>
+                  <p className="text-3xl font-bold">₦{(adminStats?.daily_revenue / 1000).toFixed(1)}k</p>
                   <p className="text-xs text-green-500">Target: ₦100k</p>
                 </div>
                 <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
                   <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Bot Health</p>
-                  <p className="text-3xl font-bold text-green-500">100%</p>
+                  <p className="text-3xl font-bold text-green-500">{adminStats?.bot_health || 'N/A'}%</p>
                   <p className="text-xs text-zinc-500">Latency: 42ms</p>
                 </div>
               </div>
@@ -1265,12 +1395,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="p-6 space-y-4">
-                  {[
-                    { time: '14:22', event: 'Premium Signal Broadcasted', status: 'success' },
-                    { time: '14:15', event: 'New Subscription: Weekly Plan', status: 'success' },
-                    { time: '13:58', event: 'AI Engine: Deep Scan Completed', status: 'info' },
-                    { time: '13:42', event: 'Telegram Webhook: Message Delivered', status: 'success' }
-                  ].map((log, i) => (
+                  {adminActivity.map((log, i) => (
                     <div key={i} className="flex items-center gap-4 text-sm">
                       <span className="font-mono text-zinc-500">{log.time}</span>
                       <span className="w-2 h-2 rounded-full bg-zinc-700" />
@@ -1287,65 +1412,11 @@ export default function App() {
           )}
 
           {activeTab === 'portfolio' && (
-            <div className="space-y-8">
-              <div className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold tracking-tight">Your Portfolio</h2>
-                <div className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl">
-                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Available Bankroll</p>
-                  <p className="text-2xl font-bold text-green-500">₦{bankroll.toLocaleString()}</p>
-                </div>
-              </div>
+            <Portfolio bankroll={bankroll} userBets={userBets} />
+          )}
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <StatCard title="Active Bets" value={userBets.filter(b => b.status === 'pending').length.toString()} icon={<Clock className="text-blue-500" />} />
-                <StatCard title="Total Stake" value={`₦${userBets.reduce((acc, b) => acc + b.stake, 0).toFixed(2)}`} icon={<DollarSign className="text-green-500" />} />
-                <StatCard title="Win Rate" value={`${((userBets.filter(b => b.status === 'won').length / (userBets.filter(b => b.status !== 'pending').length || 1)) * 100).toFixed(1)}%`} icon={<TrendingUpIcon className="text-orange-500" />} />
-                <StatCard title="Net Profit" value={`₦${(bankroll - 10000).toFixed(2)}`} icon={<Wallet className="text-purple-500" />} />
-              </div>
-
-              <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
-                <div className="p-6 border-b border-zinc-800">
-                  <h3 className="font-bold">Betting History</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-zinc-900/50 text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
-                      <tr>
-                        <th className="px-6 py-4">Match</th>
-                        <th className="px-6 py-4">Selection</th>
-                        <th className="px-6 py-4">Odds</th>
-                        <th className="px-6 py-4">Stake</th>
-                        <th className="px-6 py-4">Potential</th>
-                        <th className="px-6 py-4">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {userBets.map(bet => (
-                        <tr key={bet.id} className="hover:bg-zinc-900/30 transition-colors">
-                          <td className="px-6 py-4 font-medium">{bet.selection.split(' to ')[0]}</td>
-                          <td className="px-6 py-4">
-                            <span className="text-xs bg-zinc-800 px-2 py-1 rounded-md">{bet.market}</span>
-                          </td>
-                          <td className="px-6 py-4 font-mono">{bet.odds}</td>
-                          <td className="px-6 py-4 font-mono">₦{bet.stake}</td>
-                          <td className="px-6 py-4 font-mono text-green-500">₦{bet.potential_win.toFixed(2)}</td>
-                          <td className="px-6 py-4">
-                            <span className={cn(
-                              "text-[10px] font-bold uppercase px-2 py-1 rounded-full",
-                              bet.status === 'won' ? "bg-green-500/10 text-green-500" :
-                              bet.status === 'lost' ? "bg-red-500/10 text-red-500" :
-                              "bg-blue-500/10 text-blue-500"
-                            )}>
-                              {bet.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+          {activeTab === 'how-to-use' && (
+            <HowToUse />
           )}
 
           <AnimatePresence>
@@ -1481,7 +1552,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { matc
   const [multiOdds, setMultiOdds] = useState<any>(null);
 
   useEffect(() => {
-    fetch(`/api/matches/${match.id}/odds`)
+    fetch(`/api/odds/${match.id}`)
       .then(res => res.json())
       .then(data => setMultiOdds(data));
   }, [match.id]);
@@ -1564,105 +1635,20 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { matc
   );
 }
 
-function AccaBuilder({ selections, onRemove, onGenerateCode, bankroll }: { selections: any[], onRemove: (idx: number) => void, onGenerateCode: () => void, bankroll: number }) {
-  const totalOdds = selections.reduce((acc, s) => acc * s.odds, 1).toFixed(2);
-  const [stake, setStake] = useState(1000);
-
-  return (
-    <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
-      <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Layers className="w-5 h-5 text-orange-500" />
-          <h3 className="font-bold">Acca Builder</h3>
-        </div>
-        <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{selections.length} Selections</span>
-      </div>
-      
-      <div className="p-6 space-y-4">
-        {selections.length === 0 ? (
-          <div className="py-12 text-center space-y-4">
-            <PlusCircle className="w-12 h-12 text-zinc-800 mx-auto" />
-            <p className="text-zinc-500 text-sm">Add selections from matches to build your accumulator.</p>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-3">
-              {selections.map((s, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 group">
-                  <div>
-                    <p className="text-xs font-bold">{s.match.homeTeam.name} vs {s.match.awayTeam.name}</p>
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{s.market.replace('_', ' ')} @ {s.odds}</p>
-                  </div>
-                  <button 
-                    onClick={() => onRemove(idx)}
-                    className="text-zinc-600 hover:text-red-500 transition-colors"
-                  >
-                    <XCircle className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-4 border-t border-zinc-800 space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Total Odds</span>
-                <span className="text-2xl font-bold text-orange-500">{totalOdds}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Potential Return</span>
-                <span className="text-xl font-bold text-green-500">₦{(totalOdds * stake).toLocaleString()}</span>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="flex-1 relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold text-xs">₦</span>
-                  <input 
-                    type="number" 
-                    value={stake}
-                    onChange={(e) => setStake(Number(e.target.value))}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-8 pr-4 text-sm focus:outline-none focus:border-orange-500"
-                    placeholder="Stake"
-                  />
-                </div>
-                <button 
-                  onClick={onGenerateCode}
-                  className="bg-white text-black font-bold px-8 py-3 rounded-xl hover:bg-orange-500 hover:text-white transition-all shadow-lg shadow-orange-500/20"
-                >
-                  Generate Code
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ title, value, icon }: { title: string, value: string, icon: any }) {
-  return (
-    <div className="bg-[#111] border border-zinc-800 p-6 rounded-3xl space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{title}</span>
-        {icon}
-      </div>
-      <p className="text-4xl font-bold tracking-tighter">{value}</p>
-    </div>
-  );
-}
-
 function PredictionCard({ 
   prediction, 
   onGenerateCode, 
   isUserPremium, 
   isAdmin, 
-  onBroadcast 
+  onBroadcast,
+  setShowPremiumModal
 }: { 
   prediction: Prediction, 
   onGenerateCode: (id: string) => void, 
   isUserPremium: boolean,
   isAdmin: boolean,
-  onBroadcast: (prediction: Prediction, valueBet: any) => void
+  onBroadcast: (prediction: Prediction, valueBet: any) => void,
+  setShowPremiumModal: (value: boolean) => void
 }) {
   const [localCode, setLocalCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1734,7 +1720,10 @@ function PredictionCard({
             <p className="font-bold text-lg">Premium Signal Locked</p>
             <p className="text-xs text-zinc-400">This high-confidence prediction is reserved for Oracle69 Premium members.</p>
           </div>
-          <button className="bg-orange-500 text-black font-bold px-6 py-2 rounded-full text-sm hover:bg-orange-400 transition-all">
+          <button 
+            onClick={() => setShowPremiumModal(true)}
+            className="bg-orange-500 text-black font-bold px-6 py-2 rounded-full text-sm hover:bg-orange-400 transition-all"
+          >
             Unlock Now
           </button>
         </div>
