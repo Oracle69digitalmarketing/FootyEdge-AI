@@ -46,6 +46,50 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
+  const fallbackTeams: any[] = [
+    // Premier League
+    { id: 'mc', name: 'Man City', league: 'Premier League' },
+    { id: 'liv', name: 'Liverpool', league: 'Premier League' },
+    { id: 'ars', name: 'Arsenal', league: 'Premier League' },
+    { id: 'che', name: 'Chelsea', league: 'Premier League' },
+    { id: 'mu', name: 'Man United', league: 'Premier League' },
+    { id: 'tot', name: 'Tottenham', league: 'Premier League' },
+    { id: 'avl', name: 'Aston Villa', league: 'Premier League' },
+    { id: 'new', name: 'Newcastle', league: 'Premier League' },
+    // La Liga
+    { id: 'rm', name: 'Real Madrid', league: 'La Liga' },
+    { id: 'bar', name: 'Barca', league: 'La Liga' },
+    { id: 'atm', name: 'Atletico Madrid', league: 'La Liga' },
+    { id: 'gir', name: 'Girona', league: 'La Liga' },
+    // Bundesliga
+    { id: 'lev', name: 'Bayer Leverkusen', league: 'Bundesliga' },
+    { id: 'bay', name: 'Bayern Munich', league: 'Bundesliga' },
+    { id: 'dor', name: 'Dortmund', league: 'Bundesliga' },
+    { id: 'rbl', name: 'RB Leipzig', league: 'Bundesliga' },
+    // Serie A
+    { id: 'int', name: 'Inter Milan', league: 'Serie A' },
+    { id: 'acm', name: 'AC Milan', league: 'Serie A' },
+    { id: 'juv', name: 'Juventus', league: 'Serie A' },
+    { id: 'nap', name: 'Napoli', league: 'Serie A' },
+    // Ligue 1
+    { id: 'psg', name: 'PSG', league: 'Ligue 1' },
+    { id: 'asm', name: 'Monaco', league: 'Ligue 1' },
+    { id: 'om', name: 'Marseille', league: 'Ligue 1' },
+    { id: 'ol', name: 'Lyon', league: 'Ligue 1' },
+    { id: 'lil', name: 'Lille', league: 'Ligue 1' },
+    // International
+    { id: 'eng', name: 'England', league: 'International' },
+    { id: 'fra', name: 'France', league: 'International' },
+    { id: 'arg', name: 'Argentina', league: 'International' },
+    { id: 'bra', name: 'Brazil', league: 'International' },
+    { id: 'por', name: 'Portugal', league: 'International' },
+    { id: 'nig', name: 'Nigeria', league: 'International' },
+    { id: 'ger', name: 'Germany', league: 'International' },
+    { id: 'spa', name: 'Spain', league: 'International' },
+    { id: 'ita', name: 'Italy', league: 'International' },
+    { id: 'mor', name: 'Morocco', league: 'International' },
+    { id: 'usa', name: 'USA', league: 'International' },
+  ];
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
   const [liveValueBets, setLiveValueBets] = useState<ValueBet[]>([]);
@@ -75,6 +119,8 @@ export default function App() {
   const [isPremium, setIsPremium] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showTelegramConfigModal, setShowTelegramConfigModal] = useState(false);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
 
   // State for premium data
   const [premiumPerformance, setPremiumPerformance] = useState<any>(null);
@@ -258,7 +304,26 @@ export default function App() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      setTodayMatches(data);
+
+      if (data.response) {
+        // Format RapidAPI response for the UI
+        const formattedMatches = data.response.map((item: any) => ({
+          id: item.fixture.id,
+          date: item.fixture.date,
+          homeTeam: {
+            name: item.teams.home.name,
+            logo: item.teams.home.logo
+          },
+          awayTeam: {
+            name: item.teams.away.name,
+            logo: item.teams.away.logo
+          },
+          league: item.league.name
+        }));
+        setTodayMatches(formattedMatches);
+      } else {
+        setTodayMatches(data || []);
+      }
     } catch (err: any) {
       setError("Failed to fetch today's matches: " + err.message);
     }
@@ -341,14 +406,28 @@ export default function App() {
     try {
       setError(null);
       const initialTeams = [
-        { name: 'Manchester City', elo_rating: 1950, attack_strength: 2.4, defense_strength: 0.8, form_rating: 0.8, league: 'Premier League' },
+        { name: 'Man City', elo_rating: 1950, attack_strength: 2.4, defense_strength: 0.8, form_rating: 0.8, league: 'Premier League' },
         { name: 'Liverpool', elo_rating: 1900, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.7, league: 'Premier League' },
         { name: 'Arsenal', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.7, form_rating: 0.9, league: 'Premier League' },
         { name: 'Real Madrid', elo_rating: 1920, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.6, league: 'La Liga' },
         { name: 'Bayern Munich', elo_rating: 1850, attack_strength: 2.5, defense_strength: 1.1, form_rating: 0.5, league: 'Bundesliga' },
         { name: 'Inter Milan', elo_rating: 1870, attack_strength: 1.9, defense_strength: 0.6, form_rating: 0.8, league: 'Serie A' },
-        { name: 'Barcelona', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.4, league: 'La Liga' },
-        { name: 'PSG', elo_rating: 1800, attack_strength: 2.4, defense_strength: 1.3, form_rating: 0.3, league: 'Ligue 1' }
+        { name: 'Barca', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.4, league: 'La Liga' },
+        { name: 'PSG', elo_rating: 1800, attack_strength: 2.4, defense_strength: 1.3, form_rating: 0.3, league: 'Ligue 1' },
+        { name: 'Chelsea', elo_rating: 1750, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.5, league: 'Premier League' },
+        { name: 'Man United', elo_rating: 1780, attack_strength: 1.9, defense_strength: 1.2, form_rating: 0.4, league: 'Premier League' },
+        { name: 'Tottenham', elo_rating: 1810, attack_strength: 2.0, defense_strength: 1.3, form_rating: 0.6, league: 'Premier League' },
+        { name: 'Aston Villa', elo_rating: 1790, attack_strength: 1.9, defense_strength: 1.4, form_rating: 0.7, league: 'Premier League' },
+        { name: 'Newcastle', elo_rating: 1770, attack_strength: 1.8, defense_strength: 1.5, form_rating: 0.5, league: 'Premier League' },
+        { name: 'Bayer Leverkusen', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.9, form_rating: 0.9, league: 'Bundesliga' },
+        { name: 'Dortmund', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.7, league: 'Bundesliga' },
+        { name: 'Atletico Madrid', elo_rating: 1840, attack_strength: 1.7, defense_strength: 0.7, form_rating: 0.6, league: 'La Liga' },
+        { name: 'Juventus', elo_rating: 1810, attack_strength: 1.6, defense_strength: 0.6, form_rating: 0.7, league: 'Serie A' },
+        { name: 'AC Milan', elo_rating: 1830, attack_strength: 1.9, defense_strength: 1.0, form_rating: 0.6, league: 'Serie A' },
+        { name: 'Napoli', elo_rating: 1790, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.4, league: 'Serie A' },
+        { name: 'Nigeria', elo_rating: 1650, attack_strength: 1.5, defense_strength: 1.2, form_rating: 0.5, league: 'International' },
+        { name: 'England', elo_rating: 1850, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.8, league: 'International' },
+        { name: 'France', elo_rating: 1880, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.7, league: 'International' }
       ];
 
       const { error: seedError } = await supabase.from('teams').upsert(initialTeams, { onConflict: 'name' });
@@ -457,6 +536,7 @@ export default function App() {
       const response = await fetch(`/api/search/players?q=${encodeURIComponent(playerQuery)}`);
       if (!response.ok) throw new Error('Failed to search players');
       const data = await response.json();
+      if (data.error) throw new Error(data.error);
       setPlayers(data.response || []);
     } catch (err: any) {
       setError(err.message);
@@ -754,7 +834,7 @@ export default function App() {
               <ShieldCheck className="w-5 h-5 text-orange-500" />
             </div>
             <div>
-              <h1 className="text-sm font-mono text-zinc-500 uppercase tracking-widest">Oracle69 AI Engine</h1>
+              <h1 className="text-sm font-mono text-zinc-500 uppercase tracking-widest">FootyEdge AI engine</h1>
               <p className="text-sm font-bold text-green-500 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 6+ Specialized Agents Online
@@ -793,7 +873,7 @@ export default function App() {
                     </div>
                     <h2 className="text-2xl font-bold text-white">Join Our Telegram Signals</h2>
                   </div>
-                  <p className="text-blue-100 max-w-md">Get instant value alerts, daily booking codes, and expert analysis directly on your phone. Join 5,000+ Oracle69 members.</p>
+                  <p className="text-blue-100 max-w-md">Get instant value alerts, daily booking codes, and expert analysis directly on your phone. Join 5,000+ FootyEdge AI members.</p>
                   <button 
                     onClick={() => window.open('https://t.me/footyedge_ai', '_blank')}
                     className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-all flex items-center gap-2"
@@ -830,20 +910,27 @@ export default function App() {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[
-                      { match: "Arsenal vs Man City", market: "Over 2.5", odds: "1.95", edge: "+12.4%", time: "2m ago" },
-                      { match: "Real Madrid vs Barca", market: "Home Win", odds: "2.10", edge: "+8.1%", time: "5m ago" },
-                      { match: "Luton vs Everton", market: "BTTS - Yes", odds: "1.85", edge: "+15.2%", time: "12m ago" }
-                    ].map((alert, i) => (
-                      <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group">
+                    {((liveValueBets.length > 0 ? liveValueBets : valueBets).length > 0 ? (liveValueBets.length > 0 ? liveValueBets : valueBets).slice(0, 3) : [
+                      { match: "Arsenal vs Man City", selection: "Over 2.5", odds: 1.95, ev: 0.124, created_at: new Date().toISOString() },
+                      { match: "Real Madrid vs Barca", selection: "Home Win", odds: 2.10, ev: 0.081, created_at: new Date().toISOString() },
+                      { match: "Luton vs Everton", selection: "BTTS - Yes", odds: 1.85, ev: 0.152, created_at: new Date().toISOString() }
+                    ]).map((alert, i) => (
+                      <div
+                        key={i}
+                        onClick={() => setActiveTab('value')}
+                        className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group relative overflow-hidden"
+                      >
+                        {liveValueBets.length > 0 && i < liveValueBets.length && (
+                          <div className="absolute top-0 right-0 bg-green-500 text-black text-[8px] font-bold px-2 py-0.5 rounded-bl-lg animate-pulse">LIVE</div>
+                        )}
                         <div className="flex justify-between items-start mb-3">
-                          <span className="text-[10px] font-mono text-zinc-500">{alert.time}</span>
-                          <span className="text-[10px] font-mono text-green-500 font-bold">{alert.edge} Edge</span>
+                          <span className="text-[10px] font-mono text-zinc-500">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="text-[10px] font-mono text-green-500 font-bold">+{(alert.ev * 100).toFixed(1)}% Edge</span>
                         </div>
-                        <p className="font-bold text-sm mb-1">{alert.match}</p>
+                        <p className="font-bold text-sm mb-1">{alert.match || `${alert.home_team} vs ${alert.away_team}`}</p>
                         <div className="flex justify-between items-center">
-                          <span className="text-xs text-zinc-400">{alert.market}</span>
-                          <span className="text-sm font-bold text-white">@{alert.odds}</span>
+                          <span className="text-xs text-zinc-400">{alert.selection}</span>
+                          <span className="text-sm font-bold text-white">@{alert.odds.toFixed(2)}</span>
                         </div>
                       </div>
                     ))}
@@ -867,7 +954,12 @@ export default function App() {
                       key={match.id} 
                       match={match} 
                       onPlaceBet={handlePlaceBet} 
-                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => [...prev, { match, market, odds }])}
+                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => {
+                        const exists = prev.find(s => s.match.id === match.id && s.market === market);
+                        if (exists) return prev.filter(s => !(s.match.id === match.id && s.market === market));
+                        return [...prev, { match, market, odds }];
+                      })}
+                      isAdded={(market) => !!accaSelections.find(s => s.match.id === match.id && s.market === market)}
                       selectedBookmaker={selectedBookmaker}
                     />
                   ))}
@@ -904,7 +996,14 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Home Team</option>
-                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        {/* Group teams by league */}
+                        {Array.from(new Set((teams.length > 0 ? teams : fallbackTeams).map(t => t.league))).map(league => (
+                          <optgroup key={league} label={league}>
+                            {(teams.length > 0 ? teams : fallbackTeams)
+                              .filter(t => t.league === league)
+                              .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </optgroup>
+                        ))}
                       </select>
                     </div>
 
@@ -920,7 +1019,14 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Away Team</option>
-                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        {/* Group teams by league */}
+                        {Array.from(new Set((teams.length > 0 ? teams : fallbackTeams).map(t => t.league))).map(league => (
+                          <optgroup key={league} label={league}>
+                            {(teams.length > 0 ? teams : fallbackTeams)
+                              .filter(t => t.league === league)
+                              .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </optgroup>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1223,7 +1329,12 @@ export default function App() {
                       key={match.id} 
                       match={match} 
                       onPlaceBet={handlePlaceBet} 
-                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => [...prev, { match, market, odds }])}
+                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => {
+                        const exists = prev.find(s => s.match.id === match.id && s.market === market);
+                        if (exists) return prev.filter(s => !(s.match.id === match.id && s.market === market));
+                        return [...prev, { match, market, odds }];
+                      })}
+                      isAdded={(market) => !!accaSelections.find(s => s.match.id === match.id && s.market === market)}
                       selectedBookmaker={selectedBookmaker}
                     />
                   ))}
@@ -1277,7 +1388,17 @@ export default function App() {
                     <ShieldCheck className="w-5 h-5 text-orange-500" />
                     <h4 className="font-bold text-sm">Safe Acca Strategy</h4>
                   </div>
-                  <p className="text-xs text-zinc-400 leading-relaxed">Oracle69 AI recommends combining 3-5 selections with confidence {'>'} 75% for the optimal balance of risk and reward.</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed">FootyEdge AI recommends combining 3-5 selections with confidence {'>'} 75% for the optimal balance of risk and reward.</p>
+                  {accaSelections.length > 0 && (
+                    <div className="pt-4 border-t border-orange-500/10 space-y-2">
+                       <p className="text-[10px] font-mono text-orange-500 uppercase tracking-widest">Current Strategy Analysis</p>
+                       <p className="text-xs text-zinc-300">
+                        {accaSelections.length < 3 ? "Add more selections to reach optimal 3-5 range." :
+                         accaSelections.length > 5 ? "Too many selections increases risk significantly." :
+                         "Selection count is optimal for balanced risk."}
+                       </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1321,7 +1442,7 @@ export default function App() {
                       </div>
                     </div>
                     <p className="text-sm text-zinc-400 leading-relaxed">
-                      Your premium access includes the **Oracle69 Deep Analysis Agent**, which processes over 10,000 data points per match, including real-time lineup changes and market sentiment.
+                    Your premium access includes the **FootyEdge AI Deep Analysis Agent**, which processes over 10,000 data points per match, including real-time lineup changes and market sentiment.
                     </p>
                   </div>
 
@@ -1333,7 +1454,7 @@ export default function App() {
                     <p className="text-sm text-zinc-400">
                       You are currently receiving **Elite Signals** on Telegram. These include full EV breakdowns and direct booking codes for Bet9ja and SportyBet. (Status: {premiumTelegramConfig?.status || 'N/A'}, Channel: {premiumTelegramConfig?.channel_id || 'N/A'})
                     </p>
-                    <button onClick={() => alert("This feature is coming soon!")} className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
+                    <button onClick={() => setShowTelegramConfigModal(true)} className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
                   </div>
                 </div>
 
@@ -1372,10 +1493,19 @@ export default function App() {
                   <p className="text-zinc-500 mt-1">Manage system parameters, broadcast signals, and monitor performance.</p>
                 </div>
                 <div className="flex gap-4">
-                  <button className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl text-sm font-bold hover:bg-zinc-800 transition-colors">
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById('system-activity');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl text-sm font-bold hover:bg-zinc-800 transition-colors"
+                  >
                     System Logs
                   </button>
-                  <button className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors">
+                  <button
+                    onClick={() => setShowBroadcastModal(true)}
+                    className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors"
+                  >
                     Global Broadcast
                   </button>
                 </div>
@@ -1404,7 +1534,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
+              <div id="system-activity" className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
                 <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
                   <h3 className="font-bold">Recent System Activity</h3>
                   <div className="flex gap-2">
@@ -1456,6 +1586,42 @@ export default function App() {
                 }}
               />
             )}
+
+            {showTelegramConfigModal && (
+              <TelegramConfigModal
+                config={premiumTelegramConfig}
+                onClose={() => setShowTelegramConfigModal(false)}
+                onSave={async (newConfig) => {
+                  // Simulate saving config
+                  setPremiumTelegramConfig(newConfig);
+                  setShowTelegramConfigModal(false);
+                  alert("Telegram configuration updated!");
+                }}
+              />
+            )}
+
+            {showBroadcastModal && (
+              <BroadcastModal
+                onClose={() => setShowBroadcastModal(false)}
+                onBroadcast={async (message) => {
+                  // Simulate broadcast
+                  const res = await fetch('/api/telegram/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      prediction: { home_team: "Global", away_team: "Broadcast" },
+                      valueBet: { selection: message },
+                      isPremium: false
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setShowBroadcastModal(false);
+                    alert("Global broadcast sent successfully!");
+                  }
+                }}
+              />
+            )}
           </AnimatePresence>
         </div>
       </main>
@@ -1464,11 +1630,21 @@ export default function App() {
 }
 
 function PremiumModal({ onClose, onSubscribe }: { onClose: () => void, onSubscribe: (plan: string) => void }) {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const plans = [
     { name: 'Daily Pass', price: '₦2,000', period: '24 Hours', features: ['All Premium Signals', 'Telegram Access', 'Acca Builder'] },
     { name: 'Weekly Pro', price: '₦10,000', period: '7 Days', features: ['All Premium Signals', 'Priority Support', 'Bankroll Strategy', 'Telegram Access'], popular: true },
     { name: 'Monthly Oracle', price: '₦35,000', period: '30 Days', features: ['VIP Telegram Group', '1-on-1 Strategy', 'All Premium Signals', 'Custom Accas'] },
   ];
+
+  const handleSubscribe = async (plan: string) => {
+    setLoadingPlan(plan);
+    try {
+      await onSubscribe(plan);
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
 
   return (
     <motion.div 
@@ -1528,12 +1704,15 @@ function PremiumModal({ onClose, onSubscribe }: { onClose: () => void, onSubscri
                   ))}
                 </ul>
                 <button 
-                  onClick={() => onSubscribe(plan.name)}
+                  onClick={() => handleSubscribe(plan.name)}
+                  disabled={loadingPlan !== null}
                   className={cn(
-                    "w-full py-4 rounded-2xl font-bold text-sm transition-all",
-                    plan.popular ? "bg-orange-500 text-black hover:bg-orange-400" : "bg-zinc-800 text-white hover:bg-zinc-700"
+                    "w-full py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2",
+                    plan.popular ? "bg-orange-500 text-black hover:bg-orange-400" : "bg-zinc-800 text-white hover:bg-zinc-700",
+                    loadingPlan === plan.name && "opacity-70 cursor-not-allowed"
                   )}
                 >
+                  {loadingPlan === plan.name ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Get Started
                 </button>
               </div>
@@ -1543,6 +1722,107 @@ function PremiumModal({ onClose, onSubscribe }: { onClose: () => void, onSubscri
           <p className="text-center text-[10px] text-zinc-600 font-mono uppercase tracking-widest">
             Secure payment via Paystack & Flutterwave • Instant Activation
           </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function BroadcastModal({ onClose, onBroadcast }: { onClose: () => void, onBroadcast: (message: string) => void }) {
+  const [message, setMessage] = useState('');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="bg-[#111] border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl"
+      >
+        <div className="p-8 space-y-6">
+          <div className="flex justify-between items-start">
+            <h3 className="text-2xl font-bold">Global Broadcast</h3>
+            <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+              <XCircle className="w-6 h-6 text-zinc-500" />
+            </button>
+          </div>
+          <p className="text-zinc-400 text-sm">Send a message to all users via the global alert system.</p>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-white focus:outline-none focus:border-blue-500 h-32 resize-none"
+            placeholder="Type your message here..."
+          />
+          <button
+            onClick={() => onBroadcast(message)}
+            disabled={!message.trim()}
+            className="w-full bg-blue-500 text-black font-bold py-4 rounded-2xl hover:bg-blue-400 transition-all disabled:opacity-50"
+          >
+            Send Broadcast
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function TelegramConfigModal({ config, onClose, onSave }: { config: any, onClose: () => void, onSave: (config: any) => void }) {
+  const [channelId, setChannelId] = useState(config?.channel_id || '');
+  const [status, setStatus] = useState(config?.status || 'active');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="bg-[#111] border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl"
+      >
+        <div className="p-8 space-y-6">
+          <div className="flex justify-between items-start">
+            <h3 className="text-2xl font-bold">Telegram Settings</h3>
+            <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+              <XCircle className="w-6 h-6 text-zinc-500" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Channel ID</label>
+              <input
+                type="text"
+                value={channelId}
+                onChange={(e) => setChannelId(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-white focus:outline-none focus:border-orange-500 appearance-none"
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+            </div>
+          </div>
+          <button
+            onClick={() => onSave({ ...config, channel_id: channelId, status })}
+            className="w-full bg-orange-500 text-black font-bold py-4 rounded-2xl hover:bg-orange-400 transition-all"
+          >
+            Save Configuration
+          </button>
         </div>
       </motion.div>
     </motion.div>
@@ -1564,7 +1844,7 @@ function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: (
   );
 }
 
-function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { match: any, onPlaceBet: (match: any, market: string, odds: number, stake: number) => void, onAddToAcca: (match: any, market: string, odds: number) => void, selectedBookmaker: string }) {
+function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded }: { match: any, onPlaceBet: (match: any, market: string, odds: number, stake: number) => void, onAddToAcca: (match: any, market: string, odds: number) => void, selectedBookmaker: string, isAdded: (market: string) => boolean }) {
   const [stake, setStake] = useState(1000); // 1000 NGN default
   const [multiOdds, setMultiOdds] = useState<any>(null);
 
@@ -1574,7 +1854,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { matc
       .then(data => setMultiOdds(data));
   }, [match.id]);
 
-  const currentOdds = multiOdds ? multiOdds[selectedBookmaker] : null;
+  const currentOdds = multiOdds ? multiOdds[selectedBookmaker] : (multiOdds?.default || null);
 
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">
@@ -1597,24 +1877,33 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { matc
           <div className="grid grid-cols-3 gap-3">
             <button 
               onClick={() => onAddToAcca(match, 'home_win', currentOdds.home_win)}
-              className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-green-500/50 transition-all text-center group/btn"
+              className={cn(
+                "bg-zinc-900 border p-3 rounded-xl transition-all text-center group/btn",
+                isAdded('home_win') ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/20" : "border-zinc-800 hover:border-green-500/50"
+              )}
             >
-              <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest group-hover/btn:text-green-500">Home</p>
-              <p className="text-lg font-bold">{currentOdds.home_win}</p>
+              <p className={cn("text-[10px] font-mono uppercase tracking-widest", isAdded('home_win') ? "text-orange-500" : "text-zinc-500 group-hover/btn:text-green-500")}>Home</p>
+              <p className={cn("text-lg font-bold", isAdded('home_win') ? "text-white" : "")}>{currentOdds.home_win}</p>
             </button>
             <button 
               onClick={() => onAddToAcca(match, 'draw', currentOdds.draw)}
-              className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-green-500/50 transition-all text-center group/btn"
+              className={cn(
+                "bg-zinc-900 border p-3 rounded-xl transition-all text-center group/btn",
+                isAdded('draw') ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/20" : "border-zinc-800 hover:border-green-500/50"
+              )}
             >
-              <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest group-hover/btn:text-green-500">Draw</p>
-              <p className="text-lg font-bold">{currentOdds.draw}</p>
+              <p className={cn("text-[10px] font-mono uppercase tracking-widest", isAdded('draw') ? "text-orange-500" : "text-zinc-500 group-hover/btn:text-green-500")}>Draw</p>
+              <p className={cn("text-lg font-bold", isAdded('draw') ? "text-white" : "")}>{currentOdds.draw}</p>
             </button>
             <button 
               onClick={() => onAddToAcca(match, 'away_win', currentOdds.away_win)}
-              className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-green-500/50 transition-all text-center group/btn"
+              className={cn(
+                "bg-zinc-900 border p-3 rounded-xl transition-all text-center group/btn",
+                isAdded('away_win') ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/20" : "border-zinc-800 hover:border-green-500/50"
+              )}
             >
-              <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest group-hover/btn:text-green-500">Away</p>
-              <p className="text-lg font-bold">{currentOdds.away_win}</p>
+              <p className={cn("text-[10px] font-mono uppercase tracking-widest", isAdded('away_win') ? "text-orange-500" : "text-zinc-500 group-hover/btn:text-green-500")}>Away</p>
+              <p className={cn("text-lg font-bold", isAdded('away_win') ? "text-white" : "")}>{currentOdds.away_win}</p>
             </button>
           </div>
 
@@ -1719,7 +2008,7 @@ function PredictionCard({
           </div>
           <div className="flex items-center gap-1 text-[8px] font-mono text-zinc-600 uppercase tracking-tighter">
             <ShieldCheck className="w-2 h-2" />
-            Oracle69 AI Verified
+            FootyEdge AI Verified
           </div>
         </div>
       </div>
@@ -1735,7 +2024,7 @@ function PredictionCard({
           <Lock className="w-8 h-8 text-orange-500" />
           <div className="space-y-1">
             <p className="font-bold text-lg">Premium Signal Locked</p>
-            <p className="text-xs text-zinc-400">This high-confidence prediction is reserved for Oracle69 Premium members.</p>
+            <p className="text-xs text-zinc-400">This high-confidence prediction is reserved for FootyEdge AI Premium members.</p>
           </div>
           <button 
             onClick={() => setShowPremiumModal(true)}

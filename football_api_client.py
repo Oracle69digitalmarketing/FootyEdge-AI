@@ -4,10 +4,11 @@ import requests
 class FootballAPIClient:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.environ.get('RAPIDAPI_KEY')
-        self.base_url = "https://api-football-v1.p.rapidapi.com/v3"
+        self.rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
+        self.base_url = f"https://{self.rapidapi_host}"
         self.headers = {
             'x-rapidapi-key': self.api_key,
-            'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
+            'x-rapidapi-host': self.rapidapi_host
         }
 
     def _make_request(self, endpoint, params=None):
@@ -22,7 +23,11 @@ class FootballAPIClient:
             return {"error": str(e)}
 
     def search_teams(self, query: str):
-        return self._make_request("teams", params={"search": query})
+        res = self._make_request("teams", params={"search": query})
+        if (res.get('error') or not res.get('response')) and "v3" not in self.base_url:
+            # Try with v3 prefix if base request failed
+            res = self._make_request("v3/teams", params={"search": query})
+        return res
 
     def get_team_detail(self, team_id: int):
         return self._make_request(f"teams", params={"id": team_id})
@@ -68,6 +73,14 @@ class FootballAPIClient:
         return self._make_request("players", params={"id": player_id, "season": season})
         
     def search_players(self, query: str):
+        # Searching players often works better without a season or with current season
         from datetime import datetime
-        season = datetime.now().year - 1
-        return self._make_request("players", params={"search": query, "season": season})
+        season = datetime.now().year
+        res = self._make_request("players", params={"search": query, "season": season})
+        if (not res.get('response') or len(res['response']) == 0) and "v3" not in self.base_url:
+             res = self._make_request("v3/players", params={"search": query, "season": season})
+
+        if not res.get('response') or len(res['response']) == 0:
+            # Try previous season if current returns nothing
+            res = self._make_request("players", params={"search": query, "season": season - 1})
+        return res

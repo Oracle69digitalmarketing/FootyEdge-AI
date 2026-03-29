@@ -249,3 +249,19 @@ CREATE INDEX idx_activity_log_created ON activity_log(created_at DESC);
 ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable read access for admin users" ON activity_log FOR SELECT USING (true); -- Should be restricted to admin
 
+-- 9. ACCAS TABLE
+CREATE TABLE accas (
+    id BIGSERIAL PRIMARY KEY,
+    user_id VARCHAR(100),
+    selections_json JSONB,
+    total_odds FLOAT,
+    stake FLOAT,
+    potential_return FLOAT,
+    bookmaker VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable insert for authenticated users" ON accas FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable read for own accas" ON accas FOR SELECT USING (true); -- Simplified
