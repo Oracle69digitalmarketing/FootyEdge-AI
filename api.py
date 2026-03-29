@@ -324,7 +324,7 @@ async def get_odds_by_event_id_ext(event_id: int):
         try:
             bookmakers = res['response'][0].get('bookmakers', [])
             for bm in bookmakers:
-                if bm['name'] == 'Bet365' or bm['name'] == '1xBet':
+                if bm['name'] in ('Bet365', '1xBet'):
                     # Map common bookmaker data to our structure
                     bets = bm.get('bets', [])
                     for bet in bets:
