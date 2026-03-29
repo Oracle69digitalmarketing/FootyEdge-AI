@@ -144,7 +144,7 @@ async def get_premium_performance():
         raise HTTPException(status_code=503, detail="Database not configured.")
 
     # Last 30 days ROI
-    since_30d = (datetime.now() - timedelta(days=30)).isoformat()
+    since_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
     predictions_response = supabase.table("predictions").select("confidence").execute()
     value_bets_response = supabase.table("value_bets").select("*").eq("settled", True).gte("created_at", since_30d).execute()
@@ -165,7 +165,7 @@ async def get_premium_performance():
     total_staked = sum([b.get('bankroll_used', 0) or 0 for b in value_bets_response.data])
     total_profit = sum([b.get('profit_loss', 0) or 0 for b in value_bets_response.data])
 
-    roi_30d = (total_profit / total_staked * 100) if total_staked > 0 else 14.2 # Fallback to 14.2 if no data
+    roi_30d = (total_profit / total_staked * 100) if total_staked > 0 else 0.0 # Fallback to 0.0 if no data
 
     return {
         "avg_confidence": round(avg_confidence * 100, 2),
@@ -222,7 +222,7 @@ async def get_admin_stats():
     # Calculate bot health based on recent agent logs
     logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
     if logs_response.data:
-        success_count = len([log for log in logs_response.data if log['success']])
+        success_count = sum(log['success'] for log in logs_response.data)
         bot_health = (success_count / len(logs_response.data)) * 100
     else:
         bot_health = 100.0
