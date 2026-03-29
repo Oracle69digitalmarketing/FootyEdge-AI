@@ -876,11 +876,7 @@ export default function App() {
                       { match: "Real Madrid vs Barca", selection: "Home Win", odds: 2.10, ev: 0.081, created_at: new Date().toISOString() },
                       { match: "Luton vs Everton", selection: "BTTS - Yes", odds: 1.85, ev: 0.152, created_at: new Date().toISOString() }
                     ]).map((alert, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setActiveTab('value')}
-                        className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group"
-                      >
+                      <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group">
                         <div className="flex justify-between items-start mb-3">
                           <span className="text-[10px] font-mono text-zinc-500">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           <span className="text-[10px] font-mono text-green-500 font-bold">+{(alert.ev * 100).toFixed(1)}% Edge</span>
@@ -1798,7 +1794,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
       .then(data => setMultiOdds(data));
   }, [match.id]);
 
-  const currentOdds = multiOdds ? multiOdds[selectedBookmaker] : (multiOdds?.default || null);
+  const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.default ?? null;
 
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">
