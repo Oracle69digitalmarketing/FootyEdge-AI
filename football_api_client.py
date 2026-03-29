@@ -68,6 +68,11 @@ class FootballAPIClient:
         return self._make_request("players", params={"id": player_id, "season": season})
         
     def search_players(self, query: str):
+        # Searching players often works better without a season or with current season
         from datetime import datetime
-        season = datetime.now().year - 1
-        return self._make_request("players", params={"search": query, "season": season})
+        season = datetime.now().year
+        res = self._make_request("players", params={"search": query, "season": season})
+        if not res.get('response') or len(res['response']) == 0:
+            # Try previous season if current returns nothing
+            res = self._make_request("players", params={"search": query, "season": season - 1})
+        return res
