@@ -144,7 +144,7 @@ async def get_premium_performance():
         raise HTTPException(status_code=503, detail="Database not configured.")
 
     # Last 30 days ROI
-    since_30d = (datetime.now() - timedelta(days=30)).isoformat()
+    since_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
     predictions_response = supabase.table("predictions").select("confidence").execute()
     value_bets_response = supabase.table("value_bets").select("*").eq("settled", True).gte("created_at", since_30d).execute()
