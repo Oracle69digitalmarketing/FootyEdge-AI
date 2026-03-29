@@ -222,7 +222,7 @@ async def get_admin_stats():
     # Calculate bot health based on recent agent logs
     logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
     if logs_response.data:
-        success_count = len([log for log in logs_response.data if log['success']])
+        success_count = sum(log['success'] for log in logs_response.data)
         bot_health = (success_count / len(logs_response.data)) * 100
     else:
         bot_health = 100.0
