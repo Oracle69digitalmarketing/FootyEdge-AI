@@ -182,7 +182,7 @@ class FootyEdgePredictor:
             logger.error(f"API error fetching odds for fixture {fixture_id}: {e}")
             return {}
 
-    def _get_team_league_file(self, team_name: str) -> (str, str):
+    def _get_team_league_file(self, team_name: str) -> Tuple[str, str]:
         # A more comprehensive map could be stored in a JSON or DB
         team_map = {
             'Manchester City': ('en.1', 'Premier League'),
