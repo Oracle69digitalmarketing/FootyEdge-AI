@@ -77,9 +77,6 @@ class FootballAPIClient:
         from datetime import datetime
         season = datetime.now().year
         res = self._make_request("players", params={"search": query, "season": season})
-        if (not res.get('response') or len(res['response']) == 0) and "v3" not in self.base_url:
-             res = self._make_request("v3/players", params={"search": query, "season": season})
-
         if not res.get('response') or len(res['response']) == 0:
             # Try previous season if current returns nothing
             res = self._make_request("players", params={"search": query, "season": season - 1})
