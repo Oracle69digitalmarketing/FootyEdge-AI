@@ -165,7 +165,7 @@ async def get_premium_performance():
     total_staked = sum([b.get('bankroll_used', 0) or 0 for b in value_bets_response.data])
     total_profit = sum([b.get('profit_loss', 0) or 0 for b in value_bets_response.data])
 
-    roi_30d = (total_profit / total_staked * 100) if total_staked > 0 else 14.2 # Fallback to 14.2 if no data
+    roi_30d = (total_profit / total_staked * 100) if total_staked > 0 else 0.0 # Fallback to 0.0 if no data
 
     return {
         "avg_confidence": round(avg_confidence * 100, 2),
