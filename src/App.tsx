@@ -53,7 +53,7 @@ export default function App() {
     { id: 'ars', name: 'Arsenal', league: 'Premier League' },
     { id: 'che', name: 'Chelsea', league: 'Premier League' },
     { id: 'mu', name: 'Man United', league: 'Premier League' },
-    { id: 'tot', name: 'Tottenham', league: 'Premier League' },
+    { id: 'tot', name: 'Spurs', league: 'Premier League' },
     { id: 'avl', name: 'Aston Villa', league: 'Premier League' },
     { id: 'new', name: 'Newcastle', league: 'Premier League' },
     // La Liga
@@ -416,7 +416,7 @@ export default function App() {
         { name: 'PSG', elo_rating: 1800, attack_strength: 2.4, defense_strength: 1.3, form_rating: 0.3, league: 'Ligue 1' },
         { name: 'Chelsea', elo_rating: 1750, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.5, league: 'Premier League' },
         { name: 'Man United', elo_rating: 1780, attack_strength: 1.9, defense_strength: 1.2, form_rating: 0.4, league: 'Premier League' },
-        { name: 'Tottenham', elo_rating: 1810, attack_strength: 2.0, defense_strength: 1.3, form_rating: 0.6, league: 'Premier League' },
+        { name: 'Spurs', elo_rating: 1810, attack_strength: 2.0, defense_strength: 1.3, form_rating: 0.6, league: 'Premier League' },
         { name: 'Aston Villa', elo_rating: 1790, attack_strength: 1.9, defense_strength: 1.4, form_rating: 0.7, league: 'Premier League' },
         { name: 'Newcastle', elo_rating: 1770, attack_strength: 1.8, defense_strength: 1.5, form_rating: 0.5, league: 'Premier League' },
         { name: 'Bayer Leverkusen', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.9, form_rating: 0.9, league: 'Bundesliga' },
@@ -442,6 +442,22 @@ export default function App() {
       if (teamsData) setTeams(teamsData);
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const handleSyncTeams = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/sync-teams', { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to sync teams');
+      const data = await response.json();
+      await fetchTeams();
+      alert(`Sync Complete! Discovered ${data.synced?.length || 0} teams.`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -977,13 +993,21 @@ export default function App() {
                   <div className="p-12 text-center space-y-6 bg-zinc-900/50 rounded-2xl border border-dashed border-zinc-800">
                     <Database className="w-12 h-12 text-zinc-700 mx-auto" />
                     <div className="space-y-2">
-                      <p className="text-zinc-500">No teams found in database. Please run the schema and seed data.</p>
-                      <button 
-                        onClick={handleSeedDatabase}
-                        className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-6 py-2 rounded-full text-xs font-bold hover:bg-orange-500/20 transition-all"
-                      >
-                        Seed Database
-                      </button>
+                      <p className="text-zinc-500">No teams found in database. Please seed or sync data.</p>
+                      <div className="flex gap-2 justify-center">
+                        <button
+                          onClick={handleSeedDatabase}
+                          className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-6 py-2 rounded-full text-xs font-bold hover:bg-orange-500/20 transition-all"
+                        >
+                          Seed Defaults
+                        </button>
+                        <button
+                          onClick={handleSyncTeams}
+                          className="bg-blue-500/10 text-blue-500 border border-blue-500/20 px-6 py-2 rounded-full text-xs font-bold hover:bg-blue-500/20 transition-all"
+                        >
+                          Sync from API
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (

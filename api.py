@@ -30,6 +30,11 @@ supabase: Client = create_client(supabase_url, supabase_key) if supabase_url and
 
 logger = logging.getLogger(__name__)
 
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger.info(f"API Request: {request.method} {request.url.path}")
+    return await call_next(request)
+
 if not os.environ.get("RAPIDAPI_KEY"):
     logger.warning("RAPIDAPI_KEY is not set. Player and Team search will not work.")
 if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
@@ -277,6 +282,41 @@ async def get_admin_activity(limit: int = 10):
     
     response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
     return response.data or []
+
+@router.post("/admin/sync-teams", summary="Discovery and sync major teams from external API")
+async def sync_teams():
+    if not supabase: raise HTTPException(status_code=503, detail="Database not configured.")
+
+    keywords = ["Man City", "Liverpool", "Arsenal", "Real Madrid", "Barca", "Bayern", "Inter Milan", "PSG", "Chelsea", "Man United", "Spurs", "Nigeria", "England", "France", "Brazil", "Argentina"]
+    synced = []
+
+    for kw in keywords:
+        try:
+            res = football_client.search_teams(kw)
+            if res.get('response'):
+                for item in res['response'][:3]: # Limit to top 3 matches per keyword
+                    team_info = item.get('team', {})
+                    team_name = team_info.get('name')
+                    if not team_name: continue
+
+                    # Naturalize names
+                    if "Manchester City" in team_name: team_name = "Man City"
+                    if "Barcelona" in team_name: team_name = "Barca"
+                    if "Manchester United" in team_name: team_name = "Man United"
+                    if "Tottenham" in team_name: team_name = "Spurs"
+
+                    team_record = {
+                        "name": team_name,
+                        "country": item['team']['country'],
+                        "league": item['team'].get('league', 'Professional League'), # RapidAPI teams endpoint has league sometimes
+                        "elo_rating": 1600 if item['team'].get('national') else 1500,
+                    }
+                    supabase.table("teams").upsert(team_record, on_conflict="name").execute()
+                    synced.append(team_name)
+        except Exception as e:
+            logger.error(f"Sync error for {kw}: {e}")
+
+    return {"success": True, "synced": synced}
 
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
 async def telegram_broadcast(request: TelegramBroadcastRequest):

@@ -23,32 +23,47 @@ class FootballAPIClient:
             return {"error": str(e)}
 
     def search_teams(self, query: str):
+        if "free-api-live-football-data" in self.rapidapi_host:
+            # Try multiple common endpoint names for searching teams
+            for ep in ["football-get-teams-by-name", "football-get-teams-by-league", "get-teams"]:
+                res = self._make_request(ep, params={"name": query, "search": query, "league": query})
+                if res.get('response'): return res
+            return self._make_request("football-get-teams-by-name", params={"name": query})
+
         res = self._make_request("teams", params={"search": query})
         if (res.get('error') or not res.get('response')) and "v3" not in self.base_url:
-            # Try with v3 prefix if base request failed
             res = self._make_request("v3/teams", params={"search": query})
         return res
 
     def get_team_detail(self, team_id: int):
-        return self._make_request(f"teams", params={"id": team_id})
+        endpoint = "football-get-team-info" if "free-api-live-football-data" in self.rapidapi_host else "teams"
+        return self._make_request(endpoint, params={"id": team_id, "team_id": team_id})
 
     def list_leagues(self):
-        return self._make_request("leagues")
+        endpoint = "football-get-all-leagues" if "free-api-live-football-data" in self.rapidapi_host else "leagues"
+        return self._make_request(endpoint)
 
     def get_league_detail(self, league_id: int):
-        return self._make_request(f"leagues", params={"id": league_id})
+        endpoint = "football-get-league-info" if "free-api-live-football-data" in self.rapidapi_host else "leagues"
+        return self._make_request(endpoint, params={"id": league_id, "league_id": league_id})
 
     def search_leagues(self, query: str):
-        return self._make_request("leagues", params={"search": query})
+        endpoint = "football-get-all-leagues" if "free-api-live-football-data" in self.rapidapi_host else "leagues"
+        return self._make_request(endpoint, params={"search": query, "name": query})
 
     def get_matches_by_date(self, date: str):
+        if "free-api-live-football-data" in self.rapidapi_host:
+            # Try both 'match_date' and 'date' parameters
+            return self._make_request("football-get-matches-by-date", params={"match_date": date, "date": date})
         return self._make_request("fixtures", params={"date": date})
 
     def get_odds_by_event_id(self, event_id: int):
-        return self._make_request("odds", params={"fixture": event_id})
+        endpoint = "football-get-odds-by-match" if "free-api-live-football-data" in self.rapidapi_host else "odds"
+        return self._make_request(endpoint, params={"fixture": event_id, "match_id": event_id})
 
     def get_stats_by_event_id(self, event_id: int):
-        return self._make_request(f"fixtures/statistics", params={"fixture": event_id})
+        endpoint = "football-get-stats-by-match" if "free-api-live-football-data" in self.rapidapi_host else "fixtures/statistics"
+        return self._make_request(endpoint, params={"fixture": event_id, "match_id": event_id})
 
     def get_h2h(self, team1_id: int, team2_id: int):
         # The h2h parameter format is 'ID-ID'
@@ -73,6 +88,9 @@ class FootballAPIClient:
         return self._make_request("players", params={"id": player_id, "season": season})
         
     def search_players(self, query: str):
+        if "free-api-live-football-data" in self.rapidapi_host:
+            return self._make_request("football-get-players-by-team", params={"search": query})
+
         # Searching players often works better without a season or with current season
         from datetime import datetime
         season = datetime.now().year
