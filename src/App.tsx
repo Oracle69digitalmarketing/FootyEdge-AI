@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import StatCard from './components/StatCard';
 import { supabase } from './supabase';
 import { Team, Prediction, ValueBet } from './types';
 import TeamSearch from './components/TeamSearch';

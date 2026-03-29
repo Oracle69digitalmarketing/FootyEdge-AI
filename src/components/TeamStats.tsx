@@ -22,6 +22,8 @@ ChartJS.register(
   Legend
 );
 
+import StatCard from './StatCard';
+
 interface TeamStatsProps {
   team: Team;
   onBack: () => void;
@@ -80,11 +82,6 @@ const TeamStats: React.FC<TeamStatsProps> = ({ team, onBack }) => {
   );
 };
 
-const StatCard: React.FC<{ title: string; value: string }> = ({ title, value }) => (
-  <div className="bg-[#1a1a1a] p-4 rounded-lg text-center">
-    <p className="text-sm text-zinc-400">{title}</p>
-    <p className="text-2xl font-bold">{value}</p>
-  </div>
-);
+
 
 export default TeamStats;

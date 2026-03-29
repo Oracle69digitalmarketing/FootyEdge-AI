@@ -1,4 +1,5 @@
 import React from 'react';
+import StatCard from './StatCard';
 import { Clock, DollarSign, Wallet, TrendingUp as TrendingUpIcon } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -8,18 +9,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// StatCard component (assuming it's reusable or defined elsewhere)
-function StatCard({ title, value, icon }: { title: string, value: string, icon: any }) {
-    return (
-      <div className="bg-[#111] border border-zinc-800 p-6 rounded-3xl space-y-4">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{title}</span>
-          {icon}
-        </div>
-        <p className="text-4xl font-bold tracking-tighter">{value}</p>
-      </div>
-    );
-  }
+
 
 interface PortfolioProps {
   bankroll: number;
