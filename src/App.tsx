@@ -1755,7 +1755,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { matc
       .then(data => setMultiOdds(data));
   }, [match.id]);
 
-  const currentOdds = multiOdds ? multiOdds[selectedBookmaker] : (multiOdds?.default || null);
+  const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.default ?? null;
 
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">
