@@ -72,12 +72,13 @@ class FootyEdgePredictor:
                                 if parsed: all_matches.append(parsed)
         all_matches.sort(key=lambda x: x['date'], reverse=True); return all_matches
 
-    async def find_all_value_bets(self) -> List[Dict]:
+    async def find_all_value_bets(self, league_ids: List[int] = None) -> List[Dict]:
         if not self.rapidapi_key:
             raise ValueError("RapidAPI key not configured.")
 
-        # Major European leagues (guessed IDs)
-        league_ids = [39, 140, 78, 135, 61] # Premier League, La Liga, Bundesliga, Serie A, Ligue 1
+        # Default to major European leagues if none provided
+        if not league_ids:
+            league_ids = [39, 140, 78, 135, 61, 94, 88, 144] # PL, La Liga, Bunesliga, Serie A, Ligue 1, Primeira Liga, Eredivisie, Jupiler Pro League
         
         all_value_bets = []
         
@@ -182,8 +183,31 @@ class FootyEdgePredictor:
             return {}
 
     def _get_team_league_file(self, team_name: str) -> (str, str):
-        team_map = {'Manchester City': ('en.1', 'Premier League'),'Arsenal': ('en.1', 'Premier League'),'Liverpool': ('en.1', 'Premier League'),'Chelsea': ('en.1', 'Premier League'),'Manchester United': ('en.1', 'Premier League'),'Tottenham Hotspur': ('en.1', 'Premier League'),'Real Madrid': ('es.1', 'La Liga'),'Barcelona': ('es.1', 'La Liga'),}
-        return team_map.get(team_name.replace(' FC', '').replace('AFC ', ''), (None, None))
+        # A more comprehensive map could be stored in a JSON or DB
+        team_map = {
+            'Manchester City': ('en.1', 'Premier League'),
+            'Arsenal': ('en.1', 'Premier League'),
+            'Liverpool': ('en.1', 'Premier League'),
+            'Chelsea': ('en.1', 'Premier League'),
+            'Manchester United': ('en.1', 'Premier League'),
+            'Tottenham Hotspur': ('en.1', 'Premier League'),
+            'Real Madrid': ('es.1', 'La Liga'),
+            'Barcelona': ('es.1', 'La Liga'),
+            'Atletico Madrid': ('es.1', 'La Liga'),
+            'Bayern Munich': ('de.1', 'Bundesliga'),
+            'Borussia Dortmund': ('de.1', 'Bundesliga'),
+            'Inter Milan': ('it.1', 'Serie A'),
+            'AC Milan': ('it.1', 'Serie A'),
+            'Juventus': ('it.1', 'Serie A'),
+            'Napoli': ('it.1', 'Serie A'),
+            'Paris Saint Germain': ('fr.1', 'Ligue 1'),
+            'Ajax': ('nl.1', 'Eredivisie'),
+            'Benfica': ('pt.1', 'Primeira Liga'),
+            'Porto': ('pt.1', 'Primeira Liga'),
+        }
+        # Clean team name for better matching
+        cleaned_name = team_name.replace(' FC', '').replace('AFC ', '').replace(' PSG', 'Paris Saint Germain').strip()
+        return team_map.get(cleaned_name, (None, None))
 
     def _parse_local_match(self, match: Dict, team_name: str) -> Dict:
         if 'score' not in match or 'ft' not in match['score']: return None
