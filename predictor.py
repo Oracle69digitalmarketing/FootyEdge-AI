@@ -149,7 +149,8 @@ class FootyEdgePredictor:
             'x-rapidapi-key': self.rapidapi_key,
             'x-rapidapi-host': rapidapi_host
         }
-        url = "https://api-football-v1.p.rapidapi.com/v3/odds"
+        url = f"https://{rapidapi_host}/v3/odds"
+
         querystring = {"fixture": str(fixture_id), "bookmaker": str(bookmaker_id)}
 
         try:

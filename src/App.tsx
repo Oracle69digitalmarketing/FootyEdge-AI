@@ -370,7 +370,7 @@ export default function App() {
     try {
       setError(null);
       const initialTeams = [
-        { name: 'Manchester City', elo_rating: 1950, attack_strength: 2.4, defense_strength: 0.8, form_rating: 0.8, league: 'Premier League' },
+        { name: 'Man City', elo_rating: 1950, attack_strength: 2.4, defense_strength: 0.8, form_rating: 0.8, league: 'Premier League' },
         { name: 'Liverpool', elo_rating: 1900, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.7, league: 'Premier League' },
         { name: 'Arsenal', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.7, form_rating: 0.9, league: 'Premier League' },
         { name: 'Real Madrid', elo_rating: 1920, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.6, league: 'La Liga' },
@@ -966,7 +966,7 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Away Team</option>
-                        {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                         {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
                   </div>
