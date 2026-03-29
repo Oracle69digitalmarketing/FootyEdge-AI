@@ -28,6 +28,11 @@ supabase: Client = create_client(supabase_url, supabase_key) if supabase_url and
 
 logger = logging.getLogger(__name__)
 
+if not os.environ.get("RAPIDAPI_KEY"):
+    logger.warning("RAPIDAPI_KEY is not set. Player and Team search will not work.")
+if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
+    logger.warning("Supabase environment variables are not set. Database features will be unavailable.")
+
 # --- Pydantic Models ---
 class PredictRequest(BaseModel):
     home_team: str
@@ -80,21 +85,32 @@ def root():
 # --- Core Features ---
 @router.post("/predict", summary="Generate predictions using live odds")
 async def predict(request: PredictRequest):
-    return await predictor.predict_match(request.home_team, request.away_team, request.odds)
+    try:
+        return await predictor.predict_match(request.home_team, request.away_team, request.odds)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 @router.post("/analyze-bet", summary="Analyze a custom bet you provide")
 async def analyze_bet(request: AnalyzeBetRequest):
-    return await predictor.analyze_custom_bet(
-        home_team=request.home_team,
-        away_team=request.away_team,
-        market=request.market,
-        selection=request.selection,
-        odds=request.odds
-    )
+    try:
+        return await predictor.analyze_custom_bet(
+            home_team=request.home_team,
+            away_team=request.away_team,
+            market=request.market,
+            selection=request.selection,
+            odds=request.odds
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/scan-value-bets", summary="Scans for all available value bets in upcoming matches.")
 async def scan_value_bets():
-    return await predictor.find_all_value_bets()
+    try:
+        return await predictor.find_all_value_bets()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- Database Endpoints ---
 @router.get("/recent-predictions", summary="Get the last N predictions")
@@ -278,11 +294,17 @@ async def record_acca(request: AccaRecordRequest):
 # --- External API Endpoints (Phase 1) ---
 @router.get("/search/teams", summary="Search for teams")
 async def search_teams_ext(q: str):
-    return football_client.search_teams(q)
+    try:
+        return football_client.search_teams(q)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 @router.get("/search/players", summary="Search for players")
 async def search_players_ext(q: str):
-    return football_client.search_players(q)
+    try:
+        return football_client.search_players(q)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 @router.get("/teams/{team_id}/detail", summary="Get team details from external API")
 async def get_team_detail_ext(team_id: int):

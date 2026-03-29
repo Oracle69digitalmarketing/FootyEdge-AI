@@ -46,6 +46,14 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
+  const fallbackTeams: any[] = [
+    { id: 'mc', name: 'Manchester City', league: 'Premier League' },
+    { id: 'liv', name: 'Liverpool', league: 'Premier League' },
+    { id: 'ars', name: 'Arsenal', league: 'Premier League' },
+    { id: 'rm', name: 'Real Madrid', league: 'La Liga' },
+    { id: 'bar', name: 'Barcelona', league: 'La Liga' },
+    { id: 'bay', name: 'Bayern Munich', league: 'Bundesliga' },
+  ];
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
   const [liveValueBets, setLiveValueBets] = useState<ValueBet[]>([]);
@@ -369,7 +377,18 @@ export default function App() {
         { name: 'Bayern Munich', elo_rating: 1850, attack_strength: 2.5, defense_strength: 1.1, form_rating: 0.5, league: 'Bundesliga' },
         { name: 'Inter Milan', elo_rating: 1870, attack_strength: 1.9, defense_strength: 0.6, form_rating: 0.8, league: 'Serie A' },
         { name: 'Barcelona', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.4, league: 'La Liga' },
-        { name: 'PSG', elo_rating: 1800, attack_strength: 2.4, defense_strength: 1.3, form_rating: 0.3, league: 'Ligue 1' }
+        { name: 'PSG', elo_rating: 1800, attack_strength: 2.4, defense_strength: 1.3, form_rating: 0.3, league: 'Ligue 1' },
+        { name: 'Chelsea', elo_rating: 1750, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.5, league: 'Premier League' },
+        { name: 'Manchester United', elo_rating: 1780, attack_strength: 1.9, defense_strength: 1.2, form_rating: 0.4, league: 'Premier League' },
+        { name: 'Tottenham', elo_rating: 1810, attack_strength: 2.0, defense_strength: 1.3, form_rating: 0.6, league: 'Premier League' },
+        { name: 'Aston Villa', elo_rating: 1790, attack_strength: 1.9, defense_strength: 1.4, form_rating: 0.7, league: 'Premier League' },
+        { name: 'Newcastle', elo_rating: 1770, attack_strength: 1.8, defense_strength: 1.5, form_rating: 0.5, league: 'Premier League' },
+        { name: 'Bayer Leverkusen', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.9, form_rating: 0.9, league: 'Bundesliga' },
+        { name: 'Borussia Dortmund', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.7, league: 'Bundesliga' },
+        { name: 'Atletico Madrid', elo_rating: 1840, attack_strength: 1.7, defense_strength: 0.7, form_rating: 0.6, league: 'La Liga' },
+        { name: 'Juventus', elo_rating: 1810, attack_strength: 1.6, defense_strength: 0.6, form_rating: 0.7, league: 'Serie A' },
+        { name: 'AC Milan', elo_rating: 1830, attack_strength: 1.9, defense_strength: 1.0, form_rating: 0.6, league: 'Serie A' },
+        { name: 'Napoli', elo_rating: 1790, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.4, league: 'Serie A' }
       ];
 
       const { error: seedError } = await supabase.from('teams').upsert(initialTeams, { onConflict: 'name' });
@@ -852,20 +871,20 @@ export default function App() {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[
-                      { match: "Arsenal vs Man City", market: "Over 2.5", odds: "1.95", edge: "+12.4%", time: "2m ago" },
-                      { match: "Real Madrid vs Barca", market: "Home Win", odds: "2.10", edge: "+8.1%", time: "5m ago" },
-                      { match: "Luton vs Everton", market: "BTTS - Yes", odds: "1.85", edge: "+15.2%", time: "12m ago" }
-                    ].map((alert, i) => (
+                    {(valueBets.length > 0 ? valueBets.slice(0, 3) : [
+                      { match: "Arsenal vs Man City", selection: "Over 2.5", odds: 1.95, ev: 0.124, created_at: new Date().toISOString() },
+                      { match: "Real Madrid vs Barca", selection: "Home Win", odds: 2.10, ev: 0.081, created_at: new Date().toISOString() },
+                      { match: "Luton vs Everton", selection: "BTTS - Yes", odds: 1.85, ev: 0.152, created_at: new Date().toISOString() }
+                    ]).map((alert, i) => (
                       <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group">
                         <div className="flex justify-between items-start mb-3">
-                          <span className="text-[10px] font-mono text-zinc-500">{alert.time}</span>
-                          <span className="text-[10px] font-mono text-green-500 font-bold">{alert.edge} Edge</span>
+                          <span className="text-[10px] font-mono text-zinc-500">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="text-[10px] font-mono text-green-500 font-bold">+{(alert.ev * 100).toFixed(1)}% Edge</span>
                         </div>
-                        <p className="font-bold text-sm mb-1">{alert.match}</p>
+                        <p className="font-bold text-sm mb-1">{alert.match || `${alert.home_team} vs ${alert.away_team}`}</p>
                         <div className="flex justify-between items-center">
-                          <span className="text-xs text-zinc-400">{alert.market}</span>
-                          <span className="text-sm font-bold text-white">@{alert.odds}</span>
+                          <span className="text-xs text-zinc-400">{alert.selection}</span>
+                          <span className="text-sm font-bold text-white">@{alert.odds.toFixed(2)}</span>
                         </div>
                       </div>
                     ))}
@@ -889,7 +908,12 @@ export default function App() {
                       key={match.id} 
                       match={match} 
                       onPlaceBet={handlePlaceBet} 
-                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => [...prev, { match, market, odds }])}
+                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => {
+                        const exists = prev.find(s => s.match.id === match.id && s.market === market);
+                        if (exists) return prev.filter(s => !(s.match.id === match.id && s.market === market));
+                        return [...prev, { match, market, odds }];
+                      })}
+                      isAdded={(market) => !!accaSelections.find(s => s.match.id === match.id && s.market === market)}
                       selectedBookmaker={selectedBookmaker}
                     />
                   ))}
@@ -926,7 +950,7 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Home Team</option>
-                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
 
@@ -942,7 +966,7 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Away Team</option>
-                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -1245,7 +1269,12 @@ export default function App() {
                       key={match.id} 
                       match={match} 
                       onPlaceBet={handlePlaceBet} 
-                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => [...prev, { match, market, odds }])}
+                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => {
+                        const exists = prev.find(s => s.match.id === match.id && s.market === market);
+                        if (exists) return prev.filter(s => !(s.match.id === match.id && s.market === market));
+                        return [...prev, { match, market, odds }];
+                      })}
+                      isAdded={(market) => !!accaSelections.find(s => s.match.id === match.id && s.market === market)}
                       selectedBookmaker={selectedBookmaker}
                     />
                   ))}
@@ -1300,6 +1329,16 @@ export default function App() {
                     <h4 className="font-bold text-sm">Safe Acca Strategy</h4>
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed">FootyEdge AI recommends combining 3-5 selections with confidence {'>'} 75% for the optimal balance of risk and reward.</p>
+                  {accaSelections.length > 0 && (
+                    <div className="pt-4 border-t border-orange-500/10 space-y-2">
+                       <p className="text-[10px] font-mono text-orange-500 uppercase tracking-widest">Current Strategy Analysis</p>
+                       <p className="text-xs text-zinc-300">
+                        {accaSelections.length < 3 ? "Add more selections to reach optimal 3-5 range." :
+                         accaSelections.length > 5 ? "Too many selections increases risk significantly." :
+                         "Selection count is optimal for balanced risk."}
+                       </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1745,7 +1784,7 @@ function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: (
   );
 }
 
-function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { match: any, onPlaceBet: (match: any, market: string, odds: number, stake: number) => void, onAddToAcca: (match: any, market: string, odds: number) => void, selectedBookmaker: string }) {
+function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded }: { match: any, onPlaceBet: (match: any, market: string, odds: number, stake: number) => void, onAddToAcca: (match: any, market: string, odds: number) => void, selectedBookmaker: string, isAdded: (market: string) => boolean }) {
   const [stake, setStake] = useState(1000); // 1000 NGN default
   const [multiOdds, setMultiOdds] = useState<any>(null);
 
@@ -1778,24 +1817,33 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { matc
           <div className="grid grid-cols-3 gap-3">
             <button 
               onClick={() => onAddToAcca(match, 'home_win', currentOdds.home_win)}
-              className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-green-500/50 transition-all text-center group/btn"
+              className={cn(
+                "bg-zinc-900 border p-3 rounded-xl transition-all text-center group/btn",
+                isAdded('home_win') ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/20" : "border-zinc-800 hover:border-green-500/50"
+              )}
             >
-              <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest group-hover/btn:text-green-500">Home</p>
-              <p className="text-lg font-bold">{currentOdds.home_win}</p>
+              <p className={cn("text-[10px] font-mono uppercase tracking-widest", isAdded('home_win') ? "text-orange-500" : "text-zinc-500 group-hover/btn:text-green-500")}>Home</p>
+              <p className={cn("text-lg font-bold", isAdded('home_win') ? "text-white" : "")}>{currentOdds.home_win}</p>
             </button>
             <button 
               onClick={() => onAddToAcca(match, 'draw', currentOdds.draw)}
-              className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-green-500/50 transition-all text-center group/btn"
+              className={cn(
+                "bg-zinc-900 border p-3 rounded-xl transition-all text-center group/btn",
+                isAdded('draw') ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/20" : "border-zinc-800 hover:border-green-500/50"
+              )}
             >
-              <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest group-hover/btn:text-green-500">Draw</p>
-              <p className="text-lg font-bold">{currentOdds.draw}</p>
+              <p className={cn("text-[10px] font-mono uppercase tracking-widest", isAdded('draw') ? "text-orange-500" : "text-zinc-500 group-hover/btn:text-green-500")}>Draw</p>
+              <p className={cn("text-lg font-bold", isAdded('draw') ? "text-white" : "")}>{currentOdds.draw}</p>
             </button>
             <button 
               onClick={() => onAddToAcca(match, 'away_win', currentOdds.away_win)}
-              className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-green-500/50 transition-all text-center group/btn"
+              className={cn(
+                "bg-zinc-900 border p-3 rounded-xl transition-all text-center group/btn",
+                isAdded('away_win') ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/20" : "border-zinc-800 hover:border-green-500/50"
+              )}
             >
-              <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest group-hover/btn:text-green-500">Away</p>
-              <p className="text-lg font-bold">{currentOdds.away_win}</p>
+              <p className={cn("text-[10px] font-mono uppercase tracking-widest", isAdded('away_win') ? "text-orange-500" : "text-zinc-500 group-hover/btn:text-green-500")}>Away</p>
+              <p className={cn("text-lg font-bold", isAdded('away_win') ? "text-white" : "")}>{currentOdds.away_win}</p>
             </button>
           </div>
 
