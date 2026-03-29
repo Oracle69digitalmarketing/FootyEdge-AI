@@ -235,3 +235,17 @@ $$ language 'plpgsql';
 
 CREATE TRIGGER after_match_insert AFTER INSERT ON matches
     FOR EACH ROW EXECUTE FUNCTION update_team_stats();
+
+-- 8. ACTIVITY_LOG TABLE
+CREATE TABLE activity_log (
+    id BIGSERIAL PRIMARY KEY,
+    user_id VARCHAR(100),
+    action VARCHAR(100),
+    details JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_activity_log_created ON activity_log(created_at DESC);
+ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for admin users" ON activity_log FOR SELECT USING (true); -- Should be restricted to admin
+

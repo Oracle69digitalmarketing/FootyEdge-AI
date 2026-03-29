@@ -67,6 +67,11 @@ class AccaRecordRequest(BaseModel):
     potential_return: float
     bookmaker: str
 
+class SubscribeRequest(BaseModel):
+    userId: str
+    plan: str
+
+
 # --- API Endpoints ---
 @app.get("/")
 def root():
@@ -135,11 +140,31 @@ async def team_stats(team_name: str):
 # --- Premium Endpoints ---
 @router.get("/premium/performance", summary="Get premium signal performance metrics")
 async def get_premium_performance():
-    # Placeholder for fetching real performance data
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+
+    predictions_response = supabase.table("predictions").select("confidence").execute()
+    value_bets_response = supabase.table("value_bets").select("status").eq("settled", True).execute()
+
+    if not predictions_response.data or not value_bets_response.data:
+        return {
+            "avg_confidence": 0,
+            "roi_30d": 0,
+            "win_rate": 0
+        }
+
+    avg_confidence = sum([p['confidence'] for p in predictions_response.data]) / len(predictions_response.data)
+    
+    won_bets = [b for b in value_bets_response.data if b['status'] == 'won']
+    win_rate = (len(won_bets) / len(value_bets_response.data)) * 100 if len(value_bets_response.data) > 0 else 0
+    
+    # Mocked for now
+    roi_30d = 14.2
+
     return {
-        "avg_confidence": 87.4,
-        "roi_30d": 14.2,
-        "win_rate": 72.1
+        "avg_confidence": round(avg_confidence * 100, 2),
+        "roi_30d": roi_30d,
+        "win_rate": round(win_rate, 2)
     }
 
 @router.get("/premium/telegram-config", summary="Get premium Telegram alert configuration")
@@ -152,34 +177,54 @@ async def get_premium_telegram_config():
     }
 
 @router.get("/premium/upcoming-matches", summary="Get upcoming high-value matches for premium members")
-async def get_premium_upcoming_matches():
-    # Placeholder for fetching real upcoming matches
-    return [
-        {"id": "match1", "home_team": "Team A", "away_team": "Team B", "edge": "+10.5%", "time_until": "2h 30m"},
-        {"id": "match2", "home_team": "Team C", "away_team": "Team D", "edge": "+8.2%", "time_until": "4h 15m"},
-        {"id": "match3", "home_team": "Team E", "away_team": "Team F", "edge": "+11.1%", "time_until": "5h 00m"},
-    ]
+async def get_premium_upcoming_matches(limit: int = 5):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+        
+    response = supabase.table("value_bets").select("*").eq("status", "active").order("ev", desc=True).limit(limit).execute()
+    
+    return response.data or []
+
+@router.post("/premium/subscribe", summary="Subscribe a user to a premium plan")
+async def subscribe(request: SubscribeRequest):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+
+    response = supabase.table("profiles").update({"is_premium": True}).eq("id", request.userId).execute()
+
+    if not response.data:
+        raise HTTPException(status_code=404, detail=f"User with id {request.userId} not found.")
+
+    return {"success": True, "message": f"Successfully subscribed to {request.plan}!"}
+
 
 # --- Admin Endpoints ---
 @router.get("/admin/stats", summary="Get admin dashboard statistics")
 async def get_admin_stats():
-    # Placeholder for fetching real admin stats
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+
+    users_response = supabase.table("profiles").select("id", count="exact").execute()
+    premium_users_response = supabase.table("profiles").select("id", count="exact").eq("is_premium", True).execute()
+
+    # Mocked data for now
+    daily_revenue = 84200
+    bot_health = 100
+
     return {
-        "total_users": 1284,
-        "premium_subs": 412,
-        "daily_revenue": 84200,
-        "bot_health": 100
+        "total_users": users_response.count,
+        "premium_subs": premium_users_response.count,
+        "daily_revenue": daily_revenue,
+        "bot_health": bot_health
     }
 
 @router.get("/admin/activity", summary="Get recent system activity logs")
-async def get_admin_activity():
-    # Placeholder for fetching real activity logs
-    return [
-        {"time": "14:22", "event": "Premium Signal Broadcasted", "status": "success"},
-        {"time": "14:15", "event": "New Subscription: Weekly Plan", "status": "success"},
-        {"time": "13:58", "event": "AI Engine: Deep Scan Completed", "status": "info"},
-        {"time": "13:42", "event": "Telegram Webhook: Message Delivered", "status": "success"}
-    ]
+async def get_admin_activity(limit: int = 10):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    
+    response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
+    return response.data or []
 
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
 async def telegram_broadcast(request: TelegramBroadcastRequest):

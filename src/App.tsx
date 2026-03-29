@@ -1333,7 +1333,7 @@ export default function App() {
                     <p className="text-sm text-zinc-400">
                       You are currently receiving **Elite Signals** on Telegram. These include full EV breakdowns and direct booking codes for Bet9ja and SportyBet. (Status: {premiumTelegramConfig?.status || 'N/A'}, Channel: {premiumTelegramConfig?.channel_id || 'N/A'})
                     </p>
-                    <button className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
+                    <button onClick={() => alert("This feature is coming soon!")} className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
                   </div>
                 </div>
 
