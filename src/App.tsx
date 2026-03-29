@@ -75,6 +75,8 @@ export default function App() {
   const [isPremium, setIsPremium] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showTelegramConfigModal, setShowTelegramConfigModal] = useState(false);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
 
   // State for premium data
   const [premiumPerformance, setPremiumPerformance] = useState<any>(null);
@@ -1333,7 +1335,7 @@ export default function App() {
                     <p className="text-sm text-zinc-400">
                       You are currently receiving **Elite Signals** on Telegram. These include full EV breakdowns and direct booking codes for Bet9ja and SportyBet. (Status: {premiumTelegramConfig?.status || 'N/A'}, Channel: {premiumTelegramConfig?.channel_id || 'N/A'})
                     </p>
-                    <button onClick={() => alert("This feature is coming soon!")} className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
+                    <button onClick={() => setShowTelegramConfigModal(true)} className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
                   </div>
                 </div>
 
@@ -1372,10 +1374,19 @@ export default function App() {
                   <p className="text-zinc-500 mt-1">Manage system parameters, broadcast signals, and monitor performance.</p>
                 </div>
                 <div className="flex gap-4">
-                  <button className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl text-sm font-bold hover:bg-zinc-800 transition-colors">
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById('system-activity');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl text-sm font-bold hover:bg-zinc-800 transition-colors"
+                  >
                     System Logs
                   </button>
-                  <button className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors">
+                  <button
+                    onClick={() => setShowBroadcastModal(true)}
+                    className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors"
+                  >
                     Global Broadcast
                   </button>
                 </div>
@@ -1404,7 +1415,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
+              <div id="system-activity" className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
                 <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
                   <h3 className="font-bold">Recent System Activity</h3>
                   <div className="flex gap-2">
@@ -1452,6 +1463,42 @@ export default function App() {
                     setIsPremium(true);
                     setShowPremiumModal(false);
                     alert(data.message);
+                  }
+                }}
+              />
+            )}
+
+            {showTelegramConfigModal && (
+              <TelegramConfigModal
+                config={premiumTelegramConfig}
+                onClose={() => setShowTelegramConfigModal(false)}
+                onSave={async (newConfig) => {
+                  // Simulate saving config
+                  setPremiumTelegramConfig(newConfig);
+                  setShowTelegramConfigModal(false);
+                  alert("Telegram configuration updated!");
+                }}
+              />
+            )}
+
+            {showBroadcastModal && (
+              <BroadcastModal
+                onClose={() => setShowBroadcastModal(false)}
+                onBroadcast={async (message) => {
+                  // Simulate broadcast
+                  const res = await fetch('/api/telegram/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      prediction: { home_team: "Global", away_team: "Broadcast" },
+                      valueBet: { selection: message },
+                      isPremium: false
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setShowBroadcastModal(false);
+                    alert("Global broadcast sent successfully!");
                   }
                 }}
               />
@@ -1543,6 +1590,107 @@ function PremiumModal({ onClose, onSubscribe }: { onClose: () => void, onSubscri
           <p className="text-center text-[10px] text-zinc-600 font-mono uppercase tracking-widest">
             Secure payment via Paystack & Flutterwave • Instant Activation
           </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function BroadcastModal({ onClose, onBroadcast }: { onClose: () => void, onBroadcast: (message: string) => void }) {
+  const [message, setMessage] = useState('');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="bg-[#111] border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl"
+      >
+        <div className="p-8 space-y-6">
+          <div className="flex justify-between items-start">
+            <h3 className="text-2xl font-bold">Global Broadcast</h3>
+            <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+              <XCircle className="w-6 h-6 text-zinc-500" />
+            </button>
+          </div>
+          <p className="text-zinc-400 text-sm">Send a message to all users via the global alert system.</p>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-white focus:outline-none focus:border-blue-500 h-32 resize-none"
+            placeholder="Type your message here..."
+          />
+          <button
+            onClick={() => onBroadcast(message)}
+            disabled={!message.trim()}
+            className="w-full bg-blue-500 text-black font-bold py-4 rounded-2xl hover:bg-blue-400 transition-all disabled:opacity-50"
+          >
+            Send Broadcast
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function TelegramConfigModal({ config, onClose, onSave }: { config: any, onClose: () => void, onSave: (config: any) => void }) {
+  const [channelId, setChannelId] = useState(config?.channel_id || '');
+  const [status, setStatus] = useState(config?.status || 'active');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="bg-[#111] border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl"
+      >
+        <div className="p-8 space-y-6">
+          <div className="flex justify-between items-start">
+            <h3 className="text-2xl font-bold">Telegram Settings</h3>
+            <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+              <XCircle className="w-6 h-6 text-zinc-500" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Channel ID</label>
+              <input
+                type="text"
+                value={channelId}
+                onChange={(e) => setChannelId(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-white focus:outline-none focus:border-orange-500 appearance-none"
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+            </div>
+          </div>
+          <button
+            onClick={() => onSave({ ...config, channel_id: channelId, status })}
+            className="w-full bg-orange-500 text-black font-bold py-4 rounded-2xl hover:bg-orange-400 transition-all"
+          >
+            Save Configuration
+          </button>
         </div>
       </motion.div>
     </motion.div>
