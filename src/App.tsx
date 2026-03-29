@@ -260,7 +260,26 @@ export default function App() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      setTodayMatches(data);
+
+      if (data.response) {
+        // Format RapidAPI response for the UI
+        const formattedMatches = data.response.map((item: any) => ({
+          id: item.fixture.id,
+          date: item.fixture.date,
+          homeTeam: {
+            name: item.teams.home.name,
+            logo: item.teams.home.logo
+          },
+          awayTeam: {
+            name: item.teams.away.name,
+            logo: item.teams.away.logo
+          },
+          league: item.league.name
+        }));
+        setTodayMatches(formattedMatches);
+      } else {
+        setTodayMatches(data || []);
+      }
     } catch (err: any) {
       setError("Failed to fetch today's matches: " + err.message);
     }
@@ -459,6 +478,7 @@ export default function App() {
       const response = await fetch(`/api/search/players?q=${encodeURIComponent(playerQuery)}`);
       if (!response.ok) throw new Error('Failed to search players');
       const data = await response.json();
+      if (data.error) throw new Error(data.error);
       setPlayers(data.response || []);
     } catch (err: any) {
       setError(err.message);
@@ -756,7 +776,7 @@ export default function App() {
               <ShieldCheck className="w-5 h-5 text-orange-500" />
             </div>
             <div>
-              <h1 className="text-sm font-mono text-zinc-500 uppercase tracking-widest">Oracle69 AI Engine</h1>
+              <h1 className="text-sm font-mono text-zinc-500 uppercase tracking-widest">FootyEdge AI engine</h1>
               <p className="text-sm font-bold text-green-500 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 6+ Specialized Agents Online
@@ -795,7 +815,7 @@ export default function App() {
                     </div>
                     <h2 className="text-2xl font-bold text-white">Join Our Telegram Signals</h2>
                   </div>
-                  <p className="text-blue-100 max-w-md">Get instant value alerts, daily booking codes, and expert analysis directly on your phone. Join 5,000+ Oracle69 members.</p>
+                  <p className="text-blue-100 max-w-md">Get instant value alerts, daily booking codes, and expert analysis directly on your phone. Join 5,000+ FootyEdge AI members.</p>
                   <button 
                     onClick={() => window.open('https://t.me/footyedge_ai', '_blank')}
                     className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-all flex items-center gap-2"
@@ -1279,7 +1299,7 @@ export default function App() {
                     <ShieldCheck className="w-5 h-5 text-orange-500" />
                     <h4 className="font-bold text-sm">Safe Acca Strategy</h4>
                   </div>
-                  <p className="text-xs text-zinc-400 leading-relaxed">Oracle69 AI recommends combining 3-5 selections with confidence {'>'} 75% for the optimal balance of risk and reward.</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed">FootyEdge AI recommends combining 3-5 selections with confidence {'>'} 75% for the optimal balance of risk and reward.</p>
                 </div>
               </div>
             </div>
@@ -1323,7 +1343,7 @@ export default function App() {
                       </div>
                     </div>
                     <p className="text-sm text-zinc-400 leading-relaxed">
-                      Your premium access includes the **Oracle69 Deep Analysis Agent**, which processes over 10,000 data points per match, including real-time lineup changes and market sentiment.
+                    Your premium access includes the **FootyEdge AI Deep Analysis Agent**, which processes over 10,000 data points per match, including real-time lineup changes and market sentiment.
                     </p>
                   </div>
 
@@ -1511,11 +1531,21 @@ export default function App() {
 }
 
 function PremiumModal({ onClose, onSubscribe }: { onClose: () => void, onSubscribe: (plan: string) => void }) {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const plans = [
     { name: 'Daily Pass', price: '₦2,000', period: '24 Hours', features: ['All Premium Signals', 'Telegram Access', 'Acca Builder'] },
     { name: 'Weekly Pro', price: '₦10,000', period: '7 Days', features: ['All Premium Signals', 'Priority Support', 'Bankroll Strategy', 'Telegram Access'], popular: true },
     { name: 'Monthly Oracle', price: '₦35,000', period: '30 Days', features: ['VIP Telegram Group', '1-on-1 Strategy', 'All Premium Signals', 'Custom Accas'] },
   ];
+
+  const handleSubscribe = async (plan: string) => {
+    setLoadingPlan(plan);
+    try {
+      await onSubscribe(plan);
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
 
   return (
     <motion.div 
@@ -1575,12 +1605,15 @@ function PremiumModal({ onClose, onSubscribe }: { onClose: () => void, onSubscri
                   ))}
                 </ul>
                 <button 
-                  onClick={() => onSubscribe(plan.name)}
+                  onClick={() => handleSubscribe(plan.name)}
+                  disabled={loadingPlan !== null}
                   className={cn(
-                    "w-full py-4 rounded-2xl font-bold text-sm transition-all",
-                    plan.popular ? "bg-orange-500 text-black hover:bg-orange-400" : "bg-zinc-800 text-white hover:bg-zinc-700"
+                    "w-full py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2",
+                    plan.popular ? "bg-orange-500 text-black hover:bg-orange-400" : "bg-zinc-800 text-white hover:bg-zinc-700",
+                    loadingPlan === plan.name && "opacity-70 cursor-not-allowed"
                   )}
                 >
+                  {loadingPlan === plan.name ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Get Started
                 </button>
               </div>
@@ -1722,7 +1755,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker }: { matc
       .then(data => setMultiOdds(data));
   }, [match.id]);
 
-  const currentOdds = multiOdds ? multiOdds[selectedBookmaker] : null;
+  const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.default ?? null;
 
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">
@@ -1867,7 +1900,7 @@ function PredictionCard({
           </div>
           <div className="flex items-center gap-1 text-[8px] font-mono text-zinc-600 uppercase tracking-tighter">
             <ShieldCheck className="w-2 h-2" />
-            Oracle69 AI Verified
+            FootyEdge AI Verified
           </div>
         </div>
       </div>
@@ -1883,7 +1916,7 @@ function PredictionCard({
           <Lock className="w-8 h-8 text-orange-500" />
           <div className="space-y-1">
             <p className="font-bold text-lg">Premium Signal Locked</p>
-            <p className="text-xs text-zinc-400">This high-confidence prediction is reserved for Oracle69 Premium members.</p>
+            <p className="text-xs text-zinc-400">This high-confidence prediction is reserved for FootyEdge AI Premium members.</p>
           </div>
           <button 
             onClick={() => setShowPremiumModal(true)}
