@@ -2,6 +2,7 @@ export interface Team {
   id?: string;
   name: string;
   country?: string;
+  logo?: string;
   league?: string;
   elo_rating: number;
   attack_strength: number;
