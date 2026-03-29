@@ -26,7 +26,23 @@ const TeamSearch: React.FC = () => {
             throw new Error('Failed to fetch teams');
           }
           const data = await response.json();
-          setResults(data.success ? data.data : []);
+          if (data.error) throw new Error(data.error);
+
+          if (data.success && data.data) {
+            setResults(data.data);
+          } else if (data.response) {
+            // RapidAPI format
+            const formattedTeams = data.response.map((item: any) => ({
+              id: item.team.id,
+              name: item.team.name,
+              logo: item.team.logo,
+              country: item.team.country,
+              league: item.venue.city // venue city as a fallback for league info in search
+            }));
+            setResults(formattedTeams);
+          } else {
+            setResults([]);
+          }
         } catch (err: any) {
           setError(err.message);
         } finally {
