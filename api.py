@@ -76,6 +76,14 @@ class SubscribeRequest(BaseModel):
     userId: str
     plan: str
 
+class BetRecordRequest(BaseModel):
+    user_id: str
+    match_id: int
+    market: str
+    selection: str
+    odds: float
+    stake: float
+
 
 # --- API Endpoints ---
 @app.get("/")
@@ -263,6 +271,35 @@ async def telegram_broadcast(request: TelegramBroadcastRequest):
     # Placeholder for actual Telegram integration
     logger.info(f"Broadcasting to Telegram: Prediction {request.prediction.get('home_team')} vs {request.prediction.get('away_team')}, Value: {request.valueBet.get('selection')}")
     return {"success": True, "message": "Broadcast simulated successfully."}
+
+# --- Bet Endpoints ---
+@router.get("/bets/user/{user_id}", summary="Get bets for a specific user")
+async def get_user_bets(user_id: str):
+    if not supabase: raise HTTPException(status_code=503, detail="Database not configured.")
+    response = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    return response.data or []
+
+@router.post("/bets/record", summary="Record a user's bet")
+async def record_bet(request: BetRecordRequest):
+    if not supabase: raise HTTPException(status_code=503, detail="Database not configured.")
+
+    bet_data = {
+        "user_id": request.user_id,
+        "match_id": request.match_id,
+        "market": request.market,
+        "selection": request.selection,
+        "odds": request.odds,
+        "stake": request.stake,
+        "potential_win": request.odds * request.stake,
+        "status": "pending",
+        "created_at": datetime.now().isoformat()
+    }
+
+    response = supabase.table("user_bets").insert(bet_data).execute()
+    if response.data:
+        return {"success": True, "message": "Bet recorded successfully!", "data": response.data[0]}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to record bet.")
 
 # --- Acca Endpoints ---
 @router.post("/accas/record", summary="Record a user's accumulator bet")

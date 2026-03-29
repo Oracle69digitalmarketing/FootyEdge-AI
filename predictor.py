@@ -110,9 +110,10 @@ class FootyEdgePredictor:
         return all_value_bets
 
     async def _fetch_upcoming_fixtures(self, league_id: int) -> List[Dict]:
+        rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
         headers = {
             'x-rapidapi-key': self.rapidapi_key,
-            'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
+            'x-rapidapi-host': rapidapi_host
         }
         url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
         querystring = {
@@ -143,9 +144,10 @@ class FootyEdgePredictor:
             return []
 
     async def _fetch_odds_for_fixture(self, fixture_id: int, bookmaker_id: int) -> Dict:
+        rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
         headers = {
             'x-rapidapi-key': self.rapidapi_key,
-            'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
+            'x-rapidapi-host': rapidapi_host
         }
         url = "https://api-football-v1.p.rapidapi.com/v3/odds"
         querystring = {"fixture": str(fixture_id), "bookmaker": str(bookmaker_id)}
