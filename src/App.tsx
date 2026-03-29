@@ -215,24 +215,38 @@ export default function App() {
 
   const fetchTeams = async () => {
     if (!supabase) return;
-    const { data, error } = await supabase.from('teams').select('*').order('name');
-    if (error) setError(error.message);
-    else setTeams(data || []);
+    try {
+      const { data, error } = await supabase.from('teams').select('*').order('name');
+      if (error) throw error;
+      setTeams(data || []);
+    } catch (error: any) {
+      setError(`Failed to fetch teams: ${error.message}. Please check your Supabase configuration.`);
+    }
   };
 
   const fetchPredictions = async () => {
-    const response = await fetch('/api/recent-predictions');
-    if (response.ok) {
+    try {
+      const response = await fetch('/api/recent-predictions');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       setPredictions(data);
+    } catch (error: any) {
+      setError(`Failed to fetch predictions: ${error.message}`);
     }
   };
 
   const fetchValueBets = async () => {
-    const response = await fetch(`/api/value-bets?status=${betStatusFilter}`);
-    if (response.ok) {
+    try {
+      const response = await fetch(`/api/value-bets?status=${betStatusFilter}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       setValueBets(data);
+    } catch (error: any) {
+      setError(`Failed to fetch value bets: ${error.message}`);
     }
   };
 
@@ -240,12 +254,13 @@ export default function App() {
     try {
       const today = new Date().toISOString().split('T')[0];
       const response = await fetch(`/api/matches?date=${today}`);
-      if (response.ok) {
-        const data = await response.json();
-        setTodayMatches(data);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    } catch (err) {
-      console.error("Failed to fetch matches:", err);
+      const data = await response.json();
+      setTodayMatches(data);
+    } catch (err: any) {
+      setError("Failed to fetch today's matches: " + err.message);
     }
   };
 
@@ -253,17 +268,18 @@ export default function App() {
     if (!user) return;
     try {
       const response = await fetch(`/api/bets/user/${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setUserBets(data);
-        
-        // Calculate bankroll based on settled bets
-        const settled = data.filter((b: any) => b.status === 'won' || b.status === 'lost');
-        const profit = settled.reduce((acc: number, b: any) => acc + (b.profit_loss || 0), 0);
-        setBankroll(1000 + profit);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    } catch (err) {
-      console.error("Failed to fetch user bets:", err);
+      const data = await response.json();
+      setUserBets(data);
+      
+      // Calculate bankroll based on settled bets
+      const settled = data.filter((b: any) => b.status === 'won' || b.status === 'lost');
+      const profit = settled.reduce((acc: number, b: any) => acc + (b.profit_loss || 0), 0);
+      setBankroll(1000 + profit);
+    } catch (err: any) {
+      setError("Failed to fetch user bets: " + err.message);
     }
   };
 
@@ -779,7 +795,7 @@ export default function App() {
                   </div>
                   <p className="text-blue-100 max-w-md">Get instant value alerts, daily booking codes, and expert analysis directly on your phone. Join 5,000+ Oracle69 members.</p>
                   <button 
-                    onClick={() => window.open('https://t.me/your_telegram_channel', '_blank')}
+                    onClick={() => window.open('https://t.me/footyedge_ai', '_blank')}
                     className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-all flex items-center gap-2"
                   >
                     Join Channel <ExternalLink className="w-4 h-4" />

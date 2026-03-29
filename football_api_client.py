@@ -53,21 +53,21 @@ class FootballAPIClient:
     def get_standings(self, league_id: int):
         # Requires a season parameter, let's assume current year
         from datetime import datetime
-        season = datetime.now().year
+        season = datetime.now().year - 1
         return self._make_request("standings", params={"league": league_id, "season": season})
 
     def list_players_by_team(self, team_id: int):
         # Requires a season parameter
         from datetime import datetime
-        season = datetime.now().year
+        season = datetime.now().year - 1
         return self._make_request("players", params={"team": team_id, "season": season})
 
     def get_player_detail(self, player_id: int):
         from datetime import datetime
-        season = datetime.now().year
+        season = datetime.now().year - 1
         return self._make_request("players", params={"id": player_id, "season": season})
         
     def search_players(self, query: str):
         from datetime import datetime
-        season = datetime.now().year
+        season = datetime.now().year - 1
         return self._make_request("players", params={"search": query, "season": season})
