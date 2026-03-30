@@ -187,28 +187,28 @@ class FootyEdgePredictor:
     def _get_team_league_file(self, team_name: str) -> (str, str):
         # A more comprehensive map could be stored in a JSON or DB
         team_map = {
-            'Manchester City': ('en.1', 'Premier League'),
+            'Man City': ('en.1', 'Premier League'),
             'Arsenal': ('en.1', 'Premier League'),
             'Liverpool': ('en.1', 'Premier League'),
             'Chelsea': ('en.1', 'Premier League'),
-            'Manchester United': ('en.1', 'Premier League'),
-            'Tottenham Hotspur': ('en.1', 'Premier League'),
+            'Man United': ('en.1', 'Premier League'),
+            'Spurs': ('en.1', 'Premier League'),
             'Real Madrid': ('es.1', 'La Liga'),
-            'Barcelona': ('es.1', 'La Liga'),
+            'Barca': ('es.1', 'La Liga'),
             'Atletico Madrid': ('es.1', 'La Liga'),
             'Bayern Munich': ('de.1', 'Bundesliga'),
-            'Borussia Dortmund': ('de.1', 'Bundesliga'),
+            'Dortmund': ('de.1', 'Bundesliga'),
             'Inter Milan': ('it.1', 'Serie A'),
             'AC Milan': ('it.1', 'Serie A'),
             'Juventus': ('it.1', 'Serie A'),
             'Napoli': ('it.1', 'Serie A'),
-            'Paris Saint Germain': ('fr.1', 'Ligue 1'),
+            'PSG': ('fr.1', 'Ligue 1'),
             'Ajax': ('nl.1', 'Eredivisie'),
             'Benfica': ('pt.1', 'Primeira Liga'),
             'Porto': ('pt.1', 'Primeira Liga'),
         }
         # Clean team name for better matching
-        cleaned_name = team_name.replace(' FC', '').replace('AFC ', '').replace(' PSG', 'Paris Saint Germain').strip()
+        cleaned_name = team_name.replace('Manchester City', 'Man City').replace('Barcelona', 'Barca').replace('Tottenham', 'Spurs').replace('Manchester United', 'Man United').replace(' FC', '').replace('AFC ', '').strip()
         return team_map.get(cleaned_name, (None, None))
 
     def _parse_local_match(self, match: Dict, team_name: str) -> Dict:

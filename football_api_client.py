@@ -53,8 +53,11 @@ class FootballAPIClient:
 
     def get_matches_by_date(self, date: str):
         if "free-api-live-football-data" in self.rapidapi_host:
-            # Try both 'match_date' and 'date' parameters
-            return self._make_request("football-get-matches-by-date", params={"match_date": date, "date": date})
+            # Try multiple common endpoint names and parameter combinations
+            for ep in ["football-get-matches-by-date", "get-matches-by-date", "fixtures"]:
+                res = self._make_request(ep, params={"match_date": date, "date": date})
+                if res.get('response'): return res
+            return self._make_request("football-get-matches-by-date", params={"match_date": date})
         return self._make_request("fixtures", params={"date": date})
 
     def get_odds_by_event_id(self, event_id: int):
