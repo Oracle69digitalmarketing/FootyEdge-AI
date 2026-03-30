@@ -86,15 +86,14 @@ export default function App() {
   const [isPremium, setIsPremium] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
-<<<<<<< HEAD
+
   const [showTelegramBroadcastModal, setShowTelegramBroadcastModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [syncingTeams, setSyncingTeams] = useState(false);
 
-=======
+
   const [showTelegramConfigModal, setShowTelegramConfigModal] = useState(false);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
 
   // State for premium data
   const [premiumPerformance, setPremiumPerformance] = useState<any>(null);
@@ -277,8 +276,6 @@ export default function App() {
     }
   }, [activeTab, isAdmin]);
 
-<<<<<<< HEAD
-=======
   const fetchTeams = async () => {
     if (!supabase) return;
     try {
@@ -406,7 +403,6 @@ export default function App() {
       fetchValueBets();
     }
   }, [betStatusFilter]);
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -419,9 +415,9 @@ export default function App() {
       else flashMessage(setSuccess, "Check your email for the confirmation link!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-<<<<<<< HEAD
+
       if (error) flashMessage(setError, error.message);
-=======
+
       if (error) setError(error.message);
     }
   };
@@ -463,7 +459,6 @@ export default function App() {
       if (teamsData) setTeams(teamsData);
     } catch (err: any) {
       setError(err.message);
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
     }
   };
 
@@ -505,9 +500,7 @@ export default function App() {
       setAccaSelections(prev => [...prev, { match, market, odds, selection }]);
     }
   };
-<<<<<<< HEAD
-  
-=======
+
 
   const handlePlayerSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -564,7 +557,6 @@ export default function App() {
     }
   };
 
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
@@ -591,9 +583,9 @@ export default function App() {
       {/* Main Content */}
       <main className="pl-20 md:pl-64 min-h-screen">
         <header className="h-20 border-b border-zinc-800 flex items-center justify-between px-8 sticky top-0 bg-[#0a0a0a]/80 backdrop-blur-md z-40">
-<<<<<<< HEAD
+
            {/* ... Header Content ... */}
-=======
+
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
               <ShieldCheck className="w-5 h-5 text-orange-500" />
@@ -614,7 +606,7 @@ export default function App() {
             </div>
             <img src={user.user_metadata?.avatar_url || ''} className="w-10 h-10 rounded-full border border-zinc-700" referrerPolicy="no-referrer" />
           </div>
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+          
         </header>
 
         <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -642,9 +634,9 @@ export default function App() {
 
           {activeTab === 'dashboard' && (
             <div className="space-y-12">
-<<<<<<< HEAD
+
               {/* ... Telegram CTA ... */}
-=======
+
               {/* Telegram CTA */}
               <div className="bg-blue-600 rounded-[2rem] p-8 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
@@ -676,7 +668,7 @@ export default function App() {
                   </div>
                 </div>
               </div>
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
 
               {/* Value Alerts Section */}
               <div className="bg-green-500/5 border border-green-500/20 rounded-[2rem] p-8 relative overflow-hidden">
@@ -699,7 +691,7 @@ export default function App() {
                     </button>
                   </div>
                   
-<<<<<<< HEAD
+
                   {liveValueBets.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {liveValueBets.slice(0, 3).map((alert, i) => (
@@ -716,7 +708,7 @@ export default function App() {
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-zinc-400">{alert.market} - {alert.selection}</span>
                             <span className="text-sm font-bold text-white">@{alert.odds.toFixed(2)}</span>
-=======
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {(valueBets.length > 0 ? valueBets.slice(0, 3) : [
                       { match: "Arsenal vs Man City", selection: "Over 2.5", odds: 1.95, ev: 0.124, created_at: new Date().toISOString() },
@@ -1262,7 +1254,7 @@ export default function App() {
                           <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
                             <span className="text-xs font-medium">{match.home_team} vs {match.away_team} ({match.edge} Edge, {match.time_until})</span>
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
                           </div>
                         </div>
                       ))}
@@ -1292,7 +1284,7 @@ export default function App() {
                   <p className="text-zinc-500 mt-1">Manage system parameters, broadcast signals, and monitor performance.</p>
                 </div>
                 <div className="flex gap-4">
-<<<<<<< HEAD
+
                   <button onClick={handleSyncTeams} disabled={syncingTeams} className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2">
                     {syncingTeams ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                     Sync Teams
@@ -1303,7 +1295,7 @@ export default function App() {
                   </button>
                   <button onClick={() => setShowTelegramBroadcastModal(true)} className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors flex items-center gap-2">
                     <Send className="w-5 h-5" />
-=======
+
                   <button
                     onClick={() => {
                       const el = document.getElementById('system-activity');
@@ -1317,7 +1309,7 @@ export default function App() {
                     onClick={() => setShowBroadcastModal(true)}
                     className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors"
                   >
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
                     Global Broadcast
                   </button>
                 </div>
@@ -1327,7 +1319,7 @@ export default function App() {
             </div>
           )}
 
-<<<<<<< HEAD
+
           {/* ... Acca Builder ... */}
            {activeTab === 'acca' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1346,7 +1338,7 @@ export default function App() {
                       selectedBookmaker={selectedBookmaker}
                       accaSelections={accaSelections}
                     />
-=======
+
               <div id="system-activity" className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
                 <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
                   <h3 className="font-bold">Recent System Activity</h3>
@@ -1365,7 +1357,7 @@ export default function App() {
                         log.status === 'success' ? "text-green-500" : "text-blue-500"
                       )}>{log.status}</span>
                     </div>
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
                   ))}
                 </div>
               </div>
@@ -1375,9 +1367,9 @@ export default function App() {
             </div>
           )}
 
-<<<<<<< HEAD
+
           {/* ... Modals ... */}
-=======
+
           {activeTab === 'portfolio' && (
             <Portfolio bankroll={bankroll} userBets={userBets} />
           )}
@@ -1443,18 +1435,18 @@ export default function App() {
               />
             )}
           </AnimatePresence>
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
         </div>
       </main>
     </div>
   );
 }
 
-<<<<<<< HEAD
+
 // ... (PremiumModal, NavItem)
 
 function MatchCard({ match, onAddToAcca, selectedBookmaker, accaSelections }: { match: any, onAddToAcca: (match: any, market: string, odds: number, selection: string) => void, selectedBookmaker: string, accaSelections: any[] }) {
-=======
+
 function PremiumModal({ onClose, onSubscribe }: { onClose: () => void, onSubscribe: (plan: string) => void }) {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const plans = [
@@ -1672,7 +1664,7 @@ function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: (
 
 function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded }: { match: any, onPlaceBet: (match: any, market: string, odds: number, stake: number) => void, onAddToAcca: (match: any, market: string, odds: number) => void, selectedBookmaker: string, isAdded: (market: string) => boolean }) {
   const [stake, setStake] = useState(1000); // 1000 NGN default
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
   const [multiOdds, setMultiOdds] = useState<any>(null);
 
   // This is a mock. In a real app, you'd fetch this.
@@ -1697,7 +1689,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <button 
-<<<<<<< HEAD
+
               onClick={() => onAddToAcca(match, 'home_win', currentOdds.home_win, match.homeTeam.name)}
               className={cn("bg-zinc-900 border border-zinc-800 p-3 rounded-xl hover:border-green-500/50 transition-all text-center group/btn", isSelected('home_win') && "border-green-500 bg-green-500/10")}
             >
@@ -1717,7 +1709,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
             >
               <p className={cn("text-[10px] font-mono text-zinc-500 uppercase tracking-widest group-hover/btn:text-green-500", isSelected('away_win') && "text-green-500")}>Away</p>
               <p className={cn("text-lg font-bold", isSelected('away_win') && "text-white")}>{currentOdds.away_win.toFixed(2)}</p>
-=======
+
               onClick={() => onAddToAcca(match, 'home_win', currentOdds.home_win)}
               className={cn(
                 "bg-zinc-900 border p-3 rounded-xl transition-all text-center group/btn",
@@ -1771,7 +1763,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
               className="bg-zinc-800 text-zinc-400 text-[10px] font-bold px-3 py-2.5 rounded-xl hover:bg-zinc-700 transition-all"
             >
               Code
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
             </button>
           </div>
         </div>
@@ -1784,9 +1776,9 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
   );
 }
 
-<<<<<<< HEAD
+
 // ... (PredictionCard, ProbStat)
-=======
+
 function PredictionCard({ 
   prediction, 
   onGenerateCode, 
@@ -1990,4 +1982,3 @@ function ProbStat({ label, value, color }: { label: string, value: number, color
     </div>
   );
 }
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
