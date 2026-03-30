@@ -47,48 +47,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
   const fallbackTeams: any[] = [
-    // Premier League
-    { id: 'mc', name: 'Man City', league: 'Premier League' },
+    { id: 'mc', name: 'Manchester City', league: 'Premier League' },
     { id: 'liv', name: 'Liverpool', league: 'Premier League' },
     { id: 'ars', name: 'Arsenal', league: 'Premier League' },
-    { id: 'che', name: 'Chelsea', league: 'Premier League' },
-    { id: 'mu', name: 'Man United', league: 'Premier League' },
-    { id: 'tot', name: 'Spurs', league: 'Premier League' },
-    { id: 'avl', name: 'Aston Villa', league: 'Premier League' },
-    { id: 'new', name: 'Newcastle', league: 'Premier League' },
-    // La Liga
     { id: 'rm', name: 'Real Madrid', league: 'La Liga' },
-    { id: 'bar', name: 'Barca', league: 'La Liga' },
-    { id: 'atm', name: 'Atletico Madrid', league: 'La Liga' },
-    { id: 'gir', name: 'Girona', league: 'La Liga' },
-    // Bundesliga
-    { id: 'lev', name: 'Bayer Leverkusen', league: 'Bundesliga' },
+    { id: 'bar', name: 'Barcelona', league: 'La Liga' },
     { id: 'bay', name: 'Bayern Munich', league: 'Bundesliga' },
-    { id: 'dor', name: 'Dortmund', league: 'Bundesliga' },
-    { id: 'rbl', name: 'RB Leipzig', league: 'Bundesliga' },
-    // Serie A
-    { id: 'int', name: 'Inter Milan', league: 'Serie A' },
-    { id: 'acm', name: 'AC Milan', league: 'Serie A' },
-    { id: 'juv', name: 'Juventus', league: 'Serie A' },
-    { id: 'nap', name: 'Napoli', league: 'Serie A' },
-    // Ligue 1
-    { id: 'psg', name: 'PSG', league: 'Ligue 1' },
-    { id: 'asm', name: 'Monaco', league: 'Ligue 1' },
-    { id: 'om', name: 'Marseille', league: 'Ligue 1' },
-    { id: 'ol', name: 'Lyon', league: 'Ligue 1' },
-    { id: 'lil', name: 'Lille', league: 'Ligue 1' },
-    // International
-    { id: 'eng', name: 'England', league: 'International' },
-    { id: 'fra', name: 'France', league: 'International' },
-    { id: 'arg', name: 'Argentina', league: 'International' },
-    { id: 'bra', name: 'Brazil', league: 'International' },
-    { id: 'por', name: 'Portugal', league: 'International' },
-    { id: 'nig', name: 'Nigeria', league: 'International' },
-    { id: 'ger', name: 'Germany', league: 'International' },
-    { id: 'spa', name: 'Spain', league: 'International' },
-    { id: 'ita', name: 'Italy', league: 'International' },
-    { id: 'mor', name: 'Morocco', league: 'International' },
-    { id: 'usa', name: 'USA', league: 'International' },
   ];
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
@@ -412,22 +376,19 @@ export default function App() {
         { name: 'Real Madrid', elo_rating: 1920, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.6, league: 'La Liga' },
         { name: 'Bayern Munich', elo_rating: 1850, attack_strength: 2.5, defense_strength: 1.1, form_rating: 0.5, league: 'Bundesliga' },
         { name: 'Inter Milan', elo_rating: 1870, attack_strength: 1.9, defense_strength: 0.6, form_rating: 0.8, league: 'Serie A' },
-        { name: 'Barca', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.4, league: 'La Liga' },
+        { name: 'Barcelona', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.4, league: 'La Liga' },
         { name: 'PSG', elo_rating: 1800, attack_strength: 2.4, defense_strength: 1.3, form_rating: 0.3, league: 'Ligue 1' },
         { name: 'Chelsea', elo_rating: 1750, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.5, league: 'Premier League' },
-        { name: 'Man United', elo_rating: 1780, attack_strength: 1.9, defense_strength: 1.2, form_rating: 0.4, league: 'Premier League' },
-        { name: 'Spurs', elo_rating: 1810, attack_strength: 2.0, defense_strength: 1.3, form_rating: 0.6, league: 'Premier League' },
+        { name: 'Manchester United', elo_rating: 1780, attack_strength: 1.9, defense_strength: 1.2, form_rating: 0.4, league: 'Premier League' },
+        { name: 'Tottenham', elo_rating: 1810, attack_strength: 2.0, defense_strength: 1.3, form_rating: 0.6, league: 'Premier League' },
         { name: 'Aston Villa', elo_rating: 1790, attack_strength: 1.9, defense_strength: 1.4, form_rating: 0.7, league: 'Premier League' },
         { name: 'Newcastle', elo_rating: 1770, attack_strength: 1.8, defense_strength: 1.5, form_rating: 0.5, league: 'Premier League' },
         { name: 'Bayer Leverkusen', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.9, form_rating: 0.9, league: 'Bundesliga' },
-        { name: 'Dortmund', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.7, league: 'Bundesliga' },
+        { name: 'Borussia Dortmund', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.7, league: 'Bundesliga' },
         { name: 'Atletico Madrid', elo_rating: 1840, attack_strength: 1.7, defense_strength: 0.7, form_rating: 0.6, league: 'La Liga' },
         { name: 'Juventus', elo_rating: 1810, attack_strength: 1.6, defense_strength: 0.6, form_rating: 0.7, league: 'Serie A' },
         { name: 'AC Milan', elo_rating: 1830, attack_strength: 1.9, defense_strength: 1.0, form_rating: 0.6, league: 'Serie A' },
-        { name: 'Napoli', elo_rating: 1790, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.4, league: 'Serie A' },
-        { name: 'Nigeria', elo_rating: 1650, attack_strength: 1.5, defense_strength: 1.2, form_rating: 0.5, league: 'International' },
-        { name: 'England', elo_rating: 1850, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.8, league: 'International' },
-        { name: 'France', elo_rating: 1880, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.7, league: 'International' }
+        { name: 'Napoli', elo_rating: 1790, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.4, league: 'Serie A' }
       ];
 
       const { error: seedError } = await supabase.from('teams').upsert(initialTeams, { onConflict: 'name' });
@@ -926,19 +887,12 @@ export default function App() {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {((liveValueBets.length > 0 ? liveValueBets : valueBets).length > 0 ? (liveValueBets.length > 0 ? liveValueBets : valueBets).slice(0, 3) : [
+                    {(valueBets.length > 0 ? valueBets.slice(0, 3) : [
                       { match: "Arsenal vs Man City", selection: "Over 2.5", odds: 1.95, ev: 0.124, created_at: new Date().toISOString() },
                       { match: "Real Madrid vs Barca", selection: "Home Win", odds: 2.10, ev: 0.081, created_at: new Date().toISOString() },
                       { match: "Luton vs Everton", selection: "BTTS - Yes", odds: 1.85, ev: 0.152, created_at: new Date().toISOString() }
                     ]).map((alert, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setActiveTab('value')}
-                        className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group relative overflow-hidden"
-                      >
-                        {liveValueBets.length > 0 && i < liveValueBets.length && (
-                          <div className="absolute top-0 right-0 bg-green-500 text-black text-[8px] font-bold px-2 py-0.5 rounded-bl-lg animate-pulse">LIVE</div>
-                        )}
+                      <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group">
                         <div className="flex justify-between items-start mb-3">
                           <span className="text-[10px] font-mono text-zinc-500">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           <span className="text-[10px] font-mono text-green-500 font-bold">+{(alert.ev * 100).toFixed(1)}% Edge</span>
@@ -1020,14 +974,7 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Home Team</option>
-                        {/* Group teams by league */}
-                        {Array.from(new Set((teams.length > 0 ? teams : fallbackTeams).map(t => t.league))).map(league => (
-                          <optgroup key={league} label={league}>
-                            {(teams.length > 0 ? teams : fallbackTeams)
-                              .filter(t => t.league === league)
-                              .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </optgroup>
-                        ))}
+                        {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
 
@@ -1043,14 +990,7 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Away Team</option>
-                        {/* Group teams by league */}
-                        {Array.from(new Set((teams.length > 0 ? teams : fallbackTeams).map(t => t.league))).map(league => (
-                          <optgroup key={league} label={league}>
-                            {(teams.length > 0 ? teams : fallbackTeams)
-                              .filter(t => t.league === league)
-                              .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </optgroup>
-                        ))}
+                         {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -1878,7 +1818,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
       .then(data => setMultiOdds(data));
   }, [match.id]);
 
-  const currentOdds = multiOdds ? multiOdds[selectedBookmaker] : (multiOdds?.default || null);
+  const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.default ?? null;
 
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">

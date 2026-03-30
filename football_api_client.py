@@ -23,15 +23,9 @@ class FootballAPIClient:
             return {"error": str(e)}
 
     def search_teams(self, query: str):
-        if "free-api-live-football-data" in self.rapidapi_host:
-            # Try multiple common endpoint names for searching teams
-            for ep in ["football-get-teams-by-name", "football-get-teams-by-league", "get-teams"]:
-                res = self._make_request(ep, params={"name": query, "search": query, "league": query})
-                if res.get('response'): return res
-            return self._make_request("football-get-teams-by-name", params={"name": query})
-
         res = self._make_request("teams", params={"search": query})
         if (res.get('error') or not res.get('response')) and "v3" not in self.base_url:
+            # Try with v3 prefix if base request failed
             res = self._make_request("v3/teams", params={"search": query})
         return res
 
@@ -91,16 +85,10 @@ class FootballAPIClient:
         return self._make_request("players", params={"id": player_id, "season": season})
         
     def search_players(self, query: str):
-        if "free-api-live-football-data" in self.rapidapi_host:
-            return self._make_request("football-get-players-by-team", params={"search": query})
-
         # Searching players often works better without a season or with current season
         from datetime import datetime
         season = datetime.now().year
         res = self._make_request("players", params={"search": query, "season": season})
-        if (not res.get('response') or len(res['response']) == 0) and "v3" not in self.base_url:
-             res = self._make_request("v3/players", params={"search": query, "season": season})
-
         if not res.get('response') or len(res['response']) == 0:
             # Try previous season if current returns nothing
             res = self._make_request("players", params={"search": query, "season": season - 1})
