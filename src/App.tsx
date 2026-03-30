@@ -406,6 +406,22 @@ export default function App() {
     }
   };
 
+  const handleSyncTeams = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/sync-teams', { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to sync teams');
+      const data = await response.json();
+      await fetchTeams();
+      alert(`Sync Complete! Discovered ${data.synced?.length || 0} teams.`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -931,13 +947,21 @@ export default function App() {
                   <div className="p-12 text-center space-y-6 bg-zinc-900/50 rounded-2xl border border-dashed border-zinc-800">
                     <Database className="w-12 h-12 text-zinc-700 mx-auto" />
                     <div className="space-y-2">
-                      <p className="text-zinc-500">No teams found in database. Please run the schema and seed data.</p>
-                      <button 
-                        onClick={handleSeedDatabase}
-                        className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-6 py-2 rounded-full text-xs font-bold hover:bg-orange-500/20 transition-all"
-                      >
-                        Seed Database
-                      </button>
+                      <p className="text-zinc-500">No teams found in database. Please seed or sync data.</p>
+                      <div className="flex gap-2 justify-center">
+                        <button
+                          onClick={handleSeedDatabase}
+                          className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-6 py-2 rounded-full text-xs font-bold hover:bg-orange-500/20 transition-all"
+                        >
+                          Seed Defaults
+                        </button>
+                        <button
+                          onClick={handleSyncTeams}
+                          className="bg-blue-500/10 text-blue-500 border border-blue-500/20 px-6 py-2 rounded-full text-xs font-bold hover:bg-blue-500/20 transition-all"
+                        >
+                          Sync from API
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (

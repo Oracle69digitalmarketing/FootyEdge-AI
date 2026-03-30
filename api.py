@@ -1,4 +1,6 @@
 from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 import logging
@@ -87,8 +89,18 @@ class BetRecordRequest(BaseModel):
 
 # --- API Endpoints ---
 @app.get("/")
+@app.head("/")
 def root():
     return {"message": "FootyEdge AI API is running."}
+
+@router.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "supabase": "configured" if supabase else "missing",
+        "rapidapi": "configured" if os.environ.get("RAPIDAPI_KEY") else "missing",
+        "rapidapi_host": os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
+    }
 
 # --- Core Features ---
 @router.post("/predict", summary="Generate predictions using live odds")
@@ -266,6 +278,41 @@ async def get_admin_activity(limit: int = 10):
     response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
     return response.data or []
 
+@router.post("/admin/sync-teams", summary="Discovery and sync major teams from external API")
+async def sync_teams():
+    if not supabase: raise HTTPException(status_code=503, detail="Database not configured.")
+
+    keywords = ["Man City", "Liverpool", "Arsenal", "Real Madrid", "Barca", "Bayern", "Inter Milan", "PSG", "Chelsea", "Man United", "Spurs", "Nigeria", "England", "France", "Brazil", "Argentina"]
+    synced = []
+
+    for kw in keywords:
+        try:
+            res = football_client.search_teams(kw)
+            if res.get('response'):
+                for item in res['response'][:3]: # Limit to top 3 matches per keyword
+                    team_info = item.get('team', {})
+                    team_name = team_info.get('name')
+                    if not team_name: continue
+
+                    # Naturalize names
+                    if "Manchester City" in team_name: team_name = "Man City"
+                    if "Barcelona" in team_name: team_name = "Barca"
+                    if "Manchester United" in team_name: team_name = "Man United"
+                    if "Tottenham" in team_name: team_name = "Spurs"
+
+                    team_record = {
+                        "name": team_name,
+                        "country": item['team']['country'],
+                        "league": item['team'].get('league', 'Professional League'), # RapidAPI teams endpoint has league sometimes
+                        "elo_rating": 1600 if item['team'].get('national') else 1500,
+                    }
+                    supabase.table("teams").upsert(team_record, on_conflict="name").execute()
+                    synced.append(team_name)
+        except Exception as e:
+            logger.error(f"Sync error for {kw}: {e}")
+
+    return {"success": True, "synced": synced}
+
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
 async def telegram_broadcast(request: TelegramBroadcastRequest):
     # Placeholder for actual Telegram integration
@@ -428,3 +475,14 @@ async def get_player_detail(player_id: int):
 
 
 app.include_router(router)
+
+# --- Static File Serving (Production) ---
+if os.path.exists("dist"):
+    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
+
+    @app.exception_handler(404)
+    async def not_found_exception_handler(request, exc):
+        # Fallback to index.html for SPA routing
+        if not request.url.path.startswith("/api"):
+            return FileResponse("dist/index.html")
+        return JSONResponse(status_code=404, content={"message": "Not found"})
