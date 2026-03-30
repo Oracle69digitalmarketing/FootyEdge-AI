@@ -225,8 +225,6 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_teams_updated_at BEFORE UPDATE ON teams
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-<<<<<<< HEAD
-=======
 -- Calculate team stats after match
 CREATE OR REPLACE FUNCTION update_team_stats()
 RETURNS TRIGGER AS $$
@@ -259,34 +257,3 @@ $$ language 'plpgsql';
 
 CREATE TRIGGER after_match_insert AFTER INSERT ON matches
     FOR EACH ROW EXECUTE FUNCTION update_team_stats();
-
--- 8. ACTIVITY_LOG TABLE
-CREATE TABLE activity_log (
-    id BIGSERIAL PRIMARY KEY,
-    user_id VARCHAR(100),
-    action VARCHAR(100),
-    details JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_activity_log_created ON activity_log(created_at DESC);
-ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Enable read access for admin users" ON activity_log FOR SELECT USING (true); -- Should be restricted to admin
-
--- 9. ACCAS TABLE
-CREATE TABLE accas (
-    id BIGSERIAL PRIMARY KEY,
-    user_id VARCHAR(100),
-    selections_json JSONB,
-    total_odds FLOAT,
-    stake FLOAT,
-    potential_return FLOAT,
-    bookmaker VARCHAR(50),
-    status VARCHAR(20) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Enable insert for authenticated users" ON accas FOR INSERT WITH CHECK (true);
-CREATE POLICY "Enable read for own accas" ON accas FOR SELECT USING (true); -- Simplified
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
