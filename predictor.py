@@ -72,12 +72,13 @@ class FootyEdgePredictor:
                                 if parsed: all_matches.append(parsed)
         all_matches.sort(key=lambda x: x['date'], reverse=True); return all_matches
 
-    async def find_all_value_bets(self) -> List[Dict]:
+    async def find_all_value_bets(self, league_ids: List[int] = None) -> List[Dict]:
         if not self.rapidapi_key:
             raise ValueError("RapidAPI key not configured.")
 
-        # Major European leagues (guessed IDs)
-        league_ids = [39, 140, 78, 135, 61] # Premier League, La Liga, Bundesliga, Serie A, Ligue 1
+        # Default to major European leagues if none provided
+        if not league_ids:
+            league_ids = [39, 140, 78, 135, 61, 94, 88, 144] # PL, La Liga, Bunesliga, Serie A, Ligue 1, Primeira Liga, Eredivisie, Jupiler Pro League
         
         all_value_bets = []
         
@@ -109,18 +110,27 @@ class FootyEdgePredictor:
         return all_value_bets
 
     async def _fetch_upcoming_fixtures(self, league_id: int) -> List[Dict]:
+        rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
         headers = {
             'x-rapidapi-key': self.rapidapi_key,
-            'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
-        }
-        url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
-        querystring = {
-            "league": str(league_id), 
-            "season": str(datetime.now().year),
-            "from": datetime.now().strftime("%Y-%m-%d"),
-            "to": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            'x-rapidapi-host': rapidapi_host
         }
         
+        base_url = f"https://{rapidapi_host}"
+        endpoint = "football-get-matches-by-date" if "free-api" in rapidapi_host else "fixtures"
+        url = f"{base_url}/{endpoint}"
+
+        # Adapt parameters for free-api
+        if "free-api" in rapidapi_host:
+            querystring = {"match_date": datetime.now().strftime("%Y-%m-%d")}
+        else:
+            querystring = {
+                "league": str(league_id),
+                "season": str(datetime.now().year),
+                "from": datetime.now().strftime("%Y-%m-%d"),
+                "to": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            }
+
         try:
             response = requests.get(url, headers=headers, params=querystring)
             response.raise_for_status()
@@ -142,12 +152,20 @@ class FootyEdgePredictor:
             return []
 
     async def _fetch_odds_for_fixture(self, fixture_id: int, bookmaker_id: int) -> Dict:
+        rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
         headers = {
             'x-rapidapi-key': self.rapidapi_key,
-            'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
+            'x-rapidapi-host': rapidapi_host
         }
-        url = "https://api-football-v1.p.rapidapi.com/v3/odds"
-        querystring = {"fixture": str(fixture_id), "bookmaker": str(bookmaker_id)}
+
+        base_url = f"https://{rapidapi_host}"
+        endpoint = "football-get-odds-by-match" if "free-api" in rapidapi_host else "odds"
+        url = f"{base_url}/{endpoint}"
+
+        param_name = "match_id" if "free-api" in rapidapi_host else "fixture"
+        querystring = {param_name: str(fixture_id)}
+        if not "free-api" in rapidapi_host:
+            querystring["bookmaker"] = str(bookmaker_id)
 
         try:
             response = requests.get(url, headers=headers, params=querystring)
@@ -182,8 +200,31 @@ class FootyEdgePredictor:
             return {}
 
     def _get_team_league_file(self, team_name: str) -> (str, str):
-        team_map = {'Manchester City': ('en.1', 'Premier League'),'Arsenal': ('en.1', 'Premier League'),'Liverpool': ('en.1', 'Premier League'),'Chelsea': ('en.1', 'Premier League'),'Manchester United': ('en.1', 'Premier League'),'Tottenham Hotspur': ('en.1', 'Premier League'),'Real Madrid': ('es.1', 'La Liga'),'Barcelona': ('es.1', 'La Liga'),}
-        return team_map.get(team_name.replace(' FC', '').replace('AFC ', ''), (None, None))
+        # A more comprehensive map could be stored in a JSON or DB
+        team_map = {
+            'Man City': ('en.1', 'Premier League'),
+            'Arsenal': ('en.1', 'Premier League'),
+            'Liverpool': ('en.1', 'Premier League'),
+            'Chelsea': ('en.1', 'Premier League'),
+            'Man United': ('en.1', 'Premier League'),
+            'Spurs': ('en.1', 'Premier League'),
+            'Real Madrid': ('es.1', 'La Liga'),
+            'Barca': ('es.1', 'La Liga'),
+            'Atletico Madrid': ('es.1', 'La Liga'),
+            'Bayern Munich': ('de.1', 'Bundesliga'),
+            'Dortmund': ('de.1', 'Bundesliga'),
+            'Inter Milan': ('it.1', 'Serie A'),
+            'AC Milan': ('it.1', 'Serie A'),
+            'Juventus': ('it.1', 'Serie A'),
+            'Napoli': ('it.1', 'Serie A'),
+            'PSG': ('fr.1', 'Ligue 1'),
+            'Ajax': ('nl.1', 'Eredivisie'),
+            'Benfica': ('pt.1', 'Primeira Liga'),
+            'Porto': ('pt.1', 'Primeira Liga'),
+        }
+        # Clean team name for better matching
+        cleaned_name = team_name.replace('Manchester City', 'Man City').replace('Barcelona', 'Barca').replace('Tottenham', 'Spurs').replace('Manchester United', 'Man United').replace(' FC', '').replace('AFC ', '').strip()
+        return team_map.get(cleaned_name, (None, None))
 
     def _parse_local_match(self, match: Dict, team_name: str) -> Dict:
         if 'score' not in match or 'ft' not in match['score']: return None
