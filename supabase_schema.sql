@@ -225,8 +225,7 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_teams_updated_at BEFORE UPDATE ON teams
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-<<<<<<< HEAD
-=======
+
 -- Calculate team stats after match
 CREATE OR REPLACE FUNCTION update_team_stats()
 RETURNS TRIGGER AS $$
@@ -289,4 +288,4 @@ CREATE TABLE accas (
 ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable insert for authenticated users" ON accas FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable read for own accas" ON accas FOR SELECT USING (true); -- Simplified
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
