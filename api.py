@@ -1,12 +1,9 @@
-<<<<<<< HEAD
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-=======
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 import logging
@@ -14,7 +11,6 @@ import os
 from supabase import create_client, Client
 from datetime import datetime, timedelta
 import asyncio
-
 from predictor import FootyEdgePredictor
 from football_api_client import FootballAPIClient
 
@@ -111,7 +107,6 @@ class BetRecordRequest(BaseModel):
 def root():
     return {"message": "FootyEdge AI API is running."}
 
-<<<<<<< HEAD
 @router.get("/health", summary="Health check for service and environment variables")
 def health_check():
     """Provides a health check for Render and verifies environment variable setup."""
@@ -119,7 +114,6 @@ def health_check():
         "status": "ok",
         "supabase_configured": bool(supabase),
         "rapidapi_configured": bool(football_client)
-=======
 @router.get("/health")
 async def health_check():
     return {
@@ -127,8 +121,6 @@ async def health_check():
         "supabase": "configured" if supabase else "missing",
         "rapidapi": "configured" if os.environ.get("RAPIDAPI_KEY") else "missing",
         "rapidapi_host": os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
-    }
 
 # --- Core Features ---
 @router.post("/predict", summary="Generate predictions using live odds")
@@ -155,15 +147,15 @@ async def analyze_bet(request: AnalyzeBetRequest):
 
 @router.get("/scan-value-bets", summary="Scans for all available value bets in upcoming matches.")
 async def scan_value_bets():
-<<<<<<< HEAD
+
     if not football_client: raise HTTPException(status_code=503, detail="Football API not configured.")
     return await predictor.find_all_value_bets()
-=======
+
     try:
         return await predictor.find_all_value_bets()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
 
 # --- Database Endpoints ---
 @router.get("/recent-predictions", summary="Get the last N predictions")
@@ -218,11 +210,11 @@ async def get_premium_performance():
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
 
-<<<<<<< HEAD
+
     # ROI calculation
     thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
     bets_response = supabase.table("value_bets").select("stake_units, status, odds").filter("created_at", "gte", thirty_days_ago).in_("status", ["won", "lost"]).execute()
-=======
+
     # Last 30 days ROI
     since_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
@@ -237,8 +229,8 @@ async def get_premium_performance():
         }
 
     avg_confidence = sum([p['confidence'] for p in predictions_response.data]) / len(predictions_response.data)
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
-    
+
+
     total_staked = 0
     net_profit = 0
     if bets_response.data:
@@ -249,8 +241,7 @@ async def get_premium_performance():
                 net_profit += (stake * bet['odds']) - stake
             else: # lost
                 net_profit -= stake
-    
-<<<<<<< HEAD
+
     roi_30d = (net_profit / total_staked) * 100 if total_staked > 0 else 0
 
     # Other metrics
@@ -260,7 +251,7 @@ async def get_premium_performance():
 
     return {
         "avg_confidence": 78.5, # Placeholder, as confidence is not stored on value bets
-=======
+
     # Calculate ROI from settled bets
     total_staked = sum([b.get('bankroll_used', 0) or 0 for b in value_bets_response.data])
     total_profit = sum([b.get('profit_loss', 0) or 0 for b in value_bets_response.data])
@@ -269,7 +260,7 @@ async def get_premium_performance():
 
     return {
         "avg_confidence": round(avg_confidence * 100, 2),
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
         "roi_30d": round(roi_30d, 2),
         "win_rate": round(win_rate, 2)
     }
@@ -287,9 +278,9 @@ async def get_premium_telegram_config():
 async def get_premium_upcoming_matches(limit: int = 5):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-        
+
     response = supabase.table("value_bets").select("*").eq("status", "active").order("ev", desc=True).limit(limit).execute()
-    
+
     return response.data or []
 
 @router.post("/premium/subscribe", summary="Subscribe a user to a premium plan")
@@ -320,14 +311,14 @@ async def sync_teams():
         league_id = league_item.get('league', {}).get('id')
         league_name = league_item.get('league', {}).get('name')
         country = league_item.get('country', {}).get('name')
-        
+
         if not league_id:
             continue
 
         logger.info(f"Fetching teams for league: {league_name} ({league_id})")
         # Assuming there's a method to get teams by league_id
         teams_data = football_client.get_teams_by_league(league_id)
-        
+
         if teams_data and 'response' in teams_data:
             for team_item in teams_data['response']:
                 team_info = team_item.get('team', {})
@@ -345,7 +336,7 @@ async def sync_teams():
         raise HTTPException(status_code=500, detail="No teams found from external API.")
 
     upsert_response = supabase.table("teams").upsert(all_teams).execute()
-    
+
     if upsert_response.data:
         return {"status": "success", "synced_count": len(upsert_response.data)}
     else:
@@ -359,13 +350,12 @@ async def get_admin_stats():
 
     users_response = supabase.table("profiles").select("id", count="exact").execute()
     premium_users_response = supabase.table("profiles").select("id", count="exact").eq("is_premium", True).execute()
-<<<<<<< HEAD
-    
+
     # Calculate bot health
     five_mins_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
     recent_logs = supabase.table("agent_logs").select("id", count="exact").filter("created_at", "gte", five_mins_ago).execute()
     bot_health = 100 if recent_logs.count > 0 else 0
-=======
+
 
     # Calculate daily revenue from accas or premium subs
     # Since we don't have a payments table, we'll estimate based on premium users
@@ -380,25 +370,23 @@ async def get_admin_stats():
         bot_health = (success_count / len(logs_response.data)) * 100
     else:
         bot_health = 100.0
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
 
     return {
         "total_users": users_response.count,
         "premium_subs": premium_users_response.count,
-<<<<<<< HEAD
+
         "daily_revenue": 842, # Mocked
         "bot_health": bot_health
-=======
+
         "daily_revenue": round(estimated_daily_revenue, 2),
         "bot_health": round(bot_health, 2)
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
     }
 
 @router.get("/admin/activity", summary="Get recent system activity logs")
 async def get_admin_activity(limit: int = 10):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    
+
     response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
     return response.data or []
 
@@ -476,7 +464,7 @@ async def record_bet(request: BetRecordRequest):
 async def record_acca(request: AccaRecordRequest):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    
+
     acca_data = {
         "user_id": request.user_id,
         "selections_json": [s.dict() for s in request.selections],
@@ -499,7 +487,7 @@ async def record_acca(request: AccaRecordRequest):
 # This section remains largely the same but with checks for the client
 @router.get("/search/teams", summary="Search for teams")
 async def search_teams_ext(q: str):
-<<<<<<< HEAD
+
     if not football_client: raise HTTPException(status_code=503, detail="Football API not configured.")
     return football_client.search_teams(q)
 
@@ -507,7 +495,7 @@ async def search_teams_ext(q: str):
 async def search_players_ext(q: str):
     if not football_client: raise HTTPException(status_code=503, detail="Football API not configured.")
     return football_client.search_players(q)
-=======
+
     try:
         return football_client.search_teams(q)
     except ValueError as e:
@@ -519,14 +507,14 @@ async def search_players_ext(q: str):
         return football_client.search_players(q)
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
 
 @router.get("/teams/{team_id}/detail", summary="Get team details from external API")
 async def get_team_detail_ext(team_id: int):
     if not football_client: raise HTTPException(status_code=503, detail="Football API not configured.")
     return football_client.get_team_detail(team_id)
 
-<<<<<<< HEAD
+
 # ... (add checks for all other football_client calls)
 
 app.include_router(router)
@@ -545,7 +533,7 @@ if os.path.exists("dist"):
 else:
     logger.info("Frontend 'dist' directory not found. Static file serving is disabled.")
 
-=======
+
 @router.get("/leagues", summary="List all leagues from external API")
 async def list_leagues_ext():
     return football_client.list_leagues()
@@ -638,4 +626,4 @@ if os.path.exists("dist"):
         if not request.url.path.startswith("/api"):
             return FileResponse("dist/index.html")
         return JSONResponse(status_code=404, content={"message": "Not found"})
->>>>>>> df9570acc20caae45bcf56a4de34681b26d1bc6c
+
