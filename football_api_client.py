@@ -12,6 +12,7 @@ class FootballAPIClient:
         self.headers = {
             'x-rapidapi-key': self.api_key,
             'x-rapidapi-host': self.host
+        }
 
         self.rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
         self.base_url = f"https://{self.rapidapi_host}"
