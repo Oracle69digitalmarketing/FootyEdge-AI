@@ -352,8 +352,36 @@ async def get_admin_activity(limit: int = 10):
 
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
 async def telegram_broadcast(request: TelegramBroadcastRequest):
-    logger.info(f"Broadcasting to Telegram: Prediction {request.prediction.get('home_team')} vs {request.prediction.get('away_team')}, Value: {request.valueBet.get('selection')}")
-    return {"success": True, "message": "Broadcast simulated successfully."}
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "@footyedge_signals")
+
+    if not bot_token:
+        logger.warning("TELEGRAM_BOT_TOKEN not set. Simulating broadcast.")
+        return {"success": True, "message": "Simulated: Bot token missing."}
+
+    message = f"⚽ *{request.prediction.get('home_team')} vs {request.prediction.get('away_team')}*\n\n"
+    message += f"🎯 *Value Bet Found!*\n"
+    message += f"Selection: {request.valueBet.get('selection')}\n"
+    message += f"Odds: {request.valueBet.get('odds')}\n"
+
+    if request.isPremium:
+        message = "💎 *PREMIUM SIGNAL*\n" + message
+        chat_id = os.environ.get("TELEGRAM_PREMIUM_CHAT_ID", "@footyedge_premium")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+            )
+            if res.status_code == 200:
+                return {"success": True, "message": "Broadcast sent successfully!"}
+            else:
+                logger.error(f"Telegram API error: {res.text}")
+                return {"success": False, "error": res.text}
+    except Exception as e:
+        logger.error(f"Failed to broadcast: {e}")
+        return {"success": False, "error": str(e)}
 
 
 # --- Bet Endpoints ---

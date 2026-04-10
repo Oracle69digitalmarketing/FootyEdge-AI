@@ -47,11 +47,17 @@ class TeamStrengthAgent:
             form_rating=form_rating,
             attack_strength=attack_strength,
             defense_strength=defense_strength,
-            xG_performance=1.0, # Placeholder, needs xG data
+            xG_performance=self._calculate_xg_perf(history),
             variance_profile=self._calculate_variance(history),
             competition_factor=comp_adjustment,
-            midfield_rating=1500 # Still a placeholder
+            midfield_rating=base_rating * 0.8 # Linked to team quality for now
         )
+
+    def _calculate_xg_perf(self, history: List[Dict]) -> float:
+        # If we don't have real xG, we derive a performance ratio from goal efficiency
+        if not history: return 1.0
+        # High ratio means overperforming (lucky or efficient)
+        return 1.0 + (sum(m['goals_scored'] for m in history) / len(history)) / 5.0
 
     async def _get_rating_from_db(self, team_name: str) -> float:
         if not self.supabase: return 1500.0
