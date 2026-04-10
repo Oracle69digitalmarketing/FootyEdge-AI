@@ -95,7 +95,7 @@ class FootyEdgePredictor:
                  res = await self.football_client.get_team_fixtures(team_id, last=limit)
                  if res.get('response'):
                      for f in res['response']:
-                         all_matches.append(self._parse_api_match(f, team_name)
+                         all_matches.append(self._parse_api_match(f, team_name))
 
         if not all_matches: raise ValueError(f"Could not find any historical match data for {team_name}.")
 
