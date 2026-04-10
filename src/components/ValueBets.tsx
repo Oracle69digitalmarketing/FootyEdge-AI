@@ -23,7 +23,7 @@ const ValueBets: React.FC = () => {
     const fetchValueBets = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/value-bets');
+        const response = await fetch('/api/value-bets');
         if (!response.ok) {
           throw new Error('Failed to fetch value bets');
         }

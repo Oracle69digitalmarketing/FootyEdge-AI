@@ -29,7 +29,7 @@ class TeamStrength:
     xG_performance: float
     variance_profile: float
     competition_factor: float
-    midfield_rating: float = 1500 # Placeholder for tactical analysis
+    midfield_rating: float = 1500
 
 @dataclass
 class PlayerImpact:

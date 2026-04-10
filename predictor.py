@@ -1,19 +1,21 @@
 """
 FootyEdge AI - Core Prediction Engine (Production Ready - Hybrid Data Model)
 """
-import requests
+import httpx
 import numpy as np
 from datetime import datetime, timedelta
 import os
 import json
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 import logging
 import math
 from pathlib import Path
 
 from agents.team_strength import TeamStrengthAgent
 from agents.tactical_agent import TacticalAgent
+from agents.player_impact import PlayerImpactAgent
 from agents.models import TeamStrength, ValueBet
+from football_api_client import FootballAPIClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,54 +25,144 @@ class FootyEdgePredictor:
     def __init__(self, supabase_url: str = None, supabase_key: str = None, 
                  rapidapi_key: str = None):
         self.rapidapi_key = rapidapi_key or os.environ.get('RAPIDAPI_KEY')
-        self.supabase = self._init_supabase(supabase_url, supabase_key)
+        self.supabase_url = supabase_url or os.environ.get('SUPABASE_URL')
+        self.supabase_key = supabase_key or os.environ.get('SUPABASE_KEY')
+        self.supabase = None # Will be initialized async if needed
+        self.football_client = FootballAPIClient(api_key=self.rapidapi_key)
         
         self.cache = {}
         self.cache_ttl = 3600
         self.team_strength_agent = TeamStrengthAgent(supabase_client=self.supabase)
         self.tactical_agent = TacticalAgent()
+        self.player_impact_agent = PlayerImpactAgent(football_client=self.football_client, team_agent=self.team_strength_agent)
         self.local_data_path = Path("data/football.json")
 
-    def _init_supabase(self, url, key):
-        # ... (same as before)
-        supabase_url = url or os.environ.get('SUPABASE_URL')
-        supabase_key = key or os.environ.get('SUPABASE_KEY')
-        if supabase_url and supabase_key:
+    async def _ensure_supabase(self):
+        if self.supabase: return self.supabase
+        if self.supabase_url and self.supabase_key:
             try:
-                from supabase import create_client; logger.info("Supabase connected successfully"); return create_client(supabase_url, supabase_key)
+                from supabase import acreate_client
+                self.supabase = await acreate_client(self.supabase_url, self.supabase_key)
+                self.team_strength_agent.supabase = self.supabase
+                logger.info("Supabase connected successfully (async)")
+                return self.supabase
             except Exception as e:
                 logger.error(f"Failed to connect to Supabase: {e}")
         return None
 
 
     async def get_team_matches(self, team_name: str, limit: int = 40) -> List[Dict]:
-        # ... (this method is now complex, we'll keep it as is from the last step)
         cache_key = f"team_matches_hybrid_{team_name}"; cached = self.cache.get(cache_key)
         if cached and (datetime.now() - cached[1]).seconds < self.cache_ttl: return cached[0]
+
+        # 1. Try fetching from Supabase (if we have a team ID mapping)
+        api_matches = []
+        supabase = await self._ensure_supabase()
+        if supabase:
+             team_res = await supabase.table("teams").select("id").eq("name", team_name).execute()
+             if team_res.data:
+                 team_id = team_res.data[0]['id']
+                 try:
+                     res = await self.football_client.get_team_fixtures(team_id, last=limit)
+                     if res and res.get('response'):
+                         for f in res['response']:
+                             api_matches.append(self._parse_api_match(f, team_name))
+                 except Exception as e:
+                     logger.error(f"API fixtures fetch failed for team {team_id}: {e}")
+
+        # 2. Try fetching from Local Data
         local_matches = self._load_local_matches(team_name)
-        logger.info(f"Loaded {len(local_matches)} historical matches for {team_name} from local data.")
-        if not local_matches: raise ValueError(f"Could not find any historical match data for {team_name}.")
-        merged_matches = sorted(local_matches, key=lambda x: x['date'], reverse=True)
-        self.cache[cache_key] = (merged_matches[:limit], datetime.now()); return merged_matches[:limit]
+
+        # 3. Combine and Merge
+        all_matches = api_matches + local_matches
+        if not all_matches:
+             # Fallback: search for team and then get matches
+             try:
+                 search_res = await self.football_client.search_teams(team_name)
+                 if search_res and search_res.get('response'):
+                     team_id = search_res['response'][0]['team']['id']
+                     res = await self.football_client.get_team_fixtures(team_id, last=limit)
+                     if res and res.get('response'):
+                         for f in res['response']:
+                             all_matches.append(self._parse_api_match(f, team_name))
+             except Exception as e:
+                 logger.error(f"API fallback search/fixtures failed for team {team_name}: {e}")
+
+        if not all_matches: raise ValueError(f"Could not find any historical match data for {team_name}.")
+
+        merged_matches = sorted(all_matches, key=lambda x: x['date'], reverse=True)
+        # Deduplicate by date
+        seen_dates = set()
+        unique_matches = []
+        for m in merged_matches:
+            if m['date'] not in seen_dates:
+                unique_matches.append(m)
+                seen_dates.add(m['date'])
+
+        self.cache[cache_key] = (unique_matches[:limit], datetime.now()); return unique_matches[:limit]
+
+    def _parse_api_match(self, fixture: Dict, team_name: str) -> Dict:
+        f = fixture['fixture']
+        t = fixture['teams']
+        g = fixture['goals']
+        is_home = t['home']['name'] == team_name
+        home_score = g['home'] if g['home'] is not None else 0
+        away_score = g['away'] if g['away'] is not None else 0
+
+        result = 'draw'
+        if home_score != away_score:
+            result = 'win' if (is_home and home_score > away_score) or (not is_home and away_score > home_score) else 'loss'
+
+        return {
+            'date': f['date'].split('T')[0],
+            'is_home': is_home,
+            'goals_scored': home_score if is_home else away_score,
+            'goals_conceded': away_score if is_home else home_score,
+            'result': result,
+            'opponent_name': t['away']['name'] if is_home else t['home']['name']
+        }
 
 
     def _load_local_matches(self, team_name: str) -> List[Dict]:
-        # ... (this method is now complex, we'll keep it as is from the last step)
         league_file, _ = self._get_team_league_file(team_name)
-        if not league_file: return []
         all_matches = []
-        if not self.local_data_path.exists(): logger.warning("Local football data not found."); return []
-        for season_dir in self.local_data_path.iterdir():
-            if season_dir.is_dir():
-                data_file = season_dir / f"{league_file}.json"
-                if data_file.exists():
-                    with open(data_file, 'r', encoding='utf-8') as f:
-                        season_data = json.load(f)
-                        for match in season_data['matches']:
-                            if match['team1'] == team_name or match['team2'] == team_name:
-                                parsed = self._parse_local_match(match, team_name)
-                                if parsed: all_matches.append(parsed)
-        all_matches.sort(key=lambda x: x['date'], reverse=True); return all_matches
+
+        # Check if local_data_path is a file (older version) or a directory (newer version)
+        if not self.local_data_path.exists():
+            logger.warning(f"Local football data path {self.local_data_path} not found.")
+            return []
+
+        if self.local_data_path.is_file():
+            # Handle case where it's a single JSON file
+            try:
+                with open(self.local_data_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if not content: return []
+                    data = json.loads(content)
+                    matches = data.get('matches', [])
+                    for match in matches:
+                        if match.get('team1') == team_name or match.get('team2') == team_name:
+                            parsed = self._parse_local_match(match, team_name)
+                            if parsed: all_matches.append(parsed)
+            except Exception as e:
+                logger.error(f"Error reading local match file: {e}")
+                return []
+        else:
+            # Handle directory structure
+            if not league_file: return []
+            for season_dir in self.local_data_path.iterdir():
+                if season_dir.is_dir():
+                    data_file = season_dir / f"{league_file}.json"
+                    if data_file.exists():
+                        with open(data_file, 'r', encoding='utf-8') as f:
+                            season_data = json.load(f)
+                            for match in season_data['matches']:
+                                if match['team1'] == team_name or match['team2'] == team_name:
+                                    parsed = self._parse_local_match(match, team_name)
+                                    if parsed: all_matches.append(parsed)
+
+        all_matches.sort(key=lambda x: x['date'], reverse=True)
+        return all_matches
 
     async def find_all_value_bets(self, league_ids: List[int] = None) -> List[Dict]:
         if not self.rapidapi_key:
@@ -92,8 +184,12 @@ class FootyEdgePredictor:
                 if not all([fixture_id, home_team, away_team]):
                     continue
 
-                # Fetch odds (assuming Bet365 bookmaker ID 8)
-                odds = await self._fetch_odds_for_fixture(fixture_id, bookmaker_id=8)
+                # Fetch odds (SportyBet ID 53 if available, or fallback)
+                odds = await self._fetch_odds_for_fixture(fixture_id, bookmaker_id=53)
+                if not odds:
+                    # Fallback to general market odds
+                    odds = await self._fetch_odds_for_fixture(fixture_id, bookmaker_id=8) # Bet365
+
                 if not odds:
                     continue
 
@@ -110,74 +206,41 @@ class FootyEdgePredictor:
         return all_value_bets
 
     async def _fetch_upcoming_fixtures(self, league_id: int) -> List[Dict]:
-        rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
-        headers = {
-            'x-rapidapi-key': self.rapidapi_key,
-            'x-rapidapi-host': rapidapi_host
-        }
-        url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
-        querystring = {
-            "league": str(league_id), 
-            "season": str(datetime.now().year),
-            "from": datetime.now().strftime("%Y-%m-%d"),
-            "to": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-        }
-        
-        base_url = f"https://{rapidapi_host}"
-        endpoint = "football-get-matches-by-date" if "free-api" in rapidapi_host else "fixtures"
-        url = f"{base_url}/{endpoint}"
-
-        # Adapt parameters for free-api
-        if "free-api" in rapidapi_host:
-            querystring = {"match_date": datetime.now().strftime("%Y-%m-%d")}
-        else:
-            querystring = {
-                "league": str(league_id),
-                "season": str(datetime.now().year),
-                "from": datetime.now().strftime("%Y-%m-%d"),
-                "to": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-            }
-
         try:
-            response = requests.get(url, headers=headers, params=querystring)
-            response.raise_for_status()
-            fixtures = response.json().get('response', [])
+            # Use FootballAPIClient for a more unified approach
+            season = datetime.now().year
+            from_date = datetime.now().strftime("%Y-%m-%d")
+            to_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
-            # Check for data freshness
-            if fixtures:
-                has_today_matches = any(
-                    datetime.fromisoformat(f['fixture']['date']).date() == datetime.now().date() 
-                    for f in fixtures
-                )
-                if not has_today_matches:
-                    logger.warning(f"No matches found for today in league {league_id}. The API data might be stale.")
+            res = await self.football_client._make_request("fixtures", params={
+                "league": league_id,
+                "season": season,
+                "from": from_date,
+                "to": to_date
+            })
 
+            fixtures = res.get('response', [])
             return fixtures
             
-        except requests.exceptions.RequestException as e:
-            logger.error(f"API error fetching fixtures for league {league_id}: {e}")
+        except Exception as e:
+            logger.error(f"Error fetching fixtures for league {league_id}: {e}")
             return []
 
     async def _fetch_odds_for_fixture(self, fixture_id: int, bookmaker_id: int) -> Dict:
-        rapidapi_host = os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
-        headers = {
-            'x-rapidapi-key': self.rapidapi_key,
-            'x-rapidapi-host': rapidapi_host
-        }
-        url = f"https://{rapidapi_host}/v3/odds"
-
-        querystring = {"fixture": str(fixture_id), "bookmaker": str(bookmaker_id)}
-
         try:
-            response = requests.get(url, headers=headers, params=querystring)
-            response.raise_for_status()
-            odds_response = response.json().get('response', [])
+            res = await self.football_client.get_odds_by_event_id(fixture_id)
+            odds_response = res.get('response', [])
             if not odds_response:
                 return {}
 
-            # Assuming we are interested in Match Winner, Over/Under 2.5 and BTTS
-            odds_data = odds_response[0].get('bookmakers', [])[0].get('bets', [])
+            # Find the requested bookmaker or default to the first one
+            bm_data = next((bm for bm in odds_response[0].get('bookmakers', []) if bm['id'] == bookmaker_id), None)
+            if not bm_data and odds_response[0].get('bookmakers'):
+                bm_data = odds_response[0]['bookmakers'][0]
             
+            if not bm_data: return {}
+
+            odds_data = bm_data.get('bets', [])
             parsed_odds = {}
             for bet_type in odds_data:
                 if bet_type['name'] == 'Match Winner':
@@ -196,8 +259,8 @@ class FootyEdgePredictor:
             
             return parsed_odds
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"API error fetching odds for fixture {fixture_id}: {e}")
+        except Exception as e:
+            logger.error(f"Error fetching odds for fixture {fixture_id}: {e}")
             return {}
 
     def _get_team_league_file(self, team_name: str) -> Tuple[str, str]:
@@ -240,8 +303,17 @@ class FootyEdgePredictor:
         home_matches = await self.get_team_matches(home_team)
         away_matches = await self.get_team_matches(away_team)
         
-        home_strength = await self.team_strength_agent.assess(home_team, home_matches)
-        away_strength = await self.team_strength_agent.assess(away_team, away_matches)
+        _, home_league = self._get_team_league_file(home_team)
+        _, away_league = self._get_team_league_file(away_team)
+
+        home_strength = await self.team_strength_agent.assess(home_team, home_matches, league_name=home_league)
+        away_strength = await self.team_strength_agent.assess(away_team, away_matches, league_name=away_league)
+
+        # --- Player Impact (Heuristic Adjustment) ---
+        # Adjust base ratings based on player impact data if available
+        # This is a simplified version that could be expanded with real-time lineup scraping
+        home_adj = 0
+        away_adj = 0
 
         # --- Tactical Analysis ---
         tactical_analysis = self.tactical_agent.analyze_matchup(home_strength, away_strength)
@@ -289,15 +361,16 @@ class FootyEdgePredictor:
         value_bets = self._find_value_bets(prediction_data["probabilities"], odds)
 
         # Save to database
-        if self.supabase:
+        supabase = await self._ensure_supabase()
+        if supabase:
             try:
                 # Find best bet to store in predictions table
                 best_bet = max(value_bets, key=lambda x: x.ev) if value_bets else None
                 
-                # Synchronously save data
-                prediction_id = self._save_prediction_to_db(prediction_data, best_bet)
+                # Async save data
+                prediction_id = await self._save_prediction_to_db(prediction_data, best_bet)
                 if prediction_id and value_bets:
-                    self._save_value_bets_to_db(value_bets, prediction_id, home_team, away_team)
+                    await self._save_value_bets_to_db(value_bets, prediction_id, home_team, away_team)
 
             except Exception as e:
                 logger.error(f"Error saving prediction to database: {e}")
@@ -306,8 +379,9 @@ class FootyEdgePredictor:
                 "home_xg": prediction_data["home_xg"], "away_xg": prediction_data["away_xg"],
                 "key_factors": prediction_data["key_factors"], "value_bets": [bet.__dict__ for bet in value_bets]}
 
-    def _save_prediction_to_db(self, prediction_data: Dict, best_bet: ValueBet = None) -> int:
-        if not self.supabase: return None
+    async def _save_prediction_to_db(self, prediction_data: Dict, best_bet: ValueBet = None) -> int:
+        supabase = await self._ensure_supabase()
+        if not supabase: return None
 
         record = {
             "home_team": prediction_data['home_team'],
@@ -330,7 +404,7 @@ class FootyEdgePredictor:
 
         try:
             # Use '.execute()' to run the query
-            response = self.supabase.table("predictions").insert(record).execute()
+            response = await supabase.table("predictions").insert(record).execute()
             if response.data:
                 logger.info("Prediction saved to database.")
                 return response.data[0]['id']
@@ -338,8 +412,9 @@ class FootyEdgePredictor:
             logger.error(f"Supabase insert failed for prediction: {e}")
         return None
 
-    def _save_value_bets_to_db(self, value_bets: List[ValueBet], prediction_id: int, home_team: str, away_team: str):
-        if not self.supabase: return
+    async def _save_value_bets_to_db(self, value_bets: List[ValueBet], prediction_id: int, home_team: str, away_team: str):
+        supabase = await self._ensure_supabase()
+        if not supabase: return
 
         records = []
         for bet in value_bets:
@@ -359,7 +434,7 @@ class FootyEdgePredictor:
         
         try:
             # Use '.execute()' to run the query
-            self.supabase.table("value_bets").insert(records).execute()
+            await supabase.table("value_bets").insert(records).execute()
             logger.info(f"{len(records)} value bets saved to database.")
         except Exception as e:
             logger.error(f"Supabase insert failed for value_bets: {e}")
