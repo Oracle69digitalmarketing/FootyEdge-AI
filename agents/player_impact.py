@@ -3,108 +3,92 @@
 Agent 2: Player Impact Agent
 Models how individual players affect team strength.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import logging
 
 from agents.models import PlayerImpact
 from agents.team_strength import TeamStrengthAgent
 
+logger = logging.getLogger(__name__)
+
 class PlayerImpactAgent:
     """
-    Models how individual players affect team strength.
-    Can predict impact of injuries, suspensions, transfers.
+    Models how individual players affect team strength using real API data.
     """
     
-    def __init__(self, team_agent: TeamStrengthAgent):
-        self.player_models = {}
-        self.lineup_history = {}
-        self.team_agent = team_agent # Requires a TeamStrengthAgent instance
+    def __init__(self, football_client: Any, team_agent: TeamStrengthAgent):
+        self.football_client = football_client
+        self.team_agent = team_agent
     
-    async def _get_matches_with_player(self, team: str, player: Any) -> List[Dict]:
-        # MOCK: Placeholder to get matches where a player participated.
-        return []
-
-    async def _get_matches_without_player(self, team: str, player: Any) -> List[Dict]:
-        # MOCK: Placeholder to get matches where a player was absent.
-        return []
-
-    async def assess_player_impact(self, player: Any, team: str, position: str) -> PlayerImpact:
+    async def assess_player_stats(self, player_name: str, team_id: int) -> Optional[PlayerImpact]:
         """
-        Calculate how much this player contributes to team strength.
+        Fetch and analyze real player statistics.
         """
-        with_player = await self._get_matches_with_player(team, player)
-        without_player = await self._get_matches_without_player(team, player)
-        
-        impact = {
-            'xG_difference': self._calculate_xG_impact(with_player, without_player),
-            'defensive_impact': self._calculate_defensive_impact(with_player, without_player),
-            'possession_impact': self._calculate_possession_impact(with_player, without_player),
-            'momentum_factor': self._calculate_momentum_impact(player)
-        }
-        
-        # Position-specific adjustments (mocked)
-        if position in ['striker', 'winger']:
-            impact['goal_contribution'] = 0.5 # player.goals_per_90
-        elif position in ['cb', 'gk']:
-            impact['clean_sheet_factor'] = 0.1 # player.clean_sheet_rate
-        
-        return PlayerImpact(
-            player=player,
-            position=position,
-            total_impact=self._weighted_total(impact),
-            details=impact
-        )
+        try:
+            res = await self.football_client.search_players(player_name)
+            if not res.get('response'): return None
+
+            # Find the correct player for the team
+            player_data = None
+            for p in res['response']:
+                for stat in p.get('statistics', []):
+                    if stat.get('team', {}).get('id') == team_id:
+                        player_data = p
+                        break
+                if player_data: break
+
+            if not player_data: return None
+
+            stats = player_data['statistics'][0]
+            games = stats.get('games', {})
+            goals = stats.get('goals', {})
+            passes = stats.get('passes', {})
+            tackles = stats.get('tackles', {})
+
+            position = games.get('position', 'Unknown')
+
+            # Derived impact scores
+            rating = float(games.get('rating') or 6.5)
+            goal_contrib = (float(goals.get('total') or 0) + float(goals.get('assists') or 0)) / max(1, float(games.get('appearences') or 1))
+
+            impact = {
+                'rating_factor': (rating - 6.5) * 10,
+                'goal_contribution': goal_contrib * 20,
+                'efficiency': float(passes.get('accuracy') or 70) / 100.0,
+                'defensive_contribution': float(tackles.get('total') or 0) / max(1, float(games.get('appearences') or 1))
+            }
+
+            return PlayerImpact(
+                player=player_name,
+                position=position,
+                total_impact=self._weighted_total(impact),
+                details=impact
+            )
+        except Exception as e:
+            logger.error(f"Failed to assess player impact for {player_name}: {e}")
+            return None
     
-    async def predict_lineup_impact(self, predicted_lineup: List[Any], team: str) -> Dict:
+    async def predict_lineup_impact(self, predicted_lineup: List[str], team_name: str, team_id: int, matches: List[Dict], league_name: str) -> Dict:
         """
         Given expected lineup, adjust team strength.
-        Critical for early betting before lineups are announced.
         """
-        base_strength = await self.team_agent.assess(team)
+        base_strength = await self.team_agent.assess(team_name, matches, league_name=league_name)
         
         lineup_adjustment = 0
-        for player in predicted_lineup:
-            # Assuming player object has name and position
-            impact = await self.assess_player_impact(player, team, player.position)
-            lineup_adjustment += impact.total_impact
-        
-        synergy = self._calculate_synergy(predicted_lineup)
+        for player_name in predicted_lineup:
+            impact = await self.assess_player_stats(player_name, team_id)
+            if impact:
+                lineup_adjustment += impact.total_impact
         
         return {
-            'adjusted_strength': base_strength.overall_rating + lineup_adjustment + synergy,
-            'key_absences': self._identify_key_missing_players(predicted_lineup, team),
-            'formation_analysis': self._analyze_formation(predicted_lineup)
+            'adjusted_strength': base_strength.overall_rating + (lineup_adjustment / max(1, len(predicted_lineup))) * 10,
+            'impact_delta': lineup_adjustment
         }
 
-    # --- Placeholder Private Methods ---
-
-    def _calculate_xG_impact(self, with_player: List, without_player: List) -> float:
-        # MOCK: In reality, compare xG performance in both sets of matches.
-        return 0.1
-
-    def _calculate_defensive_impact(self, with_player: List, without_player: List) -> float:
-        # MOCK: Compare xG against.
-        return -0.05
-
-    def _calculate_possession_impact(self, with_player: List, without_player: List) -> float:
-        # MOCK: Compare possession stats.
-        return 0.02
-
-    def _calculate_momentum_impact(self, player: Any) -> float:
-        # MOCK: Leaders matter. This is a qualitative adjustment.
-        return 0.01
-
     def _weighted_total(self, impact: Dict) -> float:
-        # MOCK: Combine impact scores into a single number.
-        return sum(value for value in impact.values() if isinstance(value, (int, float)))
-
-    def _calculate_synergy(self, lineup: List) -> float:
-        # MOCK: Placeholder for player chemistry effects.
-        return 0.0
-
-    def _identify_key_missing_players(self, lineup: List, team: str) -> List:
-        # MOCK: Identify who is missing from the usual starters.
-        return ["Key Player A"]
-
-    def _analyze_formation(self, lineup: List) -> Dict:
-        # MOCK: Analyze the tactical shape.
-        return {"shape": "4-3-3", "analysis": "Aggressive"}
+        # Weighting based on importance
+        return (
+            impact.get('rating_factor', 0) * 0.5 +
+            impact.get('goal_contribution', 0) * 0.3 +
+            impact.get('defensive_contribution', 0) * 0.2
+        )

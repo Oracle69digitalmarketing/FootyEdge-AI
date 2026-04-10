@@ -78,11 +78,11 @@ export default function App() {
   const [simulationLog, setSimulationLog] = useState<string[]>([]);
   const [todayMatches, setTodayMatches] = useState<any[]>([]);
   const [userBets, setUserBets] = useState<any[]>([]);
-  const [bankroll, setBankroll] = useState(10000); // Default 10k NGN
+  const [bankroll, setBankroll] = useState(1000); // Dynamic bankroll
   const [bookingCode, setBookingCode] = useState<string | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
   const [accaSelections, setAccaSelections] = useState<any[]>([]);
-  const [selectedBookmaker, setSelectedBookmaker] = useState<'bet9ja' | 'sportybet' | '1xbet'>('bet9ja');
+  const [selectedBookmaker, setSelectedBookmaker] = useState<'bet9ja' | 'sportybet' | '1xbet'>('sportybet');
   const [isPremium, setIsPremium] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -97,6 +97,11 @@ export default function App() {
 
   const [adminStats, setAdminStats] = useState<any>(null);
   const [adminActivity, setAdminActivity] = useState<any[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any>({
+    total_predictions: "0",
+    active_value_bets: "0",
+    ai_accuracy: "0.0%"
+  });
 
   const flashMessage = (setter: (msg: string | null) => void, message: string | null) => {
     setter(message);
@@ -146,6 +151,18 @@ export default function App() {
     }
   }, []);
 
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      const response = await fetch('/api/dashboard/stats');
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardStats(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard stats:", err);
+    }
+  }, []);
+
   const fetchValueBets = useCallback(async () => {
     try {
       const response = await fetch(`/api/value-bets?status=${betStatusFilter}`);
@@ -154,10 +171,11 @@ export default function App() {
       }
       const data = await response.json();
       setValueBets(data);
+      fetchDashboardStats(); // Refresh stats when bets change
     } catch (error: any) {
       flashMessage(setError,`Failed to fetch value bets: ${error.message}`);
     }
-  }, [betStatusFilter]);
+  }, [betStatusFilter, fetchDashboardStats]);
   
   const fetchTodayMatches = useCallback(async () => {
     try {
@@ -282,6 +300,7 @@ export default function App() {
     fetchTeams();
     fetchPredictions();
     fetchValueBets();
+    fetchDashboardStats();
     fetchTodayMatches();
     fetchUserBets();
     handleScanValueBets();
@@ -378,44 +397,17 @@ export default function App() {
   const handleSeedDatabase = useCallback(async () => {
     try {
       flashMessage(setError, null);
-      const initialTeams = [
-        { name: 'Man City', elo_rating: 1950, attack_strength: 2.4, defense_strength: 0.8, form_rating: 0.8, league: 'Premier League' },
-        { name: 'Liverpool', elo_rating: 1900, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.7, league: 'Premier League' },
-        { name: 'Arsenal', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.7, form_rating: 0.9, league: 'Premier League' },
-        { name: 'Real Madrid', elo_rating: 1920, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.6, league: 'La Liga' },
-        { name: 'Bayern Munich', elo_rating: 1850, attack_strength: 2.5, defense_strength: 1.1, form_rating: 0.5, league: 'Bundesliga' },
-      ];
-
-      const { error: seedError } = await supabase.from('teams').upsert(initialTeams, { onConflict: 'name' });
-      if (seedError) {
-        if (seedError.message.includes('relation "public.teams" does not exist')) {
-          throw new Error('Database table "teams" not found. Please run the SQL schema in your Supabase SQL Editor first (see supabase_schema.sql in the file explorer).');
-        }
-        throw seedError;
-      }
+      const response = await fetch('/api/admin/seed-teams', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Failed to seed teams');
       
       await fetchTeams();
-      flashMessage(setSuccess, 'Database seeded successfully with default teams.');
+      flashMessage(setSuccess, `Database seeded successfully with ${data.seeded_count} teams.`);
     } catch (err: any) {
       flashMessage(setError, err.message);
     }
   }, [fetchTeams]);
 
-  const handleSyncTeams = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/admin/sync-teams', { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to sync teams');
-      const data = await response.json();
-      await fetchTeams();
-      alert(`Sync Complete! Discovered ${data.synced?.length || 0} teams.`);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -478,10 +470,14 @@ export default function App() {
     setPredicting(true);
     setSimulationLog([]);
     setSimulationStep(0);
+    setError(null);
+
+    const homeTeam = teams.find(t => t.id.toString() === selectedHome);
+    const awayTeam = teams.find(t => t.id.toString() === selectedAway);
 
     const steps = [
       "Initializing prediction matrix...",
-      "Agent 1 (Team Strength): Analyzing ELO, attack/defense scores...",
+      `Agent 1 (Team Strength): Analyzing ${homeTeam?.name} vs ${awayTeam?.name}...`,
       "Agent 2 (Tactical): Evaluating formation and play style synergy...",
       "Agent 3 (Player Impact): Assessing key player form and availability...",
       "Agent 4 (Market Sentiment): Scraping live odds and market trends...",
@@ -489,37 +485,53 @@ export default function App() {
       "Generating final prediction and confidence score...",
     ];
 
-    for (let i = 0; i < steps.length; i++) {
-      await new Promise(res => setTimeout(res, 800));
-      setSimulationStep(i + 1);
-      setSimulationLog(prev => [...prev, steps[i]]);
+    try {
+        // Parallelize prediction with simulation for better feel
+        const predictPromise = fetch('/api/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                home_team: homeTeam?.name,
+                away_team: awayTeam?.name
+            })
+        }).then(r => r.json());
+
+        for (let i = 0; i < steps.length; i++) {
+          await new Promise(res => setTimeout(res, 600));
+          setSimulationStep(i + 1);
+          setSimulationLog(prev => [...prev, steps[i]]);
+        }
+
+        const data = await predictPromise;
+        if (data.detail) throw new Error(data.detail);
+
+        const newPrediction: Prediction = {
+            id: data.id || new Date().toISOString(),
+            home_team: data.home_team,
+            away_team: data.away_team,
+            home_prob: data.probabilities.home_win,
+            draw_prob: data.probabilities.draw,
+            away_prob: data.probabilities.away_win,
+            confidence: data.probabilities.home_win > data.probabilities.away_win ? data.probabilities.home_win : data.probabilities.away_win,
+            best_bet_market: data.value_bets?.[0]?.market_name || 'Match Odds',
+            best_bet_selection: data.value_bets?.[0]?.selection || 'Home Win',
+            best_bet_odds: data.value_bets?.[0]?.odds || 1.85,
+            best_bet_ev: data.value_bets?.[0]?.ev || 0.05,
+            is_premium: data.probabilities.home_win > 0.7,
+            created_at: new Date().toISOString(),
+            over_2_5_prob: data.probabilities['Over 2.5'],
+            btts_prob: data.probabilities['BTTS Yes'],
+        };
+
+        setPredictions(prev => [newPrediction, ...prev]);
+        fetchPredictions(); // Refresh from DB
+        setActiveTab('predictions');
+    } catch (err: any) {
+        flashMessage(setError, err.message);
+    } finally {
+        setPredicting(false);
     }
-    
-    const homeTeam = teams.find(t => t.id.toString() === selectedHome);
-    const awayTeam = teams.find(t => t.id.toString() === selectedAway);
-
-    const newPrediction: Prediction = {
-        id: new Date().toISOString(),
-        home_team: homeTeam?.name || 'Unknown',
-        away_team: awayTeam?.name || 'Unknown',
-        home_prob: Math.random() * 0.6 + 0.1,
-        draw_prob: Math.random() * 0.3,
-        away_prob: Math.random() * 0.4,
-        confidence: Math.random() * 0.3 + 0.6,
-        best_bet_market: 'Home Win',
-        best_bet_selection: 'Home',
-        best_bet_odds: 1.9,
-        best_bet_ev: 0.1,
-        is_premium: Math.random() > 0.5,
-        created_at: new Date().toISOString(),
-        over_2_5_prob: Math.random(),
-        btts_prob: Math.random(),
-    };
-
-    setPredictions(prev => [newPrediction, ...prev]);
-    setPredicting(false);
-    setActiveTab('predictions');
-  }, [selectedHome, selectedAway, teams]);
+  }, [selectedHome, selectedAway, teams, fetchPredictions]);
 
   if (loading) {
     return (
@@ -683,11 +695,7 @@ export default function App() {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {(liveValueBets.length > 0 ? liveValueBets.slice(0, 3) : [
-                      { match: "Arsenal vs Man City", selection: "Over 2.5", odds: 1.95, ev: 0.124, created_at: new Date().toISOString(), home_team: 'Arsenal', away_team: 'Man City', match_timestamp: new Date().toISOString(), status: 'active', recommended_stake: 1, id: '1', market: 'Over/Under' },
-                      { match: "Real Madrid vs Barca", selection: "Home Win", odds: 2.10, ev: 0.081, created_at: new Date().toISOString(), home_team: 'Real Madrid', away_team: 'Barca', match_timestamp: new Date().toISOString(), status: 'active', recommended_stake: 1, id: '2', market: '1X2' },
-                      { match: "Luton vs Everton", selection: "BTTS - Yes", odds: 1.85, ev: 0.152, created_at: new Date().toISOString(), home_team: 'Luton', away_team: 'Everton', match_timestamp: new Date().toISOString(), status: 'active', recommended_stake: 1, id: '3', market: 'BTTS' }
-                    ]).map((alert, i) => (
+                    {(liveValueBets.length > 0 ? liveValueBets.slice(0, 3) : []).map((alert, i) => (
                       <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group">
                         <div className="flex justify-between items-start mb-3">
                           <span className="text-[10px] font-mono text-zinc-500">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -835,17 +843,17 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard 
                   title="Total Predictions" 
-                  value={predictions.length.toString()} 
+                  value={dashboardStats.total_predictions.toString()}
                   icon={<History className="text-blue-500" />} 
                 />
                 <StatCard 
                   title="Active Value Bets" 
-                  value={valueBets.length.toString()} 
+                  value={dashboardStats.active_value_bets.toString()}
                   icon={<TrendingUp className="text-green-500" />} 
                 />
                 <StatCard 
                   title="AI Accuracy" 
-                  value="92.1%" 
+                  value={dashboardStats.ai_accuracy}
                   icon={<ShieldCheck className="text-orange-500" />} 
                 />
               </div>
@@ -943,9 +951,9 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
-                    {(showLiveBets ? liveValueBets : valueBets).map(bet => (
-                      <tr key={bet.id} className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="p-6 font-bold">{showLiveBets ? `${bet.home_team} vs ${bet.away_team}`: bet.match}</td>
+                    {(showLiveBets ? liveValueBets : valueBets).map((bet, idx) => (
+                      <tr key={bet.id || idx} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="p-6 font-bold">{bet.home_team ? `${bet.home_team} vs ${bet.away_team}`: bet.match}</td>
                         <td className="p-6 text-zinc-400">{bet.selection}</td>
                         <td className="p-6">
                           <span className={cn(
@@ -1601,31 +1609,47 @@ function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: (
 function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded }: { match: any, onPlaceBet: (match: any, market: string, odds: number, stake: number) => void, onAddToAcca: (match: any, market: string, odds: number) => void, selectedBookmaker: string, isAdded: (market: string) => boolean }) {
   const [stake, setStake] = useState(1000); // 1000 NGN default
   const [multiOdds, setMultiOdds] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setMultiOdds({
-      bet9ja: { home_win: 1.80, draw: 3.50, away_win: 4.00, booking_prefix: 'B9' },
-      sportybet: { home_win: 1.82, draw: 3.45, away_win: 4.10, booking_prefix: 'SP' },
-      '1xbet': { home_win: 1.85, draw: 3.55, away_win: 3.95, booking_prefix: '1X' }
-    });
+    const fetchOdds = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/odds/${match.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMultiOdds(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch odds:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOdds();
   }, [match.id]);
 
-  const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.bet9ja;
+  const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.sportybet;
 
   return (
-    <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">
+    <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group relative overflow-hidden">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-            <img src={match.homeTeam.logo} className="w-6 h-6" />
+            <img src={match.homeTeam.logo} className="w-6 h-6 rounded-full" />
             <span className="font-bold text-sm">{match.homeTeam.name}</span>
         </div>
         <span className="text-xs font-mono text-zinc-500">VS</span>
         <div className="flex items-center gap-3">
             <span className="font-bold text-sm">{match.awayTeam.name}</span>
-            <img src={match.awayTeam.logo} className="w-6 h-6" />
+            <img src={match.awayTeam.logo} className="w-6 h-6 rounded-full" />
         </div>
       </div>
-      {currentOdds ? (
+      {loading ? (
+        <div className="h-40 flex flex-col items-center justify-center space-y-3 bg-zinc-900/50 rounded-2xl border border-zinc-800 border-dashed">
+            <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Syncing SportyBet Odds...</p>
+        </div>
+      ) : currentOdds ? (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <button 
