@@ -50,7 +50,7 @@ class TeamStrengthAgent:
             xG_performance=self._calculate_xg_perf(history),
             variance_profile=self._calculate_variance(history),
             competition_factor=comp_adjustment,
-            midfield_rating=base_rating * 0.8
+            midfield_rating=base_rating * 0.8 # Linked to team quality for now
         )
 
     def _calculate_xg_perf(self, history: List[Dict]) -> float:

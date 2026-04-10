@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import os
 import httpx
-from supabase import acreate_client, AsyncClient
+from supabase import create_client, Client
 from datetime import datetime, timedelta, timezone
 import asyncio
 from predictor import FootyEdgePredictor
