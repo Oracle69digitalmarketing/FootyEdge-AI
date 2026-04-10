@@ -1,7 +1,9 @@
 fastapi
 uvicorn[standard]
-requests
+httpx
 numpy
 supabase
 python-telegram-bot
 python-dotenv
+pytest
+pytest-asyncio

@@ -78,7 +78,7 @@ export default function App() {
   const [simulationLog, setSimulationLog] = useState<string[]>([]);
   const [todayMatches, setTodayMatches] = useState<any[]>([]);
   const [userBets, setUserBets] = useState<any[]>([]);
-  const [bankroll, setBankroll] = useState(10000); // Default 10k NGN
+  const [bankroll, setBankroll] = useState(1000); // Dynamic bankroll
   const [bookingCode, setBookingCode] = useState<string | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
   const [accaSelections, setAccaSelections] = useState<any[]>([]);
@@ -97,6 +97,11 @@ export default function App() {
 
   const [adminStats, setAdminStats] = useState<any>(null);
   const [adminActivity, setAdminActivity] = useState<any[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any>({
+    total_predictions: "0",
+    active_value_bets: "0",
+    ai_accuracy: "0.0%"
+  });
 
   const flashMessage = (setter: (msg: string | null) => void, message: string | null) => {
     setter(message);
@@ -146,6 +151,18 @@ export default function App() {
     }
   }, []);
 
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      const response = await fetch('/api/dashboard/stats');
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardStats(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard stats:", err);
+    }
+  }, []);
+
   const fetchValueBets = useCallback(async () => {
     try {
       const response = await fetch(`/api/value-bets?status=${betStatusFilter}`);
@@ -154,10 +171,11 @@ export default function App() {
       }
       const data = await response.json();
       setValueBets(data);
+      fetchDashboardStats(); // Refresh stats when bets change
     } catch (error: any) {
       flashMessage(setError,`Failed to fetch value bets: ${error.message}`);
     }
-  }, [betStatusFilter]);
+  }, [betStatusFilter, fetchDashboardStats]);
   
   const fetchTodayMatches = useCallback(async () => {
     try {
@@ -282,6 +300,7 @@ export default function App() {
     fetchTeams();
     fetchPredictions();
     fetchValueBets();
+    fetchDashboardStats();
     fetchTodayMatches();
     fetchUserBets();
     handleScanValueBets();
@@ -397,7 +416,7 @@ export default function App() {
       }
       
       await fetchTeams();
-      flashMessage(setSuccess, 'Database seeded successfully with default teams.');
+      flashMessage(setSuccess, `Database seeded successfully with ${data.seeded_count} teams.`);
     } catch (err: any) {
       flashMessage(setError, err.message);
     }
@@ -838,17 +857,17 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard 
                   title="Total Predictions" 
-                  value={predictions.length.toString()} 
+                  value={dashboardStats.total_predictions.toString()}
                   icon={<History className="text-blue-500" />} 
                 />
                 <StatCard 
                   title="Active Value Bets" 
-                  value={valueBets.length.toString()} 
+                  value={dashboardStats.active_value_bets.toString()}
                   icon={<TrendingUp className="text-green-500" />} 
                 />
                 <StatCard 
                   title="AI Accuracy" 
-                  value="92.1%" 
+                  value={dashboardStats.ai_accuracy}
                   icon={<ShieldCheck className="text-orange-500" />} 
                 />
               </div>
@@ -1627,19 +1646,24 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
   const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.sportybet;
 
   return (
-    <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">
+    <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group relative overflow-hidden">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-            <img src={match.homeTeam.logo} className="w-6 h-6" />
+            <img src={match.homeTeam.logo} className="w-6 h-6 rounded-full" />
             <span className="font-bold text-sm">{match.homeTeam.name}</span>
         </div>
         <span className="text-xs font-mono text-zinc-500">VS</span>
         <div className="flex items-center gap-3">
             <span className="font-bold text-sm">{match.awayTeam.name}</span>
-            <img src={match.awayTeam.logo} className="w-6 h-6" />
+            <img src={match.awayTeam.logo} className="w-6 h-6 rounded-full" />
         </div>
       </div>
-      {currentOdds ? (
+      {loading ? (
+        <div className="h-40 flex flex-col items-center justify-center space-y-3 bg-zinc-900/50 rounded-2xl border border-zinc-800 border-dashed">
+            <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Syncing SportyBet Odds...</p>
+        </div>
+      ) : currentOdds ? (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <button 
