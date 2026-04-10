@@ -401,21 +401,6 @@ export default function App() {
     }
   }, [fetchTeams]);
 
-  const handleSyncTeams = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/admin/sync-teams', { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to sync teams');
-      const data = await response.json();
-      await fetchTeams();
-      alert(`Sync Complete! Discovered ${data.synced?.length || 0} teams.`);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
