@@ -20,7 +20,7 @@ class TeamStrengthAgent:
         self.decay_rate = decay_rate
         self.history_length = history_length
 
-    async def assess(self, team_name: str, matches: List[Dict], squad_data: Dict = None) -> TeamStrength:
+    async def assess(self, team_name: str, matches: List[Dict], league_name: str = None, squad_data: Dict = None) -> TeamStrength:
         """
         Calculates comprehensive team strength based on provided match history.
         """
@@ -37,7 +37,7 @@ class TeamStrengthAgent:
         defense_strength = self._calculate_defense_strength(history)
         
         squad_adjustment = self._adjust_for_squad(squad_data) if squad_data else 0
-        comp_adjustment = self._competition_factor(team_name)
+        comp_adjustment = self._competition_factor(league_name)
         
         return TeamStrength(
             name=team_name,
@@ -62,7 +62,7 @@ class TeamStrengthAgent:
     async def _get_rating_from_db(self, team_name: str) -> float:
         if not self.supabase: return 1500.0
         try:
-            res = self.supabase.table('teams').select('elo_rating').eq('name', team_name).single().execute()
+            res = await self.supabase.table('teams').select('elo_rating').eq('name', team_name).single().execute()
             return res.data.get('elo_rating', 1500.0) if res.data else 1500.0
         except Exception:
             return 1500.0
@@ -131,5 +131,14 @@ class TeamStrengthAgent:
     def _adjust_for_squad(self, squad_data: Dict) -> float:
         return squad_data.get('adjustment', 0) if squad_data else 0
 
-    def _competition_factor(self, team_name: str) -> float:
-        return 1.0
+    def _competition_factor(self, league_name: str) -> float:
+        if not league_name: return 1.0
+        tier_map = {
+            'Premier League': 1.1,
+            'Champions League': 1.15,
+            'La Liga': 1.05,
+            'Bundesliga': 1.02,
+            'Serie A': 1.02,
+            'Ligue 1': 0.95
+        }
+        return tier_map.get(league_name, 1.0)
