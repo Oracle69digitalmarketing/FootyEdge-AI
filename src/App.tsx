@@ -401,6 +401,22 @@ export default function App() {
     }
   }, [fetchTeams]);
 
+  const handleSyncTeams = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/sync-teams', { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to sync teams');
+      const data = await response.json();
+      await fetchTeams();
+      alert(`Sync Complete! Discovered ${data.synced?.length || 0} teams.`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -1320,6 +1336,42 @@ export default function App() {
                     flashMessage(setSuccess, "Global broadcast sent successfully!");
                   } else {
                     flashMessage(setError, "Broadcast failed.");
+                  }
+                }}
+              />
+            )}
+
+            {showTelegramConfigModal && (
+              <TelegramConfigModal
+                config={premiumTelegramConfig}
+                onClose={() => setShowTelegramConfigModal(false)}
+                onSave={async (newConfig) => {
+                  // Simulate saving config
+                  setPremiumTelegramConfig(newConfig);
+                  setShowTelegramConfigModal(false);
+                  alert("Telegram configuration updated!");
+                }}
+              />
+            )}
+
+            {showBroadcastModal && (
+              <BroadcastModal
+                onClose={() => setShowBroadcastModal(false)}
+                onBroadcast={async (message) => {
+                  // Simulate broadcast
+                  const res = await fetch('/api/telegram/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      prediction: { home_team: "Global", away_team: "Broadcast" },
+                      valueBet: { selection: message },
+                      isPremium: false
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setShowBroadcastModal(false);
+                    alert("Global broadcast sent successfully!");
                   }
                 }}
               />

@@ -123,6 +123,21 @@ class FootyEdgePredictor:
             "to": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
         }
         
+        base_url = f"https://{rapidapi_host}"
+        endpoint = "football-get-matches-by-date" if "free-api" in rapidapi_host else "fixtures"
+        url = f"{base_url}/{endpoint}"
+
+        # Adapt parameters for free-api
+        if "free-api" in rapidapi_host:
+            querystring = {"match_date": datetime.now().strftime("%Y-%m-%d")}
+        else:
+            querystring = {
+                "league": str(league_id),
+                "season": str(datetime.now().year),
+                "from": datetime.now().strftime("%Y-%m-%d"),
+                "to": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            }
+
         try:
             response = requests.get(url, headers=headers, params=querystring)
             response.raise_for_status()

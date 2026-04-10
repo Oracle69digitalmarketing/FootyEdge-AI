@@ -40,6 +40,16 @@ else:
 
 predictor = FootyEdgePredictor()
 
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger.info(f"API Request: {request.method} {request.url.path}")
+    return await call_next(request)
+
+if not os.environ.get("RAPIDAPI_KEY"):
+    logger.warning("RAPIDAPI_KEY is not set. Player and Team search will not work.")
+if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
+    logger.warning("Supabase environment variables are not set. Database features will be unavailable.")
+
 # --- Pydantic Models ---
 class PredictRequest(BaseModel):
     home_team: str
