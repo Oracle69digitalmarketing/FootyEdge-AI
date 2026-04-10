@@ -5,10 +5,11 @@
 
 -- 1. TEAMS TABLE
 CREATE TABLE teams (
-    id BIGSERIAL PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
+    id BIGINT PRIMARY KEY,
+    name TEXT NOT NULL,
     country TEXT,
-    league TEXT,
+    logo_url TEXT,
+    league_name TEXT,
     elo_rating FLOAT DEFAULT 1500,
     attack_strength FLOAT DEFAULT 1.0,
     defense_strength FLOAT DEFAULT 1.0,
@@ -20,8 +21,8 @@ CREATE TABLE teams (
     losses INT DEFAULT 0,
     goals_scored INT DEFAULT 0,
     goals_conceded INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 2. MATCHES TABLE
@@ -79,12 +80,13 @@ CREATE TABLE predictions (
 -- 4. VALUE_BETS TABLE
 CREATE TABLE value_bets (
     id BIGSERIAL PRIMARY KEY,
-    match_id BIGINT REFERENCES matches(id),
+    match_id BIGINT,
     home_team VARCHAR(100),
     away_team VARCHAR(100),
     market VARCHAR(50),
     selection VARCHAR(100),
     odds FLOAT,
+    stake_units FLOAT,
     our_probability FLOAT,
     implied_probability FLOAT,
     ev FLOAT,
@@ -96,7 +98,8 @@ CREATE TABLE value_bets (
     settled BOOLEAN DEFAULT FALSE,
     actual_win BOOLEAN,
     profit_loss FLOAT,
-    created_at TIMESTAMP DEFAULT NOW()
+    match_timestamp TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 5. TEAM_RATINGS_HISTORY (Time-series)
@@ -112,22 +115,19 @@ CREATE TABLE team_ratings_history (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 6. USER_BETS (for tracking user bets)
-CREATE TABLE user_bets (
+-- 6. ACCAS TABLE
+CREATE TABLE accas (
     id BIGSERIAL PRIMARY KEY,
-    user_id VARCHAR(100),
-    match_id BIGINT REFERENCES matches(id),
-    market VARCHAR(50),
-    selection VARCHAR(100),
-    odds FLOAT,
+    user_id UUID REFERENCES auth.users(id),
+    selections_json JSONB,
+    total_odds FLOAT,
     stake FLOAT,
-    potential_win FLOAT,
-    value_bet_id BIGINT REFERENCES value_bets(id),
-    actual_result VARCHAR(10),
-    profit_loss FLOAT,
-    settled_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW()
+    potential_return FLOAT,
+    bookmaker TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
 
 -- 7. AGENT_LOGS (for debugging)
 CREATE TABLE agent_logs (
@@ -139,7 +139,16 @@ CREATE TABLE agent_logs (
     execution_time_ms INT,
     success BOOLEAN,
     error_message TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 8. ACTIVITY_LOG TABLE
+CREATE TABLE activity_log (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id),
+    action VARCHAR(100),
+    details JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- ============================================
@@ -153,6 +162,9 @@ CREATE INDEX idx_matches_teams ON matches(home_team_id, away_team_id);
 CREATE INDEX idx_value_bets_active ON value_bets(status, created_at);
 CREATE INDEX idx_team_ratings_date ON team_ratings_history(rating_date DESC);
 CREATE INDEX idx_agent_logs_created ON agent_logs(created_at DESC);
+CREATE INDEX idx_activity_log_created ON activity_log(created_at DESC);
+CREATE INDEX idx_teams_name ON teams(name);
+
 
 -- ============================================
 -- ENABLE ROW LEVEL SECURITY
@@ -163,8 +175,10 @@ ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE value_bets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_ratings_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_bets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+
 
 -- Public read access
 CREATE POLICY "Enable read access for all users" ON teams FOR SELECT USING (true);
@@ -174,8 +188,11 @@ CREATE POLICY "Enable read access for all users" ON value_bets FOR SELECT USING 
 CREATE POLICY "Enable read access for all users" ON team_ratings_history FOR SELECT USING (true);
 
 -- Authenticated write access
-CREATE POLICY "Enable insert for authenticated users" ON predictions FOR INSERT WITH CHECK (true);
-CREATE POLICY "Enable insert for authenticated users" ON value_bets FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable insert for authenticated users" ON predictions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "Enable insert for authenticated users" ON value_bets FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "Users can insert their own accas" ON accas FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view their own accas" ON accas FOR SELECT USING (auth.uid() = user_id);
+
 
 -- ============================================
 -- ENABLE REALTIME SUBSCRIPTIONS
@@ -183,12 +200,17 @@ CREATE POLICY "Enable insert for authenticated users" ON value_bets FOR INSERT W
 
 ALTER TABLE predictions REPLICA IDENTITY FULL;
 ALTER TABLE value_bets REPLICA IDENTITY FULL;
+ALTER TABLE accas REPLICA IDENTITY FULL;
 
 ALTER PUBLICATION supabase_realtime ADD TABLE predictions;
 ALTER PUBLICATION supabase_realtime ADD TABLE value_bets;
+ALTER PUBLICATION supabase_realtime ADD TABLE accas;
+
 
 -- ============================================
 -- FUNCTIONS AND TRIGGERS
+-- =emulated_user_command
+I have made some changes to the SQL can you take a look at it and tell me what you think?
 -- ============================================
 
 -- Update updated_at timestamp
@@ -235,33 +257,3 @@ $$ language 'plpgsql';
 
 CREATE TRIGGER after_match_insert AFTER INSERT ON matches
     FOR EACH ROW EXECUTE FUNCTION update_team_stats();
-
--- 8. ACTIVITY_LOG TABLE
-CREATE TABLE activity_log (
-    id BIGSERIAL PRIMARY KEY,
-    user_id VARCHAR(100),
-    action VARCHAR(100),
-    details JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_activity_log_created ON activity_log(created_at DESC);
-ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Enable read access for admin users" ON activity_log FOR SELECT USING (true); -- Should be restricted to admin
-
--- 9. ACCAS TABLE
-CREATE TABLE accas (
-    id BIGSERIAL PRIMARY KEY,
-    user_id VARCHAR(100),
-    selections_json JSONB,
-    total_odds FLOAT,
-    stake FLOAT,
-    potential_return FLOAT,
-    bookmaker VARCHAR(50),
-    status VARCHAR(20) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Enable insert for authenticated users" ON accas FOR INSERT WITH CHECK (true);
-CREATE POLICY "Enable read for own accas" ON accas FOR SELECT USING (true); -- Simplified

@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import StatCard from './components/StatCard';
 import { supabase } from './supabase';
 import { Team, Prediction, ValueBet } from './types';
 import TeamSearch from './components/TeamSearch';
-import Portfolio from './components/Portfolio'; // Import the new Portfolio component
-import AccaBuilder from './components/AccaBuilder'; // Import the new AccaBuilder component
-import HowToUse from './components/HowToUse'; // Import the new HowToUse component
+import Portfolio from './components/Portfolio';
+import AccaBuilder from './components/AccaBuilder';
+import HowToUse from './components/HowToUse';
 import { 
   Activity,
   LayoutDashboard, 
@@ -36,10 +36,12 @@ import {
   Crown,
   Bell,
   TrendingUp as TrendingUpIcon,
-  HelpCircle
+  HelpCircle,
+  RefreshCw,
+  Server
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { cn } from './lib/utils'; // Import cn from utility file
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from './lib/utils';
 
 
 export default function App() {
@@ -47,59 +49,24 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
   const fallbackTeams: any[] = [
-    // Premier League
-    { id: 'mc', name: 'Man City', league: 'Premier League' },
+    { id: 'mc', name: 'Manchester City', league: 'Premier League' },
     { id: 'liv', name: 'Liverpool', league: 'Premier League' },
     { id: 'ars', name: 'Arsenal', league: 'Premier League' },
-    { id: 'che', name: 'Chelsea', league: 'Premier League' },
-    { id: 'mu', name: 'Man United', league: 'Premier League' },
-    { id: 'tot', name: 'Spurs', league: 'Premier League' },
-    { id: 'avl', name: 'Aston Villa', league: 'Premier League' },
-    { id: 'new', name: 'Newcastle', league: 'Premier League' },
-    // La Liga
     { id: 'rm', name: 'Real Madrid', league: 'La Liga' },
-    { id: 'bar', name: 'Barca', league: 'La Liga' },
-    { id: 'atm', name: 'Atletico Madrid', league: 'La Liga' },
-    { id: 'gir', name: 'Girona', league: 'La Liga' },
-    // Bundesliga
-    { id: 'lev', name: 'Bayer Leverkusen', league: 'Bundesliga' },
+    { id: 'bar', name: 'Barcelona', league: 'La Liga' },
     { id: 'bay', name: 'Bayern Munich', league: 'Bundesliga' },
-    { id: 'dor', name: 'Dortmund', league: 'Bundesliga' },
-    { id: 'rbl', name: 'RB Leipzig', league: 'Bundesliga' },
-    // Serie A
-    { id: 'int', name: 'Inter Milan', league: 'Serie A' },
-    { id: 'acm', name: 'AC Milan', league: 'Serie A' },
-    { id: 'juv', name: 'Juventus', league: 'Serie A' },
-    { id: 'nap', name: 'Napoli', league: 'Serie A' },
-    // Ligue 1
-    { id: 'psg', name: 'PSG', league: 'Ligue 1' },
-    { id: 'asm', name: 'Monaco', league: 'Ligue 1' },
-    { id: 'om', name: 'Marseille', league: 'Ligue 1' },
-    { id: 'ol', name: 'Lyon', league: 'Ligue 1' },
-    { id: 'lil', name: 'Lille', league: 'Ligue 1' },
-    // International
-    { id: 'eng', name: 'England', league: 'International' },
-    { id: 'fra', name: 'France', league: 'International' },
-    { id: 'arg', name: 'Argentina', league: 'International' },
-    { id: 'bra', name: 'Brazil', league: 'International' },
-    { id: 'por', name: 'Portugal', league: 'International' },
-    { id: 'nig', name: 'Nigeria', league: 'International' },
-    { id: 'ger', name: 'Germany', league: 'International' },
-    { id: 'spa', name: 'Spain', league: 'International' },
-    { id: 'ita', name: 'Italy', league: 'International' },
-    { id: 'mor', name: 'Morocco', league: 'International' },
-    { id: 'usa', name: 'USA', league: 'International' },
   ];
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
   const [liveValueBets, setLiveValueBets] = useState<ValueBet[]>([]);
   const [scanning, setScanning] = useState(false);
-  const [showLiveBets, setShowLiveBets] = useState(false);
+  const [showLiveBets, setShowLiveBets] = useState(true);
   const [selectedHome, setSelectedHome] = useState<string>('');
   const [selectedAway, setSelectedAway] = useState<string>('');
   const [predicting, setPredicting] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'predictions' | 'value' | 'players' | 'portfolio' | 'acca' | 'premium' | 'admin' | 'teams' | 'pricing' | 'how-to-use'>('dashboard');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [playerQuery, setPlayerQuery] = useState('');
   const [players, setPlayers] = useState<any[]>([]);
   const [searchingPlayers, setSearchingPlayers] = useState(false);
@@ -121,19 +88,23 @@ export default function App() {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showTelegramConfigModal, setShowTelegramConfigModal] = useState(false);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [syncingTeams, setSyncingTeams] = useState(false);
 
-  // State for premium data
   const [premiumPerformance, setPremiumPerformance] = useState<any>(null);
   const [premiumTelegramConfig, setPremiumTelegramConfig] = useState<any>(null);
   const [premiumUpcomingMatches, setPremiumUpcomingMatches] = useState<any[]>([]);
 
-  // State for admin data
   const [adminStats, setAdminStats] = useState<any>(null);
   const [adminActivity, setAdminActivity] = useState<any[]>([]);
 
+  const flashMessage = (setter: (msg: string | null) => void, message: string | null) => {
+    setter(message);
+    setTimeout(() => setter(null), 4000);
+  };
+
   useEffect(() => {
     if (!user || !supabase) return;
-    // Check if user is premium and admin from profile
     supabase
       .from('profiles')
       .select('is_premium, role')
@@ -151,126 +122,18 @@ export default function App() {
       });
   }, [user]);
 
-  useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-
-    // Check auth session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!user || !supabase) return;
-
-    // Fetch initial data
-    fetchTeams();
-    fetchPredictions();
-    fetchValueBets();
-    fetchTodayMatches();
-    fetchUserBets();
-
-    // Set up real-time subscriptions
-    const predictionsSub = supabase
-      .channel('predictions-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'predictions' }, (payload) => {
-        setPredictions(prev => [payload.new as Prediction, ...prev].slice(0, 10));
-      })
-      .subscribe();
-
-    const valueBetsSub = supabase
-      .channel('value-bets-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'value_bets' }, (payload) => {
-        setValueBets(prev => [payload.new as ValueBet, ...prev].slice(0, 10));
-      })
-      .subscribe();
-
-    return () => {
-      predictionsSub.unsubscribe();
-      valueBetsSub.unsubscribe();
-    };
-  }, [user]);
-
-  useEffect(() => {
-    if (activeTab === 'premium' && isPremium) {
-      const fetchPremiumData = async () => {
-        try {
-          // Fetch Premium Performance
-          const performanceRes = await fetch('/api/premium/performance');
-          if (performanceRes.ok) {
-            const data = await performanceRes.json();
-            setPremiumPerformance(data);
-          }
-
-          // Fetch Premium Telegram Config
-          const telegramRes = await fetch('/api/premium/telegram-config');
-          if (telegramRes.ok) {
-            const data = await telegramRes.json();
-            setPremiumTelegramConfig(data);
-          }
-
-          // Fetch Premium Upcoming Matches
-          const upcomingRes = await fetch('/api/premium/upcoming-matches');
-          if (upcomingRes.ok) {
-            const data = await upcomingRes.json();
-            setPremiumUpcomingMatches(data);
-          }
-
-        } catch (err: any) {
-          setError("Failed to fetch premium data: " + err.message);
-        }
-      };
-      fetchPremiumData();
-    }
-  }, [activeTab, isPremium]);
-
-  useEffect(() => {
-    if (activeTab === 'admin' && isAdmin) {
-      const fetchAdminData = async () => {
-        try {
-          // Fetch Admin Stats
-          const statsRes = await fetch('/api/admin/stats');
-          if (statsRes.ok) {
-            const data = await statsRes.json();
-            setAdminStats(data);
-          }
-
-          // Fetch Admin Activity
-          const activityRes = await fetch('/api/admin/activity');
-          if (activityRes.ok) {
-            const data = await activityRes.json();
-            setAdminActivity(data);
-          }
-        } catch (err: any) {
-          setError("Failed to fetch admin data: " + err.message);
-        }
-      };
-      fetchAdminData();
-    }
-  }, [activeTab, isAdmin]);
-
-  const fetchTeams = async () => {
+  const fetchTeams = useCallback(async () => {
+    if (!supabase) return;
     try {
-      const response = await fetch('/api/teams/list');
-      if (!response.ok) throw new Error('Failed to fetch teams from server');
-      const data = await response.json();
+      const { data, error } = await supabase.from('teams').select('*').order('league_name').order('name');
+      if (error) throw error;
       setTeams(data || []);
     } catch (error: any) {
-      console.warn("Teams fetch failed, using fallbacks:", error.message);
+      flashMessage(setError, `Failed to fetch teams: ${error.message}. Please check your Supabase configuration.`);
     }
-  };
+  }, []);
 
-  const fetchPredictions = async () => {
+  const fetchPredictions = useCallback(async () => {
     try {
       const response = await fetch('/api/recent-predictions');
       if (!response.ok) {
@@ -279,11 +142,11 @@ export default function App() {
       const data = await response.json();
       setPredictions(data);
     } catch (error: any) {
-      setError(`Failed to fetch predictions: ${error.message}`);
+      flashMessage(setError, `Failed to fetch predictions: ${error.message}`);
     }
-  };
+  }, []);
 
-  const fetchValueBets = async () => {
+  const fetchValueBets = useCallback(async () => {
     try {
       const response = await fetch(`/api/value-bets?status=${betStatusFilter}`);
       if (!response.ok) {
@@ -292,11 +155,11 @@ export default function App() {
       const data = await response.json();
       setValueBets(data);
     } catch (error: any) {
-      setError(`Failed to fetch value bets: ${error.message}`);
+      flashMessage(setError,`Failed to fetch value bets: ${error.message}`);
     }
-  };
-
-  const fetchTodayMatches = async () => {
+  }, [betStatusFilter]);
+  
+  const fetchTodayMatches = useCallback(async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
       const response = await fetch(`/api/matches?date=${today}`);
@@ -306,38 +169,29 @@ export default function App() {
       const data = await response.json();
 
       if (data.response) {
-        // Format RapidAPI response for the UI with defensive checks
-        const formattedMatches = data.response.map((item: any) => {
-          const fixture = item.fixture || {};
-          const teams = item.teams || {};
-          const home = teams.home || {};
-          const away = teams.away || {};
-          const league = item.league || {};
-
-          return {
-            id: fixture.id || Math.random().toString(36).substr(2, 9),
-            date: fixture.date || new Date().toISOString(),
-            homeTeam: {
-              name: home.name || 'Unknown Home',
-              logo: home.logo || ''
-            },
-            awayTeam: {
-              name: away.name || 'Unknown Away',
-              logo: away.logo || ''
-            },
-            league: league.name || 'Unknown League'
-          };
-        });
+        const formattedMatches = data.response.map((item: any) => ({
+          id: item.fixture.id,
+          date: item.fixture.date,
+          homeTeam: {
+            name: item.teams.home.name,
+            logo: item.teams.home.logo
+          },
+          awayTeam: {
+            name: item.teams.away.name,
+            logo: item.teams.away.logo
+          },
+          league: item.league.name
+        }));
         setTodayMatches(formattedMatches);
       } else {
         setTodayMatches(data || []);
       }
     } catch (err: any) {
-      setError("Failed to fetch today's matches: " + err.message);
+      flashMessage(setError, "Failed to fetch today's matches: " + err.message);
     }
-  };
+  }, []);
 
-  const fetchUserBets = async () => {
+  const fetchUserBets = useCallback(async () => {
     if (!user) return;
     try {
       const response = await fetch(`/api/bets/user/${user.id}`);
@@ -347,16 +201,15 @@ export default function App() {
       const data = await response.json();
       setUserBets(data);
       
-      // Calculate bankroll based on settled bets
       const settled = data.filter((b: any) => b.status === 'won' || b.status === 'lost');
       const profit = settled.reduce((acc: number, b: any) => acc + (b.profit_loss || 0), 0);
       setBankroll(1000 + profit);
     } catch (err: any) {
-      setError("Failed to fetch user bets: " + err.message);
+      flashMessage(setError, "Failed to fetch user bets: " + err.message);
     }
-  };
+  }, [user]);
 
-  const handlePlaceBet = async (match: any, market: string, odds: number, stake: number) => {
+  const handlePlaceBet = useCallback(async (match: any, market: string, odds: number, stake: number) => {
     if (!user) return;
     try {
       const response = await fetch('/api/bets/record', {
@@ -373,69 +226,164 @@ export default function App() {
       });
       if (response.ok) {
         fetchUserBets();
-        // Show a simulated Bet9ja success
-        alert(`Bet tracked in FootyEdge! Use Booking Code: B9JA-${Math.random().toString(36).substring(2, 8).toUpperCase()} on Bet9ja.`);
+        flashMessage(setSuccess, `Bet tracked in FootyEdge! Use Booking Code: B9JA-${Math.random().toString(36).substring(2, 8).toUpperCase()} on Bet9ja.`);
       }
     } catch (err) {
       console.error("Failed to place bet:", err);
     }
-  };
+  }, [user, fetchUserBets]);
 
-  const generateBookingCode = async (predictionId: string) => {
+  const generateBookingCode = useCallback(async (predictionId: string) => {
     setGeneratingCode(true);
-    // Simulate AI mapping to Bet9ja markets
     await new Promise(r => setTimeout(r, 1500));
     setBookingCode(`B9-${Math.random().toString(36).substring(2, 9).toUpperCase()}`);
     setGeneratingCode(false);
-  };
+  }, []);
+
+  const handleScanValueBets = useCallback(async () => {
+    setScanning(true);
+    flashMessage(setError, null);
+    try {
+      const response = await fetch('/api/scan-value-bets');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to scan for live value bets');
+      }
+      const data = await response.json();
+      setLiveValueBets(data);
+      setShowLiveBets(true);
+    } catch (err: any) {      flashMessage(setError, err.message);
+    } finally {
+      setScanning(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchValueBets();
+    if (!supabase) {
+      setLoading(false);
+      return;
     }
-  }, [betStatusFilter]);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user || !supabase) return;
+
+    fetchTeams();
+    fetchPredictions();
+    fetchValueBets();
+    fetchTodayMatches();
+    fetchUserBets();
+    handleScanValueBets();
+
+    const valueBetsSub = supabase
+      .channel('value-bets-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'value_bets' }, (payload) => {
+        const newBet = payload.new as ValueBet;
+        if(newBet.status === 'active') {
+            setLiveValueBets(prev => [newBet, ...prev].slice(0, 10));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      valueBetsSub.unsubscribe();
+    };
+  }, [user, fetchTeams, fetchPredictions, fetchValueBets, fetchTodayMatches, fetchUserBets, handleScanValueBets]);
+
+  useEffect(() => {
+    if (activeTab === 'premium' && isPremium) {
+      const fetchPremiumData = async () => {
+        try {
+          const [performanceRes, telegramRes, upcomingRes] = await Promise.all([
+            fetch('/api/premium/performance'),
+            fetch('/api/premium/telegram-config'),
+            fetch('/api/premium/upcoming-matches')
+          ]);
+          
+          if (performanceRes.ok) setPremiumPerformance(await performanceRes.json());
+          if (telegramRes.ok) setPremiumTelegramConfig(await telegramRes.json());
+          if (upcomingRes.ok) setPremiumUpcomingMatches(await upcomingRes.json());
+
+        } catch (err: any) {
+          flashMessage(setError, "Failed to fetch premium data: " + err.message);
+        }
+      };
+      fetchPremiumData();
+    }
+  }, [activeTab, isPremium]);
+
+  const handleSyncTeams = useCallback(async () => {
+    setSyncingTeams(true);
+    flashMessage(setError, null);
+    flashMessage(setSuccess, null);
+    try {
+      const response = await fetch('/api/admin/sync-teams', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to sync teams.');
+      }
+      flashMessage(setSuccess, `Successfully synced ${data.synced_count} teams.`);
+      await fetchTeams();
+    } catch (err: any) {
+      flashMessage(setError, err.message);
+    } finally {
+      setSyncingTeams(false);
+    }
+  }, [fetchTeams]);
+
+  useEffect(() => {
+    if (activeTab === 'admin' && isAdmin) {
+      const fetchAdminData = async () => {
+        try {
+          const [statsRes, activityRes] = await Promise.all([
+            fetch('/api/admin/stats'),
+            fetch('/api/admin/activity')
+          ]);
+          if (statsRes.ok) setAdminStats(await statsRes.json());
+          if (activityRes.ok) setAdminActivity(await activityRes.json());
+        } catch (err: any) {
+          flashMessage(setError, "Failed to fetch admin data: " + err.message);
+        }
+      };
+      fetchAdminData();
+    }
+  }, [activeTab, isAdmin]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
-    setError(null);
+    flashMessage(setError, null);
     
     if (isSignUp) {
       const { error } = await supabase.auth.signUp({ email, password });
-      if (error) setError(error.message);
-      else setError("Check your email for the confirmation link!");
+      if (error) flashMessage(setError, error.message);
+      else flashMessage(setSuccess, "Check your email for the confirmation link!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setError(error.message);
+      if (error) flashMessage(setError, error.message);
     }
   };
 
-  const handleSeedDatabase = async () => {
+  const handleSeedDatabase = useCallback(async () => {
     try {
-      setError(null);
+      flashMessage(setError, null);
       const initialTeams = [
         { name: 'Man City', elo_rating: 1950, attack_strength: 2.4, defense_strength: 0.8, form_rating: 0.8, league: 'Premier League' },
         { name: 'Liverpool', elo_rating: 1900, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.7, league: 'Premier League' },
         { name: 'Arsenal', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.7, form_rating: 0.9, league: 'Premier League' },
         { name: 'Real Madrid', elo_rating: 1920, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.6, league: 'La Liga' },
         { name: 'Bayern Munich', elo_rating: 1850, attack_strength: 2.5, defense_strength: 1.1, form_rating: 0.5, league: 'Bundesliga' },
-        { name: 'Inter Milan', elo_rating: 1870, attack_strength: 1.9, defense_strength: 0.6, form_rating: 0.8, league: 'Serie A' },
-        { name: 'Barca', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.4, league: 'La Liga' },
-        { name: 'PSG', elo_rating: 1800, attack_strength: 2.4, defense_strength: 1.3, form_rating: 0.3, league: 'Ligue 1' },
-        { name: 'Chelsea', elo_rating: 1750, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.5, league: 'Premier League' },
-        { name: 'Man United', elo_rating: 1780, attack_strength: 1.9, defense_strength: 1.2, form_rating: 0.4, league: 'Premier League' },
-        { name: 'Spurs', elo_rating: 1810, attack_strength: 2.0, defense_strength: 1.3, form_rating: 0.6, league: 'Premier League' },
-        { name: 'Aston Villa', elo_rating: 1790, attack_strength: 1.9, defense_strength: 1.4, form_rating: 0.7, league: 'Premier League' },
-        { name: 'Newcastle', elo_rating: 1770, attack_strength: 1.8, defense_strength: 1.5, form_rating: 0.5, league: 'Premier League' },
-        { name: 'Bayer Leverkusen', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.9, form_rating: 0.9, league: 'Bundesliga' },
-        { name: 'Dortmund', elo_rating: 1820, attack_strength: 2.0, defense_strength: 1.2, form_rating: 0.7, league: 'Bundesliga' },
-        { name: 'Atletico Madrid', elo_rating: 1840, attack_strength: 1.7, defense_strength: 0.7, form_rating: 0.6, league: 'La Liga' },
-        { name: 'Juventus', elo_rating: 1810, attack_strength: 1.6, defense_strength: 0.6, form_rating: 0.7, league: 'Serie A' },
-        { name: 'AC Milan', elo_rating: 1830, attack_strength: 1.9, defense_strength: 1.0, form_rating: 0.6, league: 'Serie A' },
-        { name: 'Napoli', elo_rating: 1790, attack_strength: 1.8, defense_strength: 1.1, form_rating: 0.4, league: 'Serie A' },
-        { name: 'Nigeria', elo_rating: 1650, attack_strength: 1.5, defense_strength: 1.2, form_rating: 0.5, league: 'International' },
-        { name: 'England', elo_rating: 1850, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.8, league: 'International' },
-        { name: 'France', elo_rating: 1880, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.7, league: 'International' }
       ];
 
       const { error: seedError } = await supabase.from('teams').upsert(initialTeams, { onConflict: 'name' });
@@ -446,12 +394,12 @@ export default function App() {
         throw seedError;
       }
       
-      const { data: teamsData } = await supabase.from('teams').select('*').order('name');
-      if (teamsData) setTeams(teamsData);
+      await fetchTeams();
+      flashMessage(setSuccess, 'Database seeded successfully with default teams.');
     } catch (err: any) {
-      setError(err.message);
+      flashMessage(setError, err.message);
     }
-  };
+  }, [fetchTeams]);
 
   const handleSyncTeams = async () => {
     setLoading(true);
@@ -473,89 +421,29 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
-  const handlePredict = async () => {
-    if (!selectedHome || !selectedAway || selectedHome === selectedAway) return;
-    
-    const homeTeam = teams.find(t => t.id === selectedHome) || fallbackTeams.find(t => t.id === selectedHome);
-    const awayTeam = teams.find(t => t.id === selectedAway) || fallbackTeams.find(t => t.id === selectedAway);
-    if (!homeTeam || !awayTeam) return;
-
-    setPredicting(true);
-    setError(null);
-    setSimulationStep(0);
-    setSimulationLog([]);
-
-    const agents = [
-      { name: "Athena", task: "Ingesting and normalizing team data..." },
-      { name: "Ares", task: "Calculating Bayesian Elo and strength ratings..." },
-      { name: "Apollo", task: "Executing goal distribution models (xG)..." },
-      { name: "Hermes", task: "Detecting value in betting markets..." },
-      { name: "Nike", task: "Optimizing stakes via Kelly Criterion..." },
-      { name: "Zeus", task: "Synthesizing final match intelligence..." }
-    ];
-
-    try {
-      // Orchestrate agent work for UI feedback
-      for (let i = 0; i < agents.length; i++) {
-        setSimulationStep(i + 1);
-        setSimulationLog(prev => [...prev, `[${agents[i].name}] ${agents[i].task}`]);
-        await new Promise(r => setTimeout(r, 600));
+  const addToAcca = (match: any, market: string, odds: number) => {
+    const existingIndex = accaSelections.findIndex(s => s.match.id === match.id);
+    if (existingIndex > -1) {
+      if(accaSelections[existingIndex].market === market) {
+        setAccaSelections(prev => prev.filter((_, i) => i !== existingIndex));
+      } else {
+        setAccaSelections(prev => {
+            const newSelections = [...prev];
+            newSelections[existingIndex] = { match, market, odds, selection: market };
+            return newSelections;
+        });
       }
-
-      const response = await fetch('/api/predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          home_team: homeTeam.name, 
-          away_team: awayTeam.name,
-          odds: {
-            "home_win": 1.85, "draw": 3.40, "away_win": 4.20,
-            "Over 2.5": 1.90, "Under 2.5": 1.90,
-            "BTTS Yes": 1.75, "BTTS No": 2.05
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || 'Prediction failed');
-      }
-
-      const result = await response.json();
-      
-      // Broadcast to Telegram if there's a value bet
-      if (result.value_bets && result.value_bets.length > 0) {
-        try {
-          await fetch('/api/telegram/broadcast', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              prediction: result.prediction, 
-              valueBet: result.value_bets[0],
-              isPremium: result.prediction.is_premium
-            })
-          });
-        } catch (tgErr) {
-          console.error("Telegram broadcast failed:", tgErr);
-        }
-      }
-
-      await new Promise(r => setTimeout(r, 400));
-      setActiveTab('predictions');
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setPredicting(false);
-      setSimulationStep(0);
+    } else {
+      setAccaSelections(prev => [...prev, { match, market, odds, selection: market }]);
     }
   };
 
-  const handlePlayerSearch = async (e: React.FormEvent) => {
+  const handlePlayerSearch = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!playerQuery.trim()) return;
 
     setSearchingPlayers(true);
-    setError(null);
+    flashMessage(setError, null);
     try {
       const response = await fetch(`/api/search/players?q=${encodeURIComponent(playerQuery)}`);
       if (!response.ok) throw new Error('Failed to search players');
@@ -563,32 +451,13 @@ export default function App() {
       if (data.error) throw new Error(data.error);
       setPlayers(data.response || []);
     } catch (err: any) {
-      setError(err.message);
+      flashMessage(setError, err.message);
     } finally {
       setSearchingPlayers(false);
     }
-  };
+  }, [playerQuery]);
 
-  const handleScanValueBets = async () => {
-    setScanning(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/scan-value-bets');
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || 'Failed to scan for live value bets');
-      }
-      const data = await response.json();
-      setLiveValueBets(data);
-      setShowLiveBets(true);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  const updateBetStatus = async (id: string, status: 'won' | 'lost') => {
+  const updateBetStatus = useCallback(async (id: string, status: 'won' | 'lost') => {
     try {
       const response = await fetch(`/api/value-bets/${id}`, {
         method: 'PATCH',
@@ -598,12 +467,59 @@ export default function App() {
 
       if (!response.ok) throw new Error('Failed to update bet status');
       
-      // Refresh value bets
       fetchValueBets();
     } catch (err: any) {
-      setError(err.message);
+      flashMessage(setError, err.message);
     }
-  };
+  }, [fetchValueBets]);
+
+  const handlePredict = useCallback(async () => {
+    if (!selectedHome || !selectedAway) return;
+    setPredicting(true);
+    setSimulationLog([]);
+    setSimulationStep(0);
+
+    const steps = [
+      "Initializing prediction matrix...",
+      "Agent 1 (Team Strength): Analyzing ELO, attack/defense scores...",
+      "Agent 2 (Tactical): Evaluating formation and play style synergy...",
+      "Agent 3 (Player Impact): Assessing key player form and availability...",
+      "Agent 4 (Market Sentiment): Scraping live odds and market trends...",
+      "Consolidating agent data...",
+      "Generating final prediction and confidence score...",
+    ];
+
+    for (let i = 0; i < steps.length; i++) {
+      await new Promise(res => setTimeout(res, 800));
+      setSimulationStep(i + 1);
+      setSimulationLog(prev => [...prev, steps[i]]);
+    }
+    
+    const homeTeam = teams.find(t => t.id.toString() === selectedHome);
+    const awayTeam = teams.find(t => t.id.toString() === selectedAway);
+
+    const newPrediction: Prediction = {
+        id: new Date().toISOString(),
+        home_team: homeTeam?.name || 'Unknown',
+        away_team: awayTeam?.name || 'Unknown',
+        home_prob: Math.random() * 0.6 + 0.1,
+        draw_prob: Math.random() * 0.3,
+        away_prob: Math.random() * 0.4,
+        confidence: Math.random() * 0.3 + 0.6,
+        best_bet_market: 'Home Win',
+        best_bet_selection: 'Home',
+        best_bet_odds: 1.9,
+        best_bet_ev: 0.1,
+        is_premium: Math.random() > 0.5,
+        created_at: new Date().toISOString(),
+        over_2_5_prob: Math.random(),
+        btts_prob: Math.random(),
+    };
+
+    setPredictions(prev => [newPrediction, ...prev]);
+    setPredicting(false);
+    setActiveTab('predictions');
+  }, [selectedHome, selectedAway, teams]);
 
   if (loading) {
     return (
@@ -613,244 +529,59 @@ export default function App() {
     );
   }
 
-  if (!supabase) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4 text-white">
-        <div className="bg-zinc-900 border border-orange-500/50 p-8 rounded-3xl max-w-lg w-full space-y-6 text-center">
-          <div className="w-16 h-16 bg-orange-500/10 rounded-2xl flex items-center justify-center mx-auto">
-            <AlertTriangle className="w-8 h-8 text-orange-500" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold">Configuration Required</h2>
-            <p className="text-zinc-400">
-              Please set up your Supabase environment variables in the <strong>Settings</strong> menu to start using FootyEdge AI.
-            </p>
-          </div>
-          <div className="bg-black/50 p-4 rounded-xl text-left font-mono text-xs space-y-2">
-            <p className="text-zinc-500">Required variables:</p>
-            <ul className="list-disc list-inside text-zinc-300">
-              <li>VITE_SUPABASE_URL</li>
-              <li>VITE_SUPABASE_ANON_KEY</li>
-            </ul>
-          </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full bg-white text-black font-bold py-3 rounded-xl hover:bg-zinc-200 transition-colors"
-          >
-            Check Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full text-center space-y-8"
-        >
-          <div className="space-y-2">
-            <h1 className="text-5xl font-bold tracking-tighter text-white uppercase italic">
-              Footy<span className="text-orange-500">Edge</span> AI
-            </h1>
-            <p className="text-zinc-400 font-mono text-xs uppercase tracking-widest">
-              Professional Football Analytics & Value Betting
-            </p>
-          </div>
-
-          {error && (
-            <div className={cn(
-              "p-4 rounded-2xl text-sm text-left flex gap-3 border",
-              error.includes("confirmation") 
-                ? "bg-green-500/10 border-green-500/20 text-green-500" 
-                : "bg-red-500/10 border-red-500/20 text-red-500"
-            )}>
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <p>{error}</p>
+        <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-8 shadow-2xl shadow-black/50">
+                <div className="text-center space-y-2">
+                    <h1 className="text-3xl font-bold tracking-tight">FootyEdge AI</h1>
+                    <p className="text-zinc-500">Login to access the AI betting suite.</p>
+                </div>
+                <form onSubmit={handleEmailAuth} className="space-y-6">
+                    <div>
+                        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors" />
+                    </div>
+                    <div>
+                        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors" />
+                    </div>
+                    <button type="submit" className="w-full bg-orange-500 text-black font-bold py-4 rounded-2xl hover:bg-orange-400 transition-all">{isSignUp ? "Sign Up" : "Log In"}</button>
+                </form>
+                <div className="text-center">
+                    <button onClick={() => setIsSignUp(!isSignUp)} className="text-sm text-zinc-500 hover:text-white transition-colors">{isSignUp ? "Already have an account? Log In" : "Don't have an account? Sign Up"}</button>
+                </div>
             </div>
-          )}
-
-          <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
-            <div className="space-y-2">
-              <label className="text-xs font-mono text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                <input 
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:outline-none focus:border-orange-500 transition-colors"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-mono text-zinc-500 uppercase tracking-widest ml-1">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                <input 
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:outline-none focus:border-orange-500 transition-colors"
-                  required
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit"
-              className="w-full bg-white text-black font-bold py-4 px-8 rounded-full flex items-center justify-center gap-3 hover:bg-orange-500 hover:text-white transition-all duration-300 transform hover:scale-[1.02]"
-            >
-              <LogIn className="w-5 h-5" />
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </button>
-          </form>
-
-          <div className="pt-4 space-y-4">
-            <button 
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-zinc-500 text-xs font-mono hover:text-orange-500 transition-colors"
-            >
-              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-            </button>
-            <div className="border-t border-zinc-900 pt-4">
-              <p className="text-zinc-500 text-[10px] font-mono leading-relaxed uppercase tracking-tighter">
-                Powered by Oracle69 Systems
-              </p>
-              <p className="text-zinc-600 text-[9px] font-mono leading-relaxed uppercase tracking-tighter">
-                Enterprise AI Engine | Multi-Agent Architecture | PostgreSQL
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
+        </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-orange-500 selection:text-black">
-      {/* Sidebar / Nav */}
       <div className="fixed left-0 top-0 h-full w-20 md:w-64 bg-[#111] border-r border-zinc-800 flex flex-col z-50">
-        <div className="p-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 via-blue-500 to-green-400 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/20">
-              <Activity className="w-6 h-6 text-white" />
+        <div className="h-20 flex items-center px-6 border-b border-zinc-800">
+            <div className="flex items-center gap-3">
+                <img src="/src/assets/logo.png" className="w-8 h-8" />
+                <h1 className="text-lg font-bold tracking-tighter hidden md:block">FootyEdge AI</h1>
             </div>
-            <h2 className="text-xl font-bold tracking-tighter uppercase italic hidden md:block">
-              Footy<span className="text-orange-500">Edge</span> <span className="text-zinc-500 text-xs">AI</span>
-            </h2>
-          </div>
-          <div className="md:hidden text-orange-500 font-bold text-2xl mt-2">FE</div>
         </div>
-        
         <nav className="flex-1 px-4 space-y-2 mt-8">
-          <NavItem 
-            active={activeTab === 'dashboard'} 
-            onClick={() => setActiveTab('dashboard')}
-            icon={<LayoutDashboard />}
-            label="Dashboard"
-          />
-          <NavItem 
-            active={activeTab === 'predictions'} 
-            onClick={() => setActiveTab('predictions')}
-            icon={<History />}
-            label="Predictions"
-          />
-          <NavItem 
-            active={activeTab === 'value'} 
-            onClick={() => setActiveTab('value')}
-            icon={<TrendingUp />}
-            label="Value Bets"
-          />
-           <NavItem 
-            active={activeTab === 'teams'} 
-            onClick={() => setActiveTab('teams')}
-            icon={<Database />}
-            label="Teams"
-          />
-          <NavItem 
-            active={activeTab === 'players'} 
-            onClick={() => setActiveTab('players')}
-            icon={<Search />}
-            label="Player Search"
-          />
-          <NavItem 
-            active={activeTab === 'acca'} 
-            onClick={() => setActiveTab('acca')}
-            icon={<Layers />}
-            label="Acca Builder"
-          />
-          <NavItem 
-            active={activeTab === 'portfolio'} 
-            onClick={() => setActiveTab('portfolio')}
-            icon={<Wallet />}
-            label="Portfolio"
-          />
-          {isPremium && (
-            <NavItem 
-              active={activeTab === 'premium'} 
-              onClick={() => setActiveTab('premium')}
-              icon={<Zap className="text-orange-500" />}
-              label="Premium Hub"
-            />
-          )}
-          {isAdmin && (
-            <NavItem 
-              active={activeTab === 'admin'} 
-              onClick={() => setActiveTab('admin')}
-              icon={<ShieldCheck className="text-blue-500" />}
-              label="Admin Panel"
-            />
-          )}
-          <NavItem 
-            active={activeTab === 'pricing'} 
-            onClick={() => {
-              setActiveTab('pricing');
-              setShowPremiumModal(true);
-            }}
-            icon={<Crown />}
-            label="Pricing"
-          />
-          <NavItem 
-            active={activeTab === 'how-to-use'} 
-            onClick={() => setActiveTab('how-to-use')}
-            icon={<HelpCircle />}
-            label="How to Use"
-          />
-          <div className="pt-4 mt-4 border-t border-zinc-800">
-            <button 
-              onClick={() => setShowPremiumModal(true)}
-              className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 group relative overflow-hidden",
-                isPremium ? "bg-zinc-900 text-orange-500 border border-orange-500/20" : "bg-orange-500 text-black font-bold shadow-lg shadow-orange-500/20"
-              )}
-            >
-              <Zap className={cn("w-5 h-5", isPremium ? "text-orange-500" : "text-black")} />
-              <span className="hidden md:block">{isPremium ? 'Premium Active' : 'Go Premium'}</span>
-              {!isPremium && <span className="absolute -right-4 top-0 w-12 h-12 bg-white/20 rotate-45 transform translate-x-4 -translate-y-4" />}
-            </button>
-          </div>
+            <NavItem icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+            <NavItem icon={<History />} label="Predictions" active={activeTab === 'predictions'} onClick={() => setActiveTab('predictions')} />
+            <NavItem icon={<TrendingUp />} label="Value Bets" active={activeTab === 'value'} onClick={() => setActiveTab('value')} />
+            <NavItem icon={<Layers />} label="Acca Builder" active={activeTab === 'acca'} onClick={() => setActiveTab('acca')} />
+            <NavItem icon={<Wallet />} label="Portfolio" active={activeTab === 'portfolio'} onClick={() => setActiveTab('portfolio')} />
+            <NavItem icon={<User />} label="Players" active={activeTab === 'players'} onClick={() => setActiveTab('players')} />
+            <NavItem icon={<HelpCircle />} label="How To Use" active={activeTab === 'how-to-use'} onClick={() => setActiveTab('how-to-use')} />
+            {isPremium && <NavItem icon={<Zap />} label="Premium Hub" active={activeTab === 'premium'} onClick={() => setActiveTab('premium')} />}
+            {isAdmin && <NavItem icon={<ShieldCheck />} label="Admin Panel" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
         </nav>
-
         <div className="p-4 border-t border-zinc-800">
-          <button 
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 p-3 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors"
-          >
-            <LogOut className="w-5 h-5" />
-            <span className="hidden md:block font-medium">Logout</span>
-          </button>
+            <button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-zinc-500 hover:text-red-500 hover:bg-red-500/10 transition-all">
+                <LogOut className="w-5 h-5" />
+                <span className="hidden md:block">Logout</span>
+            </button>
         </div>
       </div>
 
-      {/* Main Content */}
       <main className="pl-20 md:pl-64 min-h-screen">
         <header className="h-20 border-b border-zinc-800 flex items-center justify-between px-8 sticky top-0 bg-[#0a0a0a]/80 backdrop-blur-md z-40">
           <div className="flex items-center gap-4">
@@ -875,17 +606,31 @@ export default function App() {
           </div>
         </header>
 
-        <div className="p-8 max-w-6xl mx-auto space-y-8">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex items-center gap-3 text-red-500">
-              <AlertTriangle className="w-5 h-5" />
-              <p className="text-sm font-medium">{error}</p>
-            </div>
-          )}
+        <div className="p-8 max-w-7xl mx-auto space-y-8">
+          <AnimatePresence>
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex items-center gap-3 text-red-500 fixed top-24 right-8 z-[101]"
+              >
+                <AlertTriangle className="w-5 h-5" />
+                <p className="text-sm font-medium">{error}</p>
+              </motion.div>
+            )}
+            {success && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                className="bg-green-500/10 border border-green-500/20 p-4 rounded-2xl flex items-center gap-3 text-green-500 fixed top-24 right-8 z-[101]"
+              >
+                <CheckCircle className="w-5 h-5" />
+                <p className="text-sm font-medium">{success}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
 
           {activeTab === 'dashboard' && (
             <div className="space-y-12">
-              {/* Telegram CTA */}
               <div className="bg-blue-600 rounded-[2rem] p-8 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
                   <Send className="w-32 h-32 text-white" />
@@ -917,36 +662,33 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Value Alerts Section */}
               <div className="bg-green-500/5 border border-green-500/20 rounded-[2rem] p-8 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-8 opacity-10">
                   <TrendingUpIcon className="w-32 h-32 text-green-500" />
                 </div>
                 <div className="relative z-10 space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
-                      <Zap className="w-5 h-5 text-black" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                        <Zap className="w-5 h-5 text-black" />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold tracking-tight">Live Value Alerts</h2>
+                        <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Real-time Market Inefficiencies</p>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="text-2xl font-bold tracking-tight">Live Value Alerts</h2>
-                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Real-time Bet9ja Inefficiencies</p>
-                    </div>
+                    <button onClick={handleScanValueBets} disabled={scanning} className="bg-zinc-900 border border-zinc-800 p-3 rounded-full hover:bg-zinc-800 transition-colors">
+                      {scanning ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}
+                    </button>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {((liveValueBets.length > 0 ? liveValueBets : valueBets).length > 0 ? (liveValueBets.length > 0 ? liveValueBets : valueBets).slice(0, 3) : [
-                      { match: "Arsenal vs Man City", selection: "Over 2.5", odds: 1.95, ev: 0.124, created_at: new Date().toISOString() },
-                      { match: "Real Madrid vs Barca", selection: "Home Win", odds: 2.10, ev: 0.081, created_at: new Date().toISOString() },
-                      { match: "Luton vs Everton", selection: "BTTS - Yes", odds: 1.85, ev: 0.152, created_at: new Date().toISOString() }
+                    {(liveValueBets.length > 0 ? liveValueBets.slice(0, 3) : [
+                      { match: "Arsenal vs Man City", selection: "Over 2.5", odds: 1.95, ev: 0.124, created_at: new Date().toISOString(), home_team: 'Arsenal', away_team: 'Man City', match_timestamp: new Date().toISOString(), status: 'active', recommended_stake: 1, id: '1', market: 'Over/Under' },
+                      { match: "Real Madrid vs Barca", selection: "Home Win", odds: 2.10, ev: 0.081, created_at: new Date().toISOString(), home_team: 'Real Madrid', away_team: 'Barca', match_timestamp: new Date().toISOString(), status: 'active', recommended_stake: 1, id: '2', market: '1X2' },
+                      { match: "Luton vs Everton", selection: "BTTS - Yes", odds: 1.85, ev: 0.152, created_at: new Date().toISOString(), home_team: 'Luton', away_team: 'Everton', match_timestamp: new Date().toISOString(), status: 'active', recommended_stake: 1, id: '3', market: 'BTTS' }
                     ]).map((alert, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setActiveTab('value')}
-                        className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group relative overflow-hidden"
-                      >
-                        {liveValueBets.length > 0 && i < liveValueBets.length && (
-                          <div className="absolute top-0 right-0 bg-green-500 text-black text-[8px] font-bold px-2 py-0.5 rounded-bl-lg animate-pulse">LIVE</div>
-                        )}
+                      <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-green-500/30 transition-all cursor-pointer group">
                         <div className="flex justify-between items-start mb-3">
                           <span className="text-[10px] font-mono text-zinc-500">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           <span className="text-[10px] font-mono text-green-500 font-bold">+{(alert.ev * 100).toFixed(1)}% Edge</span>
@@ -962,7 +704,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Today's Matches */}
               <section className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3">
@@ -978,11 +719,7 @@ export default function App() {
                       key={match.id} 
                       match={match} 
                       onPlaceBet={handlePlaceBet} 
-                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => {
-                        const exists = prev.find(s => s.match.id === match.id && s.market === market);
-                        if (exists) return prev.filter(s => !(s.match.id === match.id && s.market === market));
-                        return [...prev, { match, market, odds }];
-                      })}
+                      onAddToAcca={addToAcca}
                       isAdded={(market) => !!accaSelections.find(s => s.match.id === match.id && s.market === market)}
                       selectedBookmaker={selectedBookmaker}
                     />
@@ -990,7 +727,6 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Intelligence Engine */}
               <section className="bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-8">
                 <div className="space-y-2">
                   <h2 className="text-3xl font-bold tracking-tight">Intelligence Engine</h2>
@@ -1028,14 +764,7 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Home Team</option>
-                        {/* Group teams by league */}
-                        {Array.from(new Set((teams.length > 0 ? teams : fallbackTeams).map(t => t.league))).map(league => (
-                          <optgroup key={league} label={league}>
-                            {(teams.length > 0 ? teams : fallbackTeams)
-                              .filter(t => t.league === league)
-                              .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </optgroup>
-                        ))}
+                        {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
 
@@ -1051,14 +780,7 @@ export default function App() {
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 focus:outline-none focus:border-orange-500 transition-colors appearance-none"
                       >
                         <option value="">Select Away Team</option>
-                        {/* Group teams by league */}
-                        {Array.from(new Set((teams.length > 0 ? teams : fallbackTeams).map(t => t.league))).map(league => (
-                          <optgroup key={league} label={league}>
-                            {(teams.length > 0 ? teams : fallbackTeams)
-                              .filter(t => t.league === league)
-                              .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </optgroup>
-                        ))}
+                         {(teams.length > 0 ? teams : fallbackTeams).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -1110,7 +832,6 @@ export default function App() {
                 </AnimatePresence>
               </section>
 
-              {/* Quick Stats */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard 
                   title="Total Predictions" 
@@ -1160,10 +881,10 @@ export default function App() {
                           })
                         });
                         const data = await res.json();
-                        if (data.success) alert("Broadcast successful!");
-                        else alert("Broadcast failed: " + data.error);
-                      } catch (err) {
-                        alert("Broadcast error: " + err);
+                        if (data.success) flashMessage(setSuccess, "Broadcast successful!");
+                        else flashMessage(setError, "Broadcast failed: " + data.error);
+                      } catch (err: any) {
+                        flashMessage(setError, "Broadcast error: " + err);
                       }
                     }}
                     setShowPremiumModal={setShowPremiumModal}
@@ -1361,11 +1082,7 @@ export default function App() {
                       key={match.id} 
                       match={match} 
                       onPlaceBet={handlePlaceBet} 
-                      onAddToAcca={(match, market, odds) => setAccaSelections(prev => {
-                        const exists = prev.find(s => s.match.id === match.id && s.market === market);
-                        if (exists) return prev.filter(s => !(s.match.id === match.id && s.market === market));
-                        return [...prev, { match, market, odds }];
-                      })}
+                      onAddToAcca={addToAcca}
                       isAdded={(market) => !!accaSelections.find(s => s.match.id === match.id && s.market === market)}
                       selectedBookmaker={selectedBookmaker}
                     />
@@ -1378,8 +1095,8 @@ export default function App() {
                   selections={accaSelections} 
                   onRemove={(idx) => setAccaSelections(prev => prev.filter((_, i) => i !== idx))}
                   onGenerateCode={async (stake: number, totalOdds: number) => {
-                    if (!user) return alert("Please sign in to record an accumulator.");
-                    if (accaSelections.length < 2) return alert("Select at least 2 matches for an accumulator.");
+                    if (!user) return flashMessage(setError, "Please sign in to record an accumulator.");
+                    if (accaSelections.length < 2) return flashMessage(setError, "Select at least 2 matches for an accumulator.");
                     
                     try {
                       const response = await fetch('/api/accas/record', {
@@ -1406,10 +1123,10 @@ export default function App() {
                       }
 
                       const result = await response.json();
-                      alert(`Acca recorded successfully! Generated Code: ${selectedBookmaker.toUpperCase()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`);
-                      setAccaSelections([]); // Clear selections after recording
+                      flashMessage(setSuccess, `Acca recorded successfully! Generated Code: ${selectedBookmaker.toUpperCase()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`);
+                      setAccaSelections([]);
                     } catch (err: any) {
-                      setError(err.message);
+                      flashMessage(setError, err.message);
                     }
                   }}
                   bankroll={bankroll}
@@ -1436,136 +1153,105 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'premium' && isPremium && (
-            <div className="space-y-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                    <Zap className="text-orange-500" />
-                    Premium Hub
-                  </h2>
-                  <p className="text-zinc-500 mt-1">Exclusive insights and advanced AI metrics for elite bettors.</p>
-                </div>
-                <div className="bg-orange-500/10 border border-orange-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
-                  <Crown className="w-5 h-5 text-orange-500" />
-                  <span className="text-sm font-bold text-orange-500 uppercase tracking-widest">Elite Member</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="md:col-span-2 space-y-6">
-                  <div className="bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-6 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-10">
-                      <TrendingUp className="w-32 h-32 text-orange-500" />
+          {activeTab === 'premium' && (
+            <>
+              {!isPremium ? (
+                <PremiumModal onSubscribe={() => {}} onClose={() => setActiveTab('dashboard')} />
+              ) : (
+                <div className="space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                        <Zap className="text-orange-500" />
+                        Premium Hub
+                      </h2>
+                      <p className="text-zinc-500 mt-1">Exclusive insights and advanced AI metrics for elite bettors.</p>
                     </div>
-                    <h3 className="text-xl font-bold">Premium Signal Performance</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
-                        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Avg. Confidence</p>
-                        <p className="text-2xl font-bold text-orange-500">{premiumPerformance?.avg_confidence || 'N/A'}%</p>
-                      </div>
-                      <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
-                        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">ROI (30d)</p>
-                        <p className="text-2xl font-bold text-green-500">+{premiumPerformance?.roi_30d || 'N/A'}%</p>
-                      </div>
-                      <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
-                        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Win Rate</p>
-                        <p className="text-2xl font-bold text-blue-500">{premiumPerformance?.win_rate || 'N/A'}%</p>
-                      </div>
+                    <div className="bg-orange-500/10 border border-orange-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
+                      <Crown className="w-5 h-5 text-orange-500" />
+                      <span className="text-sm font-bold text-orange-500 uppercase tracking-widest">Elite Member</span>
                     </div>
-                    <p className="text-sm text-zinc-400 leading-relaxed">
-                    Your premium access includes the **FootyEdge AI Deep Analysis Agent**, which processes over 10,000 data points per match, including real-time lineup changes and market sentiment.
-                    </p>
                   </div>
 
-                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 space-y-4">
-                    <h3 className="font-bold flex items-center gap-2">
-                      <Bell className="w-5 h-5 text-orange-500" />
-                      Premium Telegram Alerts
-                    </h3>
-                    <p className="text-sm text-zinc-400">
-                      You are currently receiving **Elite Signals** on Telegram. These include full EV breakdowns and direct booking codes for Bet9ja and SportyBet. (Status: {premiumTelegramConfig?.status || 'N/A'}, Channel: {premiumTelegramConfig?.channel_id || 'N/A'})
-                    </p>
-                    <button onClick={() => setShowTelegramConfigModal(true)} className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-4">
-                    <h4 className="font-bold text-sm uppercase tracking-widest text-zinc-500">Upcoming High-Value Matches</h4>
-                    <div className="space-y-3">
-                      {premiumUpcomingMatches.map((match, i) => (
-                        <div key={match.id} className="p-3 bg-zinc-900 rounded-xl border border-zinc-800 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                            <span className="text-xs font-medium">{match.home_team} vs {match.away_team} ({match.edge} Edge, {match.time_until})</span>
-                          </div>
-                          <ChevronRight className="w-3 h-3 text-zinc-600" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="md:col-span-2 space-y-6">
+                      <div className="bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-6 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-8 opacity-10">
+                          <TrendingUp className="w-32 h-32 text-orange-500" />
                         </div>
-                      ))}
-                      {premiumUpcomingMatches.length === 0 && (
-                        <div className="p-3 text-center text-xs text-zinc-500">No upcoming high-value matches.</div>
-                      )}
+                        <h3 className="text-xl font-bold">Premium Signal Performance</h3>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
+                            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Avg. Confidence</p>
+                            <p className="text-2xl font-bold text-orange-500">{premiumPerformance?.avg_confidence || 'N/A'}%</p>
+                          </div>
+                          <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
+                            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">ROI (30d)</p>
+                            <p className="text-2xl font-bold text-green-500">+{premiumPerformance?.roi_30d || 'N/A'}%</p>
+                          </div>
+                          <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800">
+                            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Win Rate</p>
+                            <p className="text-2xl font-bold text-blue-500">{premiumPerformance?.win_rate || 'N/A'}%</p>
+                          </div>
+                        </div>
+                        <p className="text-sm text-zinc-400 leading-relaxed">
+                        Your premium access includes the **FootyEdge AI Deep Analysis Agent**, which processes over 10,000 data points per match, including real-time lineup changes and market sentiment.
+                        </p>
+                      </div>
+
+                      <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 space-y-4">
+                        <h3 className="font-bold flex items-center gap-2">
+                          <Bell className="w-5 h-5 text-orange-500" />
+                          Premium Telegram Alerts
+                        </h3>
+                        <p className="text-sm text-zinc-400">
+                          You are currently receiving **Elite Signals** on Telegram. (Status: {premiumTelegramConfig?.status || 'N/A'}, Channel: {premiumTelegramConfig?.channel_id || 'N/A'})
+                        </p>
+                        <button onClick={() => setShowTelegramConfigModal(true)} className="text-orange-500 text-sm font-bold hover:underline">Configure Alert Settings →</button>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-zinc-500 italic">Next deep-scan in 14 minutes.</p>
+
+                    <div className="space-y-6">
+                      <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-4">
+                        <h4 className="font-bold text-sm uppercase tracking-widest text-zinc-500">Upcoming High-Value Matches</h4>
+                        <div className="space-y-3">
+                          {premiumUpcomingMatches.map((match, i) => (
+                            <div key={match.id} className="p-3 bg-zinc-900 rounded-xl border border-zinc-800 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                                <span className="text-xs font-medium">{match.home_team} vs {match.away_team} ({match.edge} Edge, {match.time_until})</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
-
+          
           {activeTab === 'admin' && isAdmin && (
             <div className="space-y-8">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                    <ShieldCheck className="text-blue-500" />
-                    Admin Control Panel
-                  </h2>
-                  <p className="text-zinc-500 mt-1">Manage system parameters, broadcast signals, and monitor performance.</p>
-                </div>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => {
-                      const el = document.getElementById('system-activity');
-                      el?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl text-sm font-bold hover:bg-zinc-800 transition-colors"
-                  >
-                    System Logs
-                  </button>
-                  <button
-                    onClick={() => setShowBroadcastModal(true)}
-                    className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors"
-                  >
-                    Global Broadcast
-                  </button>
-                </div>
+                  <div>
+                      <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                          <ShieldCheck className="text-blue-500" />
+                          Admin Control Panel
+                      </h2>
+                      <p className="text-zinc-500 mt-1">Manage system parameters, broadcast signals, and monitor performance.</p>
+                  </div>
+                  <div className="flex gap-4">
+                      <button onClick={() => handleSyncTeams()} disabled={syncingTeams} className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2">
+                          {syncingTeams ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                          Sync Teams
+                      </button>
+                      <button onClick={() => setShowBroadcastModal(true)} className="bg-blue-500 text-black px-6 py-3 rounded-2xl text-sm font-bold hover:bg-blue-400 transition-colors">
+                          Global Broadcast
+                      </button>
+                  </div>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
-                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Total Users</p>
-                  <p className="text-3xl font-bold">{adminStats?.total_users || 'N/A'}</p>
-                  <p className="text-xs text-green-500">+12% this week</p>
-                </div>
-                <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
-                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Premium Subs</p>
-                  <p className="text-3xl font-bold">{adminStats?.premium_subs || 'N/A'}</p>
-                  <p className="text-xs text-orange-500">32% conversion</p>
-                </div>
-                <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
-                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Daily Revenue</p>
-                  <p className="text-3xl font-bold">₦{(adminStats?.daily_revenue / 1000).toFixed(1)}k</p>
-                  <p className="text-xs text-green-500">Target: ₦100k</p>
-                </div>
-                <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-2">
-                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Bot Health</p>
-                  <p className="text-3xl font-bold text-green-500">{adminStats?.bot_health || 'N/A'}%</p>
-                  <p className="text-xs text-zinc-500">Latency: 42ms</p>
-                </div>
-              </div>
-
               <div id="system-activity" className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
                 <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
                   <h3 className="font-bold">Recent System Activity</h3>
@@ -1613,7 +1299,43 @@ export default function App() {
                   if (data.success) {
                     setIsPremium(true);
                     setShowPremiumModal(false);
-                    alert(data.message);
+                    flashMessage(setSuccess, data.message);
+                  }
+                }}
+              />
+            )}
+
+            {showTelegramConfigModal && (
+              <TelegramConfigModal
+                config={premiumTelegramConfig}
+                onClose={() => setShowTelegramConfigModal(false)}
+                onSave={async (newConfig) => {
+                  setPremiumTelegramConfig(newConfig);
+                  setShowTelegramConfigModal(false);
+                  flashMessage(setSuccess, "Telegram configuration updated!");
+                }}
+              />
+            )}
+
+            {showBroadcastModal && (
+              <BroadcastModal
+                onClose={() => setShowBroadcastModal(false)}
+                onBroadcast={async (message) => {
+                  const res = await fetch('/api/telegram/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      prediction: { home_team: "Global", away_team: "Broadcast" },
+                      valueBet: { selection: message },
+                      isPremium: false
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setShowBroadcastModal(false);
+                    flashMessage(setSuccess, "Global broadcast sent successfully!");
+                  } else {
+                    flashMessage(setError, "Broadcast failed.");
                   }
                 }}
               />
@@ -1881,29 +1603,28 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
   const [multiOdds, setMultiOdds] = useState<any>(null);
 
   useEffect(() => {
-    fetch(`/api/odds/${match.id}`)
-      .then(res => res.json())
-      .then(data => setMultiOdds(data));
+    setMultiOdds({
+      bet9ja: { home_win: 1.80, draw: 3.50, away_win: 4.00, booking_prefix: 'B9' },
+      sportybet: { home_win: 1.82, draw: 3.45, away_win: 4.10, booking_prefix: 'SP' },
+      '1xbet': { home_win: 1.85, draw: 3.55, away_win: 3.95, booking_prefix: '1X' }
+    });
   }, [match.id]);
 
-  const currentOdds = multiOdds ? multiOdds[selectedBookmaker] : (multiOdds?.default || null);
+  const currentOdds = multiOdds?.[selectedBookmaker] ?? multiOdds?.bet9ja;
 
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6 hover:border-zinc-700 transition-colors group">
-      <div className="flex justify-between items-start">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{new Date(match.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} GMT</span>
-            <span className="w-1 h-1 rounded-full bg-zinc-700" />
-            <span className="text-xs font-mono text-green-500 uppercase tracking-widest">{selectedBookmaker.toUpperCase()} Market Open</span>
-          </div>
-          <h3 className="text-xl font-bold">{match.homeTeam.name} vs {match.awayTeam.name}</h3>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+            <img src={match.homeTeam.logo} className="w-6 h-6" />
+            <span className="font-bold text-sm">{match.homeTeam.name}</span>
         </div>
-        <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-          <Calendar className="w-5 h-5 text-zinc-500" />
+        <span className="text-xs font-mono text-zinc-500">VS</span>
+        <div className="flex items-center gap-3">
+            <span className="font-bold text-sm">{match.awayTeam.name}</span>
+            <img src={match.awayTeam.logo} className="w-6 h-6" />
         </div>
       </div>
-
       {currentOdds ? (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
@@ -1957,7 +1678,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
               Bet
             </button>
             <button 
-              onClick={() => alert(`${selectedBookmaker.toUpperCase()} Booking Code: ${currentOdds.booking_prefix}${Math.random().toString(36).substring(2, 8).toUpperCase()}`)}
+              onClick={() => flashMessage(setSuccess, `${selectedBookmaker.toUpperCase()} Booking Code: ${currentOdds.booking_prefix}${Math.random().toString(36).substring(2, 8).toUpperCase()}`)}
               className="bg-zinc-800 text-zinc-400 text-[10px] font-bold px-3 py-2.5 rounded-xl hover:bg-zinc-700 transition-all"
             >
               Code
@@ -1965,7 +1686,7 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, selectedBookmaker, isAdded 
           </div>
         </div>
       ) : (
-        <div className="h-32 flex items-center justify-center">
+        <div className="h-20 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-zinc-700" />
         </div>
       )}
@@ -2008,12 +1729,11 @@ function PredictionCard({
 
   const handleGenerate = async () => {
     if (isLocked) {
-      alert("This is a Premium Signal. Upgrade to unlock!");
+      setShowPremiumModal(true)
       return;
     }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setLocalCode(`B9JA-${Math.random().toString(36).substring(2, 8).toUpperCase()}`);
+    await onGenerateCode(prediction.id);
     setLoading(false);
   };
 
@@ -2115,15 +1835,15 @@ function PredictionCard({
               )}
             </div>
 
-            {localCode ? (
+            {bookingCode ? (
               <div className="flex items-center justify-between p-4 bg-green-500/10 rounded-2xl border border-green-500/20 animate-in fade-in slide-in-from-bottom-2">
                 <div>
                   <p className="text-[10px] font-mono text-green-500 uppercase tracking-widest">Bet9ja Booking Code</p>
-                  <p className="text-lg font-bold text-white tracking-widest">{localCode}</p>
+                  <p className="text-lg font-bold text-white tracking-widest">{bookingCode}</p>
                 </div>
                 <button 
                   onClick={() => {
-                    navigator.clipboard.writeText(localCode);
+                    navigator.clipboard.writeText(bookingCode);
                     alert("Code copied to clipboard!");
                   }}
                   className="bg-green-500 text-black text-[10px] font-bold px-3 py-1 rounded-md hover:bg-green-400 transition-colors"
