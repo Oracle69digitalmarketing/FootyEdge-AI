@@ -1,5 +1,6 @@
 import os
-import requests
+import httpx
+from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -44,21 +45,41 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.chat.send_action(action="typing")
     
-    # Using default odds as we don't have a way to get live odds here.
-    default_odds = {
+    # Try to find if there's an upcoming match to get live odds
+    odds = {
         "home_win": 1.85, "draw": 3.40, "away_win": 4.20,
         "Over 2.5": 1.90, "Under 2.5": 1.90,
         "BTTS Yes": 1.75, "BTTS No": 2.05
     }
 
-    try:
-        response = requests.post(
-            f"{API_URL}/predict",
-            json={'home_team': home, 'away_team': away, 'odds': default_odds},
-            timeout=30
-        )
-        
-        if response.status_code == 200:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            # 1. Search for home team to get ID
+            search_res_obj = await client.get(f"{API_URL}/search/teams", params={'q': home})
+            search_res = search_res_obj.json()
+            if search_res.get('response'):
+                # 2. Get matches for this team
+                matches_res_obj = await client.get(f"{API_URL}/matches", params={'date': datetime.now().strftime("%Y-%m-%d")})
+                matches_res = matches_res_obj.json()
+                # This is a bit simplified, ideally we'd look ahead or search for the specific matchup
+                if matches_res.get('response'):
+                    for m in matches_res['response']:
+                        if (m['teams']['home']['name'] == home and m['teams']['away']['name'] == away) or \
+                           (m['teams']['away']['name'] == home and m['teams']['home']['name'] == away):
+                            fixture_id = m['fixture']['id']
+                            # 3. Get odds for this fixture
+                            odds_res_obj = await client.get(f"{API_URL}/odds/{fixture_id}")
+                            odds_res = odds_res_obj.json()
+                            if odds_res.get('default'):
+                                odds = odds_res['default']
+                                break
+
+            response = await client.post(
+                f"{API_URL}/predict",
+                json={'home_team': home, 'away_team': away, 'odds': odds}
+            )
+
+            if response.status_code == 200:
             data = response.json()
             message = f"""
 ⚽ *{data['home_team']} vs {data['away_team']}*
@@ -90,10 +111,11 @@ async def value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(action="typing")
     await update.message.reply_text("Scanning for live value bets across major leagues... this may take a moment.")
     
-    try:
-        response = requests.get(f"{API_URL}/scan-value-bets", timeout=120)
-        
-        if response.status_code == 200:
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.get(f"{API_URL}/scan-value-bets")
+
+            if response.status_code == 200:
             data = response.json()
             if data:
                 message = "💰 *Live Value Bets*
@@ -123,20 +145,21 @@ async def team(update: Update, context: ContextTypes.DEFAULT_TYPE):
     team_name = ' '.join(context.args)
     await update.message.chat.send_action(action="typing")
     
-    try:
-        # Search for the team first
-        search_response = requests.get(f"{API_URL}/search/teams", params={'q': team_name})
-        if search_response.status_code != 200 or not search_response.json().get('results'):
-            await update.message.reply_text(f"Could not find team: {team_name}")
-            return
-        
-        team_id = search_response.json()['results'][0]['id']
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            # Search for the team first
+            search_response = await client.get(f"{API_URL}/search/teams", params={'q': team_name})
+            if search_response.status_code != 200 or not search_response.json().get('results'):
+                await update.message.reply_text(f"Could not find team: {team_name}")
+                return
 
-        # Get team details
-        detail_response = requests.get(f"{API_URL}/teams/{team_id}/detail")
-        if detail_response.status_code != 200:
-            await update.message.reply_text(f"Could not get details for team: {team_name}")
-            return
+            team_id = search_response.json()['results'][0]['id']
+
+            # Get team details
+            detail_response = await client.get(f"{API_URL}/teams/{team_id}/detail")
+            if detail_response.status_code != 200:
+                await update.message.reply_text(f"Could not get details for team: {team_name}")
+                return
             
         data = detail_response.json()
         message = f"""
@@ -163,20 +186,21 @@ async def standings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     league_name = ' '.join(context.args)
     await update.message.chat.send_action(action="typing")
 
-    try:
-        # Search for league
-        search_response = requests.get(f"{API_URL}/search/leagues", params={'q': league_name})
-        if search_response.status_code != 200 or not search_response.json().get('results'):
-            await update.message.reply_text(f"Could not find league: {league_name}")
-            return
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            # Search for league
+            search_response = await client.get(f"{API_URL}/search/leagues", params={'q': league_name})
+            if search_response.status_code != 200 or not search_response.json().get('results'):
+                await update.message.reply_text(f"Could not find league: {league_name}")
+                return
 
-        league_id = search_response.json()['results'][0]['id']
+            league_id = search_response.json()['results'][0]['id']
 
-        # Get standings
-        standings_response = requests.get(f"{API_URL}/standings/{league_id}")
-        if standings_response.status_code != 200:
-            await update.message.reply_text(f"Could not get standings for league: {league_name}")
-            return
+            # Get standings
+            standings_response = await client.get(f"{API_URL}/standings/{league_id}")
+            if standings_response.status_code != 200:
+                await update.message.reply_text(f"Could not get standings for league: {league_name}")
+                return
 
         data = standings_response.json()
         
