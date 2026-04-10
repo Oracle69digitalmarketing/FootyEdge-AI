@@ -25,9 +25,7 @@ class FootyEdgePredictor:
     def __init__(self, supabase_url: str = None, supabase_key: str = None, 
                  rapidapi_key: str = None):
         self.rapidapi_key = rapidapi_key or os.environ.get('RAPIDAPI_KEY')
-        self.supabase_url = supabase_url or os.environ.get('SUPABASE_URL')
-        self.supabase_key = supabase_key or os.environ.get('SUPABASE_KEY')
-        self.supabase = None # Will be initialized async if needed
+        self.supabase = self._init_supabase(supabase_url, supabase_key)
         self.football_client = FootballAPIClient(api_key=self.rapidapi_key)
         
         self.cache = {}
@@ -57,9 +55,8 @@ class FootyEdgePredictor:
 
         # 1. Try fetching from Supabase (if we have a team ID mapping)
         api_matches = []
-        supabase = await self._ensure_supabase()
-        if supabase:
-             team_res = await supabase.table("teams").select("id").eq("name", team_name).execute()
+        if self.supabase:
+             team_res = self.supabase.table("teams").select("id").eq("name", team_name).execute()
              if team_res.data:
                  team_id = team_res.data[0]['id']
                  try:
@@ -69,6 +66,11 @@ class FootyEdgePredictor:
                              api_matches.append(self._parse_api_match(f, team_name))
                  except Exception as e:
                      logger.error(f"API fixtures fetch failed for team {team_id}: {e}")
+                 res = await self.football_client.get_team_fixtures(team_id, last=limit)
+                 if res.get('response'):
+                     for f in res['response']:
+                         api_matches.append(self._parse_api_match(f, team_name))
+
 
         # 2. Try fetching from Local Data
         local_matches = self._load_local_matches(team_name)
@@ -87,6 +89,13 @@ class FootyEdgePredictor:
                              all_matches.append(self._parse_api_match(f, team_name))
              except Exception as e:
                  logger.error(f"API fallback search/fixtures failed for team {team_name}: {e}")
+             search_res = await self.football_client.search_teams(team_name)
+             if search_res.get('response'):
+                 team_id = search_res['response'][0]['team']['id']
+                 res = await self.football_client.get_team_fixtures(team_id, last=limit)
+                 if res.get('response'):
+                     for f in res['response']:
+                         all_matches.append(self._parse_api_match(f, team_name)
 
         if not all_matches: raise ValueError(f"Could not find any historical match data for {team_name}.")
 

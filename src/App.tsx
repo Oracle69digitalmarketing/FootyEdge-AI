@@ -397,9 +397,23 @@ export default function App() {
   const handleSeedDatabase = useCallback(async () => {
     try {
       flashMessage(setError, null);
-      const response = await fetch('/api/admin/seed-teams', { method: 'POST' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Failed to seed teams');
+      if (!supabase) throw new Error("Supabase not connected");
+
+      const initialTeams = [
+        { name: 'Arsenal', elo_rating: 1880, attack_strength: 2.1, defense_strength: 0.7, form_rating: 0.9, league_name: 'Premier League' },
+        { name: 'Manchester City', elo_rating: 1950, attack_strength: 2.4, defense_strength: 0.8, form_rating: 0.8, league_name: 'Premier League' },
+        { name: 'Liverpool', elo_rating: 1900, attack_strength: 2.2, defense_strength: 0.9, form_rating: 0.7, league_name: 'Premier League' },
+        { name: 'Real Madrid', elo_rating: 1920, attack_strength: 2.3, defense_strength: 1.0, form_rating: 0.6, league_name: 'La Liga' },
+        { name: 'Bayern Munich', elo_rating: 1850, attack_strength: 2.5, defense_strength: 1.1, form_rating: 0.5, league_name: 'Bundesliga' },
+      ];
+
+      const { error: seedError } = await supabase.from('teams').upsert(initialTeams, { onConflict: 'name' });
+      if (seedError) {
+        if (seedError.message.includes('relation "public.teams" does not exist')) {
+          throw new Error('Database table "teams" not found. Please run the SQL schema in your Supabase SQL Editor first.');
+        }
+        throw seedError;
+      }
       
       await fetchTeams();
       flashMessage(setSuccess, `Database seeded successfully with ${data.seeded_count} teams.`);
