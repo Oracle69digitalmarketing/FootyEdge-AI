@@ -13,7 +13,6 @@ from pathlib import Path
 
 from agents.team_strength import TeamStrengthAgent
 from agents.tactical_agent import TacticalAgent
-from agents.player_impact import PlayerImpactAgent
 from agents.models import TeamStrength, ValueBet
 from football_api_client import FootballAPIClient
 
@@ -25,27 +24,22 @@ class FootyEdgePredictor:
     def __init__(self, supabase_url: str = None, supabase_key: str = None, 
                  rapidapi_key: str = None):
         self.rapidapi_key = rapidapi_key or os.environ.get('RAPIDAPI_KEY')
-        self.supabase_url = supabase_url or os.environ.get('SUPABASE_URL')
-        self.supabase_key = supabase_key or os.environ.get('SUPABASE_KEY')
-        self.supabase = None # Will be initialized async if needed
+        self.supabase = self._init_supabase(supabase_url, supabase_key)
         self.football_client = FootballAPIClient(api_key=self.rapidapi_key)
         
         self.cache = {}
         self.cache_ttl = 3600
-        self.team_strength_agent = TeamStrengthAgent(supabase_client=None)
+        self.team_strength_agent = TeamStrengthAgent(supabase_client=self.supabase)
         self.tactical_agent = TacticalAgent()
-        self.player_impact_agent = PlayerImpactAgent(football_client=self.football_client, team_agent=self.team_strength_agent)
         self.local_data_path = Path("data/football.json")
 
-    async def _ensure_supabase(self):
-        if self.supabase: return self.supabase
-        if self.supabase_url and self.supabase_key:
+    def _init_supabase(self, url, key):
+        # ... (same as before)
+        supabase_url = url or os.environ.get('SUPABASE_URL')
+        supabase_key = key or os.environ.get('SUPABASE_KEY')
+        if supabase_url and supabase_key:
             try:
-                from supabase import acreate_client
-                self.supabase = await acreate_client(self.supabase_url, self.supabase_key)
-                self.team_strength_agent.supabase = self.supabase
-                logger.info("Supabase connected successfully (async)")
-                return self.supabase
+                from supabase import create_client; logger.info("Supabase connected successfully"); return create_client(supabase_url, supabase_key)
             except Exception as e:
                 logger.error(f"Failed to connect to Supabase: {e}")
         return None
@@ -57,11 +51,11 @@ class FootyEdgePredictor:
 
         # 1. Try fetching from Supabase (if we have a team ID mapping)
         api_matches = []
-        supabase = await self._ensure_supabase()
-        if supabase:
-             team_res = await supabase.table("teams").select("id").eq("name", team_name).execute()
+        if self.supabase:
+             team_res = self.supabase.table("teams").select("id").eq("name", team_name).execute()
              if team_res.data:
                  team_id = team_res.data[0]['id']
+<<<<<<< HEAD
                  try:
                      res = await self.football_client.get_team_fixtures(team_id, last=limit)
                      if res and res.get('response'):
@@ -69,6 +63,12 @@ class FootyEdgePredictor:
                              api_matches.append(self._parse_api_match(f, team_name))
                  except Exception as e:
                      logger.error(f"API fixtures fetch failed for team {team_id}: {e}")
+=======
+                 res = await self.football_client.get_team_fixtures(team_id, last=limit)
+                 if res.get('response'):
+                     for f in res['response']:
+                         api_matches.append(self._parse_api_match(f, team_name))
+>>>>>>> main
 
         # 2. Try fetching from Local Data
         local_matches = self._load_local_matches(team_name)
@@ -77,6 +77,7 @@ class FootyEdgePredictor:
         all_matches = api_matches + local_matches
         if not all_matches:
              # Fallback: search for team and then get matches
+<<<<<<< HEAD
              try:
                  search_res = await self.football_client.search_teams(team_name)
                  if search_res and search_res.get('response'):
@@ -87,6 +88,15 @@ class FootyEdgePredictor:
                              all_matches.append(self._parse_api_match(f, team_name))
              except Exception as e:
                  logger.error(f"API fallback search/fixtures failed for team {team_name}: {e}")
+=======
+             search_res = await self.football_client.search_teams(team_name)
+             if search_res.get('response'):
+                 team_id = search_res['response'][0]['team']['id']
+                 res = await self.football_client.get_team_fixtures(team_id, last=limit)
+                 if res.get('response'):
+                     for f in res['response']:
+                         all_matches.append(self._parse_api_match(f, team_name))
+>>>>>>> main
 
         if not all_matches: raise ValueError(f"Could not find any historical match data for {team_name}.")
 
@@ -184,12 +194,8 @@ class FootyEdgePredictor:
                 if not all([fixture_id, home_team, away_team]):
                     continue
 
-                # Fetch odds (SportyBet ID 53 if available, or fallback)
-                odds = await self._fetch_odds_for_fixture(fixture_id, bookmaker_id=53)
-                if not odds:
-                    # Fallback to general market odds
-                    odds = await self._fetch_odds_for_fixture(fixture_id, bookmaker_id=8) # Bet365
-
+                # Fetch odds (assuming Bet365 bookmaker ID 8)
+                odds = await self._fetch_odds_for_fixture(fixture_id, bookmaker_id=8)
                 if not odds:
                     continue
 
@@ -303,17 +309,8 @@ class FootyEdgePredictor:
         home_matches = await self.get_team_matches(home_team)
         away_matches = await self.get_team_matches(away_team)
         
-        _, home_league = self._get_team_league_file(home_team)
-        _, away_league = self._get_team_league_file(away_team)
-
-        home_strength = await self.team_strength_agent.assess(home_team, home_matches, league_name=home_league)
-        away_strength = await self.team_strength_agent.assess(away_team, away_matches, league_name=away_league)
-
-        # --- Player Impact (Heuristic Adjustment) ---
-        # Adjust base ratings based on player impact data if available
-        # This is a simplified version that could be expanded with real-time lineup scraping
-        home_adj = 0
-        away_adj = 0
+        home_strength = await self.team_strength_agent.assess(home_team, home_matches)
+        away_strength = await self.team_strength_agent.assess(away_team, away_matches)
 
         # --- Tactical Analysis ---
         tactical_analysis = self.tactical_agent.analyze_matchup(home_strength, away_strength)
@@ -361,16 +358,15 @@ class FootyEdgePredictor:
         value_bets = self._find_value_bets(prediction_data["probabilities"], odds)
 
         # Save to database
-        supabase = await self._ensure_supabase()
-        if supabase:
+        if self.supabase:
             try:
                 # Find best bet to store in predictions table
                 best_bet = max(value_bets, key=lambda x: x.ev) if value_bets else None
                 
-                # Async save data
-                prediction_id = await self._save_prediction_to_db(prediction_data, best_bet)
+                # Synchronously save data
+                prediction_id = self._save_prediction_to_db(prediction_data, best_bet)
                 if prediction_id and value_bets:
-                    await self._save_value_bets_to_db(value_bets, prediction_id, home_team, away_team)
+                    self._save_value_bets_to_db(value_bets, prediction_id, home_team, away_team)
 
             except Exception as e:
                 logger.error(f"Error saving prediction to database: {e}")
@@ -379,9 +375,8 @@ class FootyEdgePredictor:
                 "home_xg": prediction_data["home_xg"], "away_xg": prediction_data["away_xg"],
                 "key_factors": prediction_data["key_factors"], "value_bets": [bet.__dict__ for bet in value_bets]}
 
-    async def _save_prediction_to_db(self, prediction_data: Dict, best_bet: ValueBet = None) -> int:
-        supabase = await self._ensure_supabase()
-        if not supabase: return None
+    def _save_prediction_to_db(self, prediction_data: Dict, best_bet: ValueBet = None) -> int:
+        if not self.supabase: return None
 
         record = {
             "home_team": prediction_data['home_team'],
@@ -404,7 +399,7 @@ class FootyEdgePredictor:
 
         try:
             # Use '.execute()' to run the query
-            response = await supabase.table("predictions").insert(record).execute()
+            response = self.supabase.table("predictions").insert(record).execute()
             if response.data:
                 logger.info("Prediction saved to database.")
                 return response.data[0]['id']
@@ -412,9 +407,8 @@ class FootyEdgePredictor:
             logger.error(f"Supabase insert failed for prediction: {e}")
         return None
 
-    async def _save_value_bets_to_db(self, value_bets: List[ValueBet], prediction_id: int, home_team: str, away_team: str):
-        supabase = await self._ensure_supabase()
-        if not supabase: return
+    def _save_value_bets_to_db(self, value_bets: List[ValueBet], prediction_id: int, home_team: str, away_team: str):
+        if not self.supabase: return
 
         records = []
         for bet in value_bets:
@@ -434,7 +428,7 @@ class FootyEdgePredictor:
         
         try:
             # Use '.execute()' to run the query
-            await supabase.table("value_bets").insert(records).execute()
+            self.supabase.table("value_bets").insert(records).execute()
             logger.info(f"{len(records)} value bets saved to database.")
         except Exception as e:
             logger.error(f"Supabase insert failed for value_bets: {e}")
