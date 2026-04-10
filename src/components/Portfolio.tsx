@@ -31,7 +31,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ bankroll, userBets }) => {
         <StatCard title="Active Bets" value={userBets.filter(b => b.status === 'pending').length.toString()} icon={<Clock className="text-blue-500" />} />
         <StatCard title="Total Stake" value={`₦${userBets.reduce((acc, b) => acc + b.stake, 0).toFixed(2)}`} icon={<DollarSign className="text-green-500" />} />
         <StatCard title="Win Rate" value={`${((userBets.filter(b => b.status === 'won').length / (userBets.filter(b => b.status !== 'pending').length || 1)) * 100).toFixed(1)}%`} icon={<TrendingUpIcon className="text-orange-500" />} />
-        <StatCard title="Net Profit" value={`₦${(bankroll - 10000).toFixed(2)}`} icon={<Wallet className="text-purple-500" />} />
+        <StatCard title="Net Profit" value={`₦${(bankroll - 1000).toFixed(2)}`} icon={<Wallet className="text-purple-500" />} />
       </div>
 
       <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
