@@ -9,27 +9,15 @@ API_URL = os.environ.get('API_URL', 'http://localhost:8000/api')
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "⚽ *FootyEdge AI*
-
-"
-        "AI-powered football betting intelligence.
-"
-        "Predict matches, find value bets.
-
-"
-        "Commands:
-"
-        "/predict Man City vs Arsenal
-"
-        "/value
-"
-        "/team <team_name>
-"
-        "/standings <league_name>
-"
-        "/help
-
-"
+        "⚽ *FootyEdge AI*\n\n"
+        "AI-powered football betting intelligence.\n"
+        "Predict matches, find value bets.\n\n"
+        "Commands:\n"
+        "/predict Man City vs Arsenal\n"
+        "/value\n"
+        "/team <team_name>\n"
+        "/standings <league_name>\n"
+        "/help\n\n"
         "Powered by Oracle69 Systems",
         parse_mode='Markdown'
     )
@@ -80,8 +68,8 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
             if response.status_code == 200:
-            data = response.json()
-            message = f"""
+                data = response.json()
+                message = f"""
 ⚽ *{data['home_team']} vs {data['away_team']}*
 
 📊 *Prediction:*
@@ -93,19 +81,16 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🏠 {data['home_xg']:.2f}
 ✈️ {data['away_xg']:.2f}
 """
-            if data.get('value_bets'):
-                message += "
-
-💰 *Value Bets Found:*"
-                for bet in data['value_bets']:
-                    message += f"
-- {bet['market_name']} {bet['selection']} @ {bet['odds']:.2f} (EV: +{bet['ev']:.1%})"
-            
-            await update.message.reply_text(message, parse_mode='Markdown')
-        else:
-            await update.message.reply_text(f"Error getting prediction: {response.text}")
-    except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)}")
+                if data.get('value_bets'):
+                    message += "\n\n💰 *Value Bets Found:*"
+                    for bet in data['value_bets']:
+                        message += f"\n- {bet['market_name']} {bet['selection']} @ {bet['odds']:.2f} (EV: +{bet['ev']:.1%})"
+                
+                await update.message.reply_text(message, parse_mode='Markdown')
+            else:
+                await update.message.reply_text(f"Error getting prediction: {response.text}")
+        except Exception as e:
+            await update.message.reply_text(f"Error: {str(e)}")
 
 async def value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(action="typing")
@@ -116,26 +101,20 @@ async def value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response = await client.get(f"{API_URL}/scan-value-bets")
 
             if response.status_code == 200:
-            data = response.json()
-            if data:
-                message = "💰 *Live Value Bets*
-
-"
-                for bet in data:
-                    message += f"⚽ *{bet['home_team']} vs {bet['away_team']}*
-"
-                    message += f"  - {bet['market_name']} {bet['selection']} @ {bet['odds']:.2f}
-"
-                    message += f"    EV: +{bet['ev']:.1%}, Stake: {bet['recommended_stake']}
-
-"
-                await update.message.reply_text(message, parse_mode='Markdown')
+                data = response.json()
+                if data:
+                    message = "💰 *Live Value Bets*\n\n"
+                    for bet in data:
+                        message += f"⚽ *{bet['home_team']} vs {bet['away_team']}*\n"
+                        message += f"  - {bet['market_name']} {bet['selection']} @ {bet['odds']:.2f}\n"
+                        message += f"    EV: +{bet['ev']:.1%}, Stake: {bet['recommended_stake']}\n\n"
+                    await update.message.reply_text(message, parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("No value bets found at the moment.")
             else:
-                await update.message.reply_text("No value bets found at the moment.")
-        else:
-            await update.message.reply_text("Error fetching value bets.")
-    except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)}")
+                await update.message.reply_text("Error fetching value bets.")
+        except Exception as e:
+            await update.message.reply_text(f"Error: {str(e)}")
 
 async def team(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -161,8 +140,8 @@ async def team(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"Could not get details for team: {team_name}")
                 return
             
-        data = detail_response.json()
-        message = f"""
+            data = detail_response.json()
+            message = f"""
 *Team: {data['name']}*
 *Country:* {data['country']}
 *League:* {data.get('league', 'N/A')}
@@ -172,10 +151,10 @@ async def team(update: Update, context: ContextTypes.DEFAULT_TYPE):
 - Attack: {data.get('attack_strength', 'N/A')}
 - Defense: {data.get('defense_strength', 'N/A')}
 """
-        await update.message.reply_text(message, parse_mode='Markdown')
-        
-    except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)}")
+            await update.message.reply_text(message, parse_mode='Markdown')
+            
+        except Exception as e:
+            await update.message.reply_text(f"Error: {str(e)}")
 
 
 async def standings(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -202,53 +181,35 @@ async def standings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"Could not get standings for league: {league_name}")
                 return
 
-        data = standings_response.json()
-        
-        message = f"*Standings for {data.get('name', league_name)}*
+            data = standings_response.json()
+            
+            message = f"*Standings for {data.get('name', league_name)}*\n\n"
+            message += "```\n"
+            message += "P | Team              | P | W | D | L | GD | Pts\n"
+            message += "--------------------------------------------------\n"
+            for team in data.get('standings', [])[:10]: # Top 10
+                message += (f"{team['position']:<2} | {team['team']['name']:<17} | "
+                            f"{team['playedGames']:<2} | {team['won']:<2} | {team['draw']:<2} | {team['lost']:<2} | "
+                            f"{team['goalDifference']:<3} | {team['points']}\n")
+            message += "```"
 
-"
-        message += "```
-"
-        message += "P | Team              | P | W | D | L | GD | Pts
-"
-        message += "--------------------------------------------------
-"
-        for team in data.get('standings', [])[:10]: # Top 10
-            message += (f"{team['position']:<2} | {team['team']['name']:<17} | "
-                        f"{team['playedGames']:<2} | {team['won']:<2} | {team['draw']:<2} | {team['lost']:<2} | "
-                        f"{team['goalDifference']:<3} | {team['points']}
-")
-        message += "```"
+            await update.message.reply_text(message, parse_mode='Markdown')
 
-        await update.message.reply_text(message, parse_mode='Markdown')
-
-    except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)}")
+        except Exception as e:
+            await update.message.reply_text(f"Error: {str(e)}")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📖 *FootyEdge AI Help*
-
-"
-        "*Commands:*
-"
-        "/predict Team1 vs Team2 - Get match prediction
-"
-        "/value - Today's value bets
-"
-        "/team <team_name> - Get team statistics
-"
-        "/standings <league_name> - Get league standings
-"
-        "/start - Welcome
-"
-        "/help - This message
-
-"
-        "*Example:* `/predict Manchester City vs Arsenal`
-
-"
+        "📖 *FootyEdge AI Help*\n\n"
+        "*Commands:*\n"
+        "/predict Team1 vs Team2 - Get match prediction\n"
+        "/value - Today's value bets\n"
+        "/team <team_name> - Get team statistics\n"
+        "/standings <league_name> - Get league standings\n"
+        "/start - Welcome\n"
+        "/help - This message\n\n"
+        "*Example:* `/predict Manchester City vs Arsenal`\n\n"
         "Powered by Oracle69 Systems",
         parse_mode='Markdown'
     )

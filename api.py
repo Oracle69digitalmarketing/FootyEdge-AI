@@ -27,14 +27,11 @@ supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_KEY")
 rapidapi_key = os.environ.get("RAPIDAPI_KEY")
 
-async def get_supabase() -> Optional[AsyncClient]:
-    if not supabase_url or not supabase_key:
-        logger.warning("Supabase environment variables not found. Database client will not be available.")
-        return None
-    return await acreate_client(supabase_url, supabase_key)
-
-# Global supabase client (to be initialized on startup)
-supabase: Optional[AsyncClient] = None
+if not supabase_url or not supabase_key:
+    logger.warning("Supabase environment variables not found. Database client will not be available.")
+    supabase = None
+else:
+    supabase = create_client(supabase_url, supabase_key)
 
 if not rapidapi_key:
     logger.warning("RapidAPI key not found. Football API client will not be available.")
@@ -43,11 +40,6 @@ else:
     football_client = FootballAPIClient()
 
 predictor = FootyEdgePredictor()
-
-@app.on_event("startup")
-async def startup_event():
-    global supabase
-    supabase = await get_supabase()
 
 @app.middleware("http")
 async def log_requests(request, call_next):
@@ -155,24 +147,12 @@ async def analyze_bet(request: AnalyzeBetRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# Cache for scan results to prevent redundant expensive calls
-value_bet_cache = {"data": [], "last_scan": None}
-
 @router.get("/scan-value-bets", summary="Scans for all available value bets in upcoming matches.")
 async def scan_value_bets():
-    global value_bet_cache
     if not football_client:
         raise HTTPException(status_code=503, detail="Football API not configured.")
-
-    # Return cached data if fresh (last 15 mins)
-    if value_bet_cache["last_scan"] and (datetime.now() - value_bet_cache["last_scan"]).seconds < 900:
-        return value_bet_cache["data"]
-
     try:
-        results = await predictor.find_all_value_bets()
-        value_bet_cache["data"] = results
-        value_bet_cache["last_scan"] = datetime.now()
-        return results
+        return await predictor.find_all_value_bets()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -182,7 +162,7 @@ async def scan_value_bets():
 async def recent_predictions(limit: int = 10):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    response = await supabase.table("predictions").select("*").order("created_at", desc=True).limit(limit).execute()
+    response = supabase.table("predictions").select("*").order("created_at", desc=True).limit(limit).execute()
     return response.data or []
 
 
@@ -191,11 +171,9 @@ async def get_value_bets(status: str = 'active'):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
     query = supabase.table("value_bets").select("*").order("ev", desc=True)
-    if status == 'live':
-        query = query.eq("status", "active").filter("match_timestamp", "gt", datetime.now().isoformat())
-    elif status != 'all':
+    if status != 'all':
         query = query.eq("status", status)
-    response = await query.execute()
+    response = query.execute()
     return response.data or []
 
 
@@ -205,67 +183,13 @@ async def update_value_bet_status(bet_id: str, request: UpdateBetStatusRequest):
         raise HTTPException(status_code=503, detail="Database not configured.")
     if request.status not in ['won', 'lost']:
         raise HTTPException(status_code=400, detail="Invalid status. Must be 'won' or 'lost'.")
-    response = await supabase.table("value_bets").update({"status": request.status}).eq("id", bet_id).execute()
+    response = supabase.table("value_bets").update({"status": request.status}).eq("id", bet_id).execute()
     if not response.data:
         raise HTTPException(status_code=404, detail=f"Bet with id {bet_id} not found.")
     return response.data
 
 
-@router.get("/teams/{team_name}", summary="Get detailed team statistics and history")
-async def team_stats(team_name: str):
-    if not supabase:
-        raise HTTPException(status_code=503, detail="Database not configured.")
-    team_response = await supabase.table("teams").select("*").eq("name", team_name).single().execute()
-    if not team_response.data:
-        raise HTTPException(status_code=404, detail=f"Team '{team_name}' not found.")
-    team_data = team_response.data
-    history_response = await supabase.table("team_ratings_history").select(
-        "rating_date, elo_rating, attack_strength, defense_strength"
-    ).eq("team_id", team_data['id']).order("rating_date", desc=True).limit(30).execute()
-    team_data['ratings_history'] = history_response.data or []
-    return team_data
-
-
 # --- Premium Endpoints ---
-@router.get("/premium/performance", summary="Get premium signal performance metrics")
-async def get_premium_performance():
-    if not supabase:
-        raise HTTPException(status_code=503, detail="Database not configured.")
-    
-    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
-    bets_response = await supabase.table("value_bets").select("stake_units, status, odds").filter(
-        "created_at", "gte", thirty_days_ago
-    ).in_("status", ["won", "lost"]).execute()
-    
-    total_staked = 0
-    net_profit = 0
-    if bets_response.data:
-        for bet in bets_response.data:
-            stake = bet.get('stake_units', 1)
-            total_staked += stake
-            if bet['status'] == 'won':
-                net_profit += (stake * bet['odds']) - stake
-            else:
-                net_profit -= stake
-    
-    roi_30d = (net_profit / total_staked) * 100 if total_staked > 0 else 0
-    
-    win_rate_response = await supabase.table("value_bets").select("status").in_("status", ["won", "lost"]).execute()
-    won_bets = [b for b in win_rate_response.data if b['status'] == 'won'] if win_rate_response.data else []
-    win_rate = (len(won_bets) / len(win_rate_response.data)) * 100 if win_rate_response.data else 0
-    
-    predictions_response = await supabase.table("predictions").select("confidence").execute()
-    avg_confidence = 0
-    if predictions_response.data:
-        avg_confidence = sum([p['confidence'] for p in predictions_response.data]) / len(predictions_response.data)
-    
-    return {
-        "avg_confidence": round(avg_confidence * 100, 2),
-        "roi_30d": round(roi_30d, 2),
-        "win_rate": round(win_rate, 2)
-    }
-
-
 @router.get("/premium/telegram-config", summary="Get premium Telegram alert configuration")
 async def get_premium_telegram_config():
     return {
@@ -279,7 +203,7 @@ async def get_premium_telegram_config():
 async def get_premium_upcoming_matches(limit: int = 5):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    response = await supabase.table("value_bets").select("*").eq("status", "active").order("ev", desc=True).limit(limit).execute()
+    response = supabase.table("value_bets").select("*").eq("status", "active").order("ev", desc=True).limit(limit).execute()
     return response.data or []
 
 
@@ -287,73 +211,85 @@ async def get_premium_upcoming_matches(limit: int = 5):
 async def subscribe(request: SubscribeRequest):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    response = await supabase.table("profiles").update({"is_premium": True}).eq("id", request.userId).execute()
+    response = supabase.table("profiles").update({"is_premium": True}).eq("id", request.userId).execute()
     if not response.data:
         raise HTTPException(status_code=404, detail=f"User with id {request.userId} not found.")
     return {"success": True, "message": f"Successfully subscribed to {request.plan}!"}
 
 
 # --- Admin Endpoints ---
-@router.post("/admin/seed-teams", summary="Seed database with essential teams")
-async def seed_teams():
-    if not supabase:
-        raise HTTPException(status_code=503, detail="Database not configured.")
-
-    initial_teams = [
-        { "id": 42, "name": 'Arsenal', "elo_rating": 1880, "attack_strength": 2.1, "defense_strength": 0.7, "form_rating": 0.9, "league_name": 'Premier League' },
-        { "id": 50, "name": 'Manchester City', "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8, "form_rating": 0.8, "league_name": 'Premier League' },
-        { "id": 40, "name": 'Liverpool', "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.9, "form_rating": 0.7, "league_name": 'Premier League' },
-        { "id": 541, "name": 'Real Madrid', "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 1.0, "form_rating": 0.6, "league_name": 'La Liga' },
-        { "id": 157, "name": 'Bayern Munich', "elo_rating": 1850, "attack_strength": 2.5, "defense_strength": 1.1, "form_rating": 0.5, "league_name": 'Bundesliga' },
-    ]
-
-    try:
-        res = await supabase.table("teams").upsert(initial_teams).execute()
-        return {"status": "success", "seeded_count": len(res.data)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Seed failed: {e}")
-
-
 @router.post("/admin/sync-teams", summary="Sync teams from external API to Supabase")
 async def sync_teams():
     if not football_client or not supabase:
         raise HTTPException(status_code=503, detail="Clients not configured.")
     
-    leagues_data = await football_client.list_leagues()
-    if not leagues_data or 'response' not in leagues_data:
-        raise HTTPException(status_code=500, detail="Failed to fetch leagues from external API.")
+    # Predefined major league IDs if list_leagues is empty or limited
+    major_league_ids = [39, 140, 78, 135, 61, 94, 88, 144] # PL, La Liga, Bundesliga, Serie A, Ligue 1, etc.
     
-    all_teams = []
-    for league_item in leagues_data['response']:
-        league_id = league_item.get('league', {}).get('id')
-        league_name = league_item.get('league', {}).get('name')
-        country = league_item.get('country', {}).get('name')
-        if not league_id:
-            continue
+    try:
+        leagues_data = await football_client.list_leagues()
+        league_items = leagues_data.get('response', [])
         
-        logger.info(f"Fetching teams for league: {league_name} ({league_id})")
-        teams_data = await football_client.get_teams_by_league(league_id)
-        if teams_data and 'response' in teams_data:
-            for team_item in teams_data['response']:
-                team_info = team_item.get('team', {})
-                if team_info.get('id') and team_info.get('name'):
-                    all_teams.append({
-                        "id": team_info['id'],
-                        "name": team_info['name'],
-                        "country": team_info.get('country'),
-                        "logo_url": team_info.get('logo'),
-                        "league_name": league_name,
-                    })
-        await asyncio.sleep(1)
+        # If API returns many leagues, we might want to filter or just use major ones
+        # For now, let's ensure we at least get the major ones
+        found_league_ids = [item.get('league', {}).get('id') for item in league_items if item.get('league', {}).get('id')]
+        
+        # Combine found leagues with our major list to be sure
+        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20] # Limit to 20 for safety/performance
+        
+        all_teams = []
+        for league_id in leagues_to_sync:
+            logger.info(f"Fetching teams for league ID: {league_id}")
+            teams_data = await football_client.get_teams_by_league(league_id)
+            if teams_data and 'response' in teams_data:
+                for team_item in teams_data['response']:
+                    team_info = team_item.get('team', {})
+                    if team_info.get('id') and team_info.get('name'):
+                        all_teams.append({
+                            "id": team_info['id'],
+                            "name": team_info['name'],
+                            "country": team_info.get('country'),
+                            "logo_url": team_info.get('logo'),
+                            "league_name": team_item.get('league', {}).get('name', 'Unknown'),
+                        })
+            await asyncio.sleep(0.5) # Slight delay
+        
+        if not all_teams:
+            raise HTTPException(status_code=500, detail="No teams found from external API.")
+        
+        # Filter duplicates just in case
+        unique_teams = {t['id']: t for t in all_teams}.values()
+        
+        upsert_response = supabase.table("teams").upsert(list(unique_teams)).execute()
+        if upsert_response.data:
+            return {"status": "success", "synced_count": len(upsert_response.data)}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to upsert teams to Supabase.")
+    except Exception as e:
+        logger.error(f"Sync teams failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+
+@router.post("/admin/seed-database", summary="Seed the database with initial data")
+async def seed_database():
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
     
-    if not all_teams:
-        raise HTTPException(status_code=500, detail="No teams found from external API.")
+    initial_teams = [
+        {"id": 33, "name": "Manchester United", "country": "England", "league_name": "Premier League", "elo_rating": 1850, "attack_strength": 2.1, "defense_strength": 0.9},
+        {"id": 34, "name": "Newcastle", "country": "England", "league_name": "Premier League", "elo_rating": 1800, "attack_strength": 2.0, "defense_strength": 1.0},
+        {"id": 40, "name": "Liverpool", "country": "England", "league_name": "Premier League", "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 0.8},
+        {"id": 42, "name": "Arsenal", "country": "England", "league_name": "Premier League", "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.7},
+        {"id": 50, "name": "Manchester City", "country": "England", "league_name": "Premier League", "elo_rating": 1980, "attack_strength": 2.5, "defense_strength": 0.6},
+        {"id": 529, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "elo_rating": 1880, "attack_strength": 2.2, "defense_strength": 0.9},
+        {"id": 541, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8},
+    ]
     
-    upsert_response = await supabase.table("teams").upsert(all_teams).execute()
-    if upsert_response.data:
-        return {"status": "success", "synced_count": len(upsert_response.data)}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to upsert teams to Supabase.")
+    try:
+        response = supabase.table("teams").upsert(initial_teams).execute()
+        return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
 
 
 @router.get("/admin/stats", summary="Get admin dashboard statistics")
@@ -361,13 +297,13 @@ async def get_admin_stats():
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
     
-    users_response = await supabase.table("profiles").select("id", count="exact").execute()
-    premium_users_response = await supabase.table("profiles").select("id", count="exact").eq("is_premium", True).execute()
+    users_response = supabase.table("profiles").select("id", count="exact").execute()
+    premium_users_response = supabase.table("profiles").select("id", count="exact").eq("is_premium", True).execute()
     
     total_premium = premium_users_response.count or 0
     estimated_daily_revenue = (total_premium * 35000) / 30
     
-    logs_response = await supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
+    logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
     if logs_response.data:
         success_count = sum(log['success'] for log in logs_response.data)
         bot_health = (success_count / len(logs_response.data)) * 100
@@ -386,7 +322,7 @@ async def get_admin_stats():
 async def get_admin_activity(limit: int = 10):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    response = await supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
+    response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
     return response.data or []
 
 
@@ -398,14 +334,14 @@ async def get_dashboard_stats():
 
     if supabase:
         try:
-            preds_res = await supabase.table("predictions").select("id", count="exact").execute()
+            preds_res = supabase.table("predictions").select("id", count="exact").execute()
             total_preds = preds_res.count or 0
 
-            value_res = await supabase.table("value_bets").select("id", count="exact").eq("status", "active").execute()
+            value_res = supabase.table("value_bets").select("id", count="exact").eq("status", "active").execute()
             active_value = value_res.count or 0
 
             # Calculate accuracy from settled predictions
-            settled_res = await supabase.table("predictions").select("actual_result").not_.is_("actual_result", "null").execute()
+            settled_res = supabase.table("predictions").select("actual_result").not_.is_("actual_result", "null").execute()
             if settled_res.data:
                 # Mock logic for accuracy calculation until actual results are reliably piped
                 accuracy = 85.0 + (len(settled_res.data) % 10)
@@ -458,7 +394,7 @@ async def telegram_broadcast(request: TelegramBroadcastRequest):
 async def get_user_bets(user_id: str):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    response = await supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    response = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
     return response.data or []
 
 
@@ -477,7 +413,7 @@ async def record_bet(request: BetRecordRequest):
         "status": "pending",
         "created_at": datetime.now().isoformat()
     }
-    response = await supabase.table("user_bets").insert(bet_data).execute()
+    response = supabase.table("user_bets").insert(bet_data).execute()
     if response.data:
         return {"success": True, "message": "Bet recorded successfully!", "data": response.data[0]}
     else:
@@ -499,7 +435,7 @@ async def record_acca(request: AccaRecordRequest):
         "created_at": datetime.now().isoformat(),
         "status": "pending"
     }
-    response = await supabase.table("accas").insert(acca_data).execute()
+    response = supabase.table("accas").insert(acca_data).execute()
     if response.data:
         return {"success": True, "message": "Acca recorded successfully!", "data": response.data[0]}
     else:
