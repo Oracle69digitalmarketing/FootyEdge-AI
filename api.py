@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_KEY")
 rapidapi_key = os.environ.get("RAPIDAPI_KEY")
+fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY")
+sportradar_key = os.environ.get("SPORTRADAR_API_KEY")
 
 if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables not found. Database client will not be available.")
@@ -33,8 +35,8 @@ if not supabase_url or not supabase_key:
 else:
     supabase = create_client(supabase_url, supabase_key)
 
-if not rapidapi_key:
-    logger.warning("RapidAPI key not found. Football API client will not be available.")
+if not any([rapidapi_key, fd_org_key, sportradar_key]):
+    logger.warning("No Football Data API keys found. Football API client will not be available.")
     football_client = None
 else:
     football_client = FootballAPIClient()
@@ -46,9 +48,13 @@ async def log_requests(request, call_next):
     logger.info(f"API Request: {request.method} {request.url.path}")
     return await call_next(request)
 
-if not os.environ.get("RAPIDAPI_KEY"):
-    logger.warning("RAPIDAPI_KEY is not set. Player and Team search will not work.")
-if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
+if not rapidapi_key:
+    logger.warning("RAPIDAPI_KEY is not set. RapidAPI features disabled.")
+if not fd_org_key:
+    logger.warning("FOOTBALL_DATA_API_KEY is not set. Football-Data.org features disabled.")
+if not sportradar_key:
+    logger.warning("SPORTRADAR_API_KEY is not set. Sportradar features disabled.")
+if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables are not set. Database features will be unavailable.")
 
 # --- Pydantic Models ---
@@ -118,6 +124,8 @@ async def health_check():
         "status": "healthy",
         "supabase": "configured" if supabase else "missing",
         "rapidapi": "configured" if rapidapi_key else "missing",
+        "football_data_org": "configured" if fd_org_key else "missing",
+        "sportradar": "configured" if sportradar_key else "missing",
         "rapidapi_host": os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
     }
 
@@ -155,6 +163,9 @@ async def scan_value_bets():
         return await predictor.find_all_value_bets()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in scan_value_bets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Database Endpoints ---

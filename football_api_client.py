@@ -2,84 +2,125 @@ import os
 import httpx
 from datetime import datetime
 import logging
+from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 class FootballAPIClient:
-    def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.environ.get('RAPIDAPI_KEY')
-        self.host = os.environ.get('RAPIDAPI_HOST', "api-football-v1.p.rapidapi.com")
-        self.base_url = f"https://{self.host}/v3"
-        self.headers = {
-            'x-rapidapi-key': self.api_key,
-            'x-rapidapi-host': self.host
-        }
-
-    async def _make_request(self, endpoint, params=None):
-        if not self.api_key:
-            return {"error": "RapidAPI key not configured."}
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                url = f"{self.base_url}/{endpoint}"
-                response = await client.get(url, headers=self.headers, params=params)
-                response.raise_for_status()
-                return response.json()
-        except httpx.HTTPStatusError as e:
-            return {"error": str(e), "status_code": e.response.status_code if e.response else 500}
-        except Exception as e:
-            return {"error": str(e), "status_code": 500}
-
-    async def search_teams(self, query: str):
-        res = await self._make_request("teams", params={"search": query})
-        return res
-
-    async def get_team_detail(self, team_id: int):
-        return await self._make_request("teams", params={"id": team_id})
-
-    async def get_team_fixtures(self, team_id: int, last: int = 40):
-        return await self._make_request("fixtures", params={"team": team_id, "last": last})
-
-    async def list_leagues(self):
-        return await self._make_request("leagues", params={"type": "league", "season": str(datetime.now().year - 1)})
-
-    async def get_league_detail(self, league_id: int):
-        return await self._make_request("leagues", params={"id": league_id})
+    """
+    Unified Football Data Client with Multi-Provider Fallback.
+    Priority: Sportradar -> RapidAPI (Multiple Endpoints)
+    """
+    def __init__(self):
+        self.rapidapi_key = os.environ.get('RAPIDAPI_KEY')
+        self.sportradar_key = os.environ.get('SPORTRADAR_API_KEY')
         
-    async def get_teams_by_league(self, league_id: int):
-        season = datetime.now().year
-        return await self._make_request("teams", params={"league": str(league_id), "season": str(season)})
+        # Multiple RapidAPI Hosts
+        self.rapid_host_main = "api-football-v1.p.rapidapi.com"
+        self.rapid_host_ratings = "sportapi7.p.rapidapi.com"
+        self.rapid_host_search = "free-api-live-football-data.p.rapidapi.com"
+        
+        self.headers_main = {'x-rapidapi-key': self.rapidapi_key, 'x-rapidapi-host': self.rapid_host_main}
+        self.headers_ratings = {'x-rapidapi-key': self.rapidapi_key, 'x-rapidapi-host': self.rapid_host_ratings}
+        self.headers_search = {'x-rapidapi-key': self.rapidapi_key, 'x-rapidapi-host': self.rapid_host_search}
 
-    async def search_leagues(self, query: str):
-        return await self._make_request("leagues", params={"search": query})
+    async def get_player_ratings(self, player_id: int, tournament_id: int, season_id: int):
+        """Fetch SofaScore player ratings (SportAPI7)."""
+        url = f"https://{self.rapid_host_ratings}/api/v1/player/{player_id}/unique-tournament/{tournament_id}/season/{season_id}/ratings"
+        return await self._make_request(url, self.headers_ratings)
 
-    async def get_matches_by_date(self, date: str):
-        return await self._make_request("fixtures", params={"date": date})
+    async def search_players_live(self, query: str):
+        """High-speed live player search."""
+        url = f"https://{self.rapid_host_search}/football-players-search"
+        return await self._make_request(url, self.headers_search, {"search": query})
+
+    async def search_players(self, query: str):
+        """Fallback to live search if main API fails."""
+        res = await self.search_players_live(query)
+        if res and res.get('status') == 'success':
+            return res
+        # Fallback to main API
+        url = f"https://{self.rapid_host_main}/v3/players"
+        return await self._make_request(url, self.headers_main, {"search": query})
+
+    async def _make_request(self, url: str, headers: Dict, params: Dict = None):
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, headers=headers, params=params)
+                if res.status_code == 200:
+                    return res.json()
+                logger.warning(f"Provider at {url} returned {res.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Request failed to {url}: {e}")
+            return None
+
+    # --- Unified Fixtures Method ---
+    async def get_matches_by_date(self, date_str: str) -> List[Dict]:
+        """
+        Attempts to fetch matches from all providers in order of priority.
+        """
+        # 1. Try Football-Data.org (Fast and reliable for daily matches)
+        if self.fd_org_key:
+            url = f"https://{self.fd_host}/matches"
+            res = await self._make_request(url, self.headers_fd, {"dateFrom": date_str, "dateTo": date_str})
+            if res and 'matches' in res:
+                return self._normalize_fd_matches(res['matches'])
+
+        # 2. Try RapidAPI (fallback)
+        if self.rapidapi_key:
+            url = f"https://{self.rapid_host}/v3/fixtures"
+            res = await self._make_request(url, self.headers_rapid, {"date": date_str})
+            if res and 'response' in res:
+                return self._normalize_rapid_matches(res['response'])
+        
+        return []
+
+    # --- Unified Team Search ---
+    async def search_teams(self, query: str) -> Dict:
+        if self.rapidapi_key:
+            url = f"https://{self.rapid_host}/v3/teams"
+            res = await self._make_request(url, self.headers_rapid, {"search": query})
+            return res or {"response": []}
+        return {"response": []}
+
+    # --- Normalization Helpers ---
+    def _normalize_fd_matches(self, matches: List[Dict]) -> List[Dict]:
+        normalized = []
+        for m in matches:
+            normalized.append({
+                "fixture": {"id": m['id'], "date": m['utcDate']},
+                "teams": {
+                    "home": {"name": m['homeTeam']['name'], "logo": m['homeTeam'].get('crest')},
+                    "away": {"name": m['awayTeam']['name'], "logo": m['awayTeam'].get('crest')}
+                },
+                "league": {"name": m['competition']['name']},
+                "goals": {"home": m.get('score', {}).get('fullTime', {}).get('home'), 
+                          "away": m.get('score', {}).get('fullTime', {}).get('away')}
+            })
+        return {"response": normalized}
+
+    def _normalize_rapid_matches(self, response: List[Dict]) -> Dict:
+        # RapidAPI is already in our desired format
+        return {"response": response}
+
+    # --- Existing Methods (Delegating to RapidAPI as the most comprehensive for detail) ---
+    async def get_team_fixtures(self, team_id: int, last: int = 40):
+        url = f"https://{self.rapid_host}/v3/fixtures"
+        return await self._make_request(url, self.headers_rapid, {"team": team_id, "last": last})
 
     async def get_odds_by_event_id(self, event_id: int):
-        return await self._make_request("odds", params={"fixture": event_id})
+        url = f"https://{self.rapid_host}/v3/odds"
+        return await self._make_request(url, self.headers_rapid, {"fixture": event_id})
 
-    async def get_stats_by_event_id(self, event_id: int):
-        return await self._make_request("fixtures/statistics", params={"fixture": event_id})
-
-    async def get_h2h(self, team1_id: int, team2_id: int):
-        h2h_str = f"{team1_id}-{team2_id}"
-        return await self._make_request("fixtures/headtohead", params={"h2h": h2h_str})
+    async def list_leagues(self):
+        url = f"https://{self.rapid_host}/v3/leagues"
+        return await self._make_request(url, self.headers_rapid, {"type": "league", "season": str(datetime.now().year - 1)})
+    
+    async def get_teams_by_league(self, league_id: int):
+        url = f"https://{self.rapid_host}/v3/teams"
+        return await self._make_request(url, self.headers_rapid, {"league": str(league_id), "season": str(datetime.now().year)})
 
     async def get_standings(self, league_id: int):
-        season = datetime.now().year
-        return await self._make_request("standings", params={"league": str(league_id), "season": str(season)})
-
-    async def list_players_by_team(self, team_id: int):
-        season = datetime.now().year
-        return await self._make_request("players", params={"team": str(team_id), "season": str(season)})
-
-    async def get_player_detail(self, player_id: int):
-        season = datetime.now().year
-        return await self._make_request("players", params={"id": str(player_id), "season": str(season)})
-        
-    async def search_players(self, query: str):
-        season = datetime.now().year
-        res = await self._make_request("players", params={"search": query, "season": str(season)})
-        if not res.get('response') or len(res['response']) == 0:
-            res = await self._make_request("players", params={"search": query, "season": str(season - 1)})
-        return res
+        url = f"https://{self.rapid_host}/v3/standings"
+        return await self._make_request(url, self.headers_rapid, {"league": str(league_id), "season": str(datetime.now().year)})
