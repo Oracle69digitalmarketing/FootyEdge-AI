@@ -35,7 +35,7 @@ class FootyEdgePredictor:
         else:
             self.supabase = None
 
-        self.football_client = FootballAPIClient(api_key=self.rapidapi_key)
+        self.football_client = FootballAPIClient()
         
         self.cache = {}
         self.cache_ttl = 3600
