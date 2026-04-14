@@ -22,9 +22,17 @@ const TeamSearch: React.FC = () => {
         setError(null);
         try {
           const response = await fetch(`/api/search/teams?q=${encodeURIComponent(searchTerm)}`);
+          
           if (!response.ok) {
-            throw new Error('Failed to fetch teams');
+            const text = await response.text();
+            throw new Error(text.length > 100 ? `Search failed (${response.status})` : text || 'Failed to fetch teams');
           }
+
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("Invalid response format from server");
+          }
+
           const data = await response.json();
           if (data.error) throw new Error(data.error);
 

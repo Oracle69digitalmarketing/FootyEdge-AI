@@ -17,7 +17,13 @@ const PORT = process.env.PORT || 3000;
 app.use('/api', createProxyMiddleware({
   target: 'http://localhost:8000',
   changeOrigin: true,
-  logLevel: 'debug'
+  logLevel: 'debug',
+  onError: (err, req, res) => {
+    res.writeHead(502, {
+      'Content-Type': 'application/json',
+    });
+    res.end(JSON.stringify({ error: 'Backend server is unreachable', details: err.message }));
+  }
 }));
 
 // Serve static files from the 'dist' directory

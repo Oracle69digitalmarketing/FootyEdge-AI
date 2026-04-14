@@ -34,6 +34,8 @@ export interface Prediction {
   id?: string;
   home_team: string;
   away_team: string;
+  home_id?: string | number;
+  away_id?: string | number;
   home_prob: number;
   draw_prob: number;
   away_prob: number;
@@ -42,6 +44,10 @@ export interface Prediction {
   over_2_5_prob?: number;
   under_2_5_prob?: number;
   btts_prob?: number;
+  dc_home_draw_prob?: number;
+  dc_away_draw_prob?: number;
+  dc_home_away_prob?: number;
+  correct_scores?: { score: string; prob: number }[];
   is_premium?: boolean;
   confidence: number;
   best_bet_market?: string;
@@ -66,6 +72,7 @@ export interface ValueBet {
   kelly: number;
   recommended_stake: string;
   status: 'active' | 'won' | 'lost';
+  tier: 'Hot 🔥' | 'Solid' | 'Neutral';
   created_at: string;
 }
 

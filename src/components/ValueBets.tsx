@@ -24,9 +24,17 @@ const ValueBets: React.FC = () => {
       try {
         setLoading(true);
         const response = await fetch('/api/value-bets');
+        
         if (!response.ok) {
-          throw new Error('Failed to fetch value bets');
+          const text = await response.text();
+          throw new Error(text.length > 100 ? `Failed to fetch bets (${response.status})` : text || 'Failed to fetch value bets');
         }
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Invalid response format from server");
+        }
+
         const data = await response.json();
         setValueBets(data);
       } catch (err) {
@@ -66,6 +74,7 @@ const ValueBets: React.FC = () => {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Match</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Market</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Tier</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Selection</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Odds</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Our Prob.</th>
@@ -77,7 +86,16 @@ const ValueBets: React.FC = () => {
               {valueBets.map((bet) => (
                 <tr key={bet.id} className="hover:bg-[#2a2a2a]">
                   <td className="px-6 py-4 whitespace-nowrap">{bet.home_team} vs {bet.away_team}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{bet.market}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-xs text-zinc-500">{bet.market}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                      bet.tier === 'Hot 🔥' ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30' :
+                      bet.tier === 'Solid' ? 'bg-green-500/20 text-green-500 border border-green-500/30' :
+                      'bg-zinc-800 text-zinc-400'
+                    }`}>
+                      {bet.tier}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">{bet.selection}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{bet.odds.toFixed(2)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{(bet.our_probability * 100).toFixed(1)}%</td>

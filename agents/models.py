@@ -16,6 +16,7 @@ class ValueBet:
     ev: float
     kelly_percentage: float
     recommended_stake: str
+    tier: str = "Solid" # e.g., "Hot", "Solid", "Neutral"
 
 @dataclass
 class TeamStrength:

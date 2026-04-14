@@ -31,14 +31,18 @@ export class ErrorBoundary extends Component<Props, State> {
     const { children } = this.props;
 
     if (hasError) {
-      let errorMessage = "Something went wrong.";
-      try {
-        const parsedError = JSON.parse(error?.message || "");
-        if (parsedError.error) {
-          errorMessage = `Firestore Error: ${parsedError.error} (${parsedError.operationType} on ${parsedError.path})`;
+      let errorMessage = error?.message || "Something went wrong.";
+      
+      // Try to parse if it might be a JSON error from Supabase/Firestore
+      if (error?.message && (error.message.startsWith('{') || error.message.includes('{"error":'))) {
+        try {
+          const parsedError = JSON.parse(error.message);
+          if (parsedError.error) {
+            errorMessage = `Database Error: ${parsedError.error} (${parsedError.operationType || 'unknown'} on ${parsedError.path || 'unknown'})`;
+          }
+        } catch (e) {
+          // Fallback to original message if parse fails
         }
-      } catch (e) {
-        errorMessage = error?.message || errorMessage;
       }
 
       return (

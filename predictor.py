@@ -315,17 +315,6 @@ class FootyEdgePredictor:
         home_strength = await self.team_strength_agent.assess(home_team, home_matches)
         away_strength = await self.team_strength_agent.assess(away_team, away_matches)
 
-        # --- Player Impact Integration ---
-        # Note: In a real scenario, we would fetch current lineups for the fixture
-        impact_insight = ""
-        if self.rapidapi_key:
-            try:
-                # In production, this would ideally use self.football_client.get_lineups(fixture_id)
-                # For now, it only proceeds if the API client is configured
-                pass
-            except Exception as e:
-                logger.error(f"Player impact assessment failed: {e}")
-
         # --- Tactical Analysis ---
         tactical_analysis = self.tactical_agent.analyze_matchup(home_strength, away_strength)
         mods = tactical_analysis.probability_modifiers
@@ -342,14 +331,17 @@ class FootyEdgePredictor:
         # --- Apply Tactical Modifiers and Re-normalize ---
         home_win_base, draw_base, away_win_base = self._get_match_odds_probs(score_matrix)
         draw_base *= mods.get('draw', 1.0)
-        # Re-normalize win/loss based on new draw probability
         norm_factor = (1 - draw_base) / (home_win_base + away_win_base)
         home_win, draw, away_win = home_win_base * norm_factor, draw_base, away_win_base * norm_factor
+
+        # Double Chance
+        dc_home_draw = home_win + draw
+        dc_away_draw = away_win + draw
+        dc_home_away = home_win + away_win
 
         ou_probs = self._get_over_under_probs(score_matrix, max_goals)
         ou_probs['Over 2.5'] *= mods.get('over_2.5', 1.0)
         ou_probs['Under 2.5'] *= mods.get('under_2.5', 1.0)
-        # Re-normalize O/U
         ou_total = ou_probs['Over 2.5'] + ou_probs['Under 2.5']
         ou_probs['Over 2.5'] /= ou_total; ou_probs['Under 2.5'] /= ou_total
 
@@ -358,13 +350,24 @@ class FootyEdgePredictor:
         btts_total = btts_yes_base + btts_no_base
         btts_yes, btts_no = btts_yes_base/btts_total, btts_no_base/btts_total
 
+        # Correct Score (Top 5)
+        correct_scores = []
+        for i in range(4):
+            for j in range(4):
+                correct_scores.append({"score": f"{i}-{j}", "prob": float(score_matrix[i, j])})
+        top_correct_scores = sorted(correct_scores, key=lambda x: x['prob'], reverse=True)[:5]
+
         final_insights = self._generate_insights(home_strength, away_strength)
         final_insights.insert(0, tactical_analysis.clash_insight)
-        if impact_insight:
-            final_insights.append(impact_insight)
 
         return {
-            "probabilities": {"home_win": home_win, "draw": draw, "away_win": away_win, **ou_probs, "BTTS Yes": btts_yes, "BTTS No": btts_no},
+            "probabilities": {
+                "home_win": home_win, "draw": draw, "away_win": away_win, 
+                **ou_probs, 
+                "BTTS Yes": btts_yes, "BTTS No": btts_no,
+                "DC Home/Draw": dc_home_draw, "DC Away/Draw": dc_away_draw, "DC Home/Away": dc_home_away
+            },
+            "correct_scores": top_correct_scores,
             "home_team": home_team, "away_team": away_team, "home_xg": lambda_home, "away_xg": lambda_away,
             "key_factors": final_insights
         }
@@ -372,6 +375,14 @@ class FootyEdgePredictor:
     async def predict_match(self, home_team: str, away_team: str, odds: Dict) -> Dict:
         prediction_data = await self._calculate_probabilities(home_team, away_team)
         value_bets = self._find_value_bets(prediction_data["probabilities"], odds)
+
+        # Get team IDs for H2H visualizer
+        home_id, away_id = None, None
+        if self.supabase:
+            h_res = self.supabase.table("teams").select("id").eq("name", home_team).execute()
+            a_res = self.supabase.table("teams").select("id").eq("name", away_team).execute()
+            if h_res.data: home_id = h_res.data[0]['id']
+            if a_res.data: away_id = a_res.data[0]['id']
 
         # Save to database
         if self.supabase:
@@ -387,9 +398,18 @@ class FootyEdgePredictor:
             except Exception as e:
                 logger.error(f"Error saving prediction to database: {e}")
 
-        return {"home_team": home_team, "away_team": away_team, "probabilities": prediction_data["probabilities"],
-                "home_xg": prediction_data["home_xg"], "away_xg": prediction_data["away_xg"],
-                "key_factors": prediction_data["key_factors"], "value_bets": [bet.__dict__ for bet in value_bets]}
+        return {
+            "home_team": home_team, 
+            "away_team": away_team, 
+            "home_id": home_id,
+            "away_id": away_id,
+            "probabilities": prediction_data["probabilities"],
+            "home_xg": prediction_data["home_xg"], 
+            "away_xg": prediction_data["away_xg"],
+            "key_factors": prediction_data["key_factors"], 
+            "value_bets": [bet.__dict__ for bet in value_bets],
+            "correct_scores": prediction_data.get("correct_scores", [])
+        }
 
     def _save_prediction_to_db(self, prediction_data: Dict, best_bet: ValueBet = None) -> int:
         if not self.supabase: return None
@@ -439,7 +459,8 @@ class FootyEdgePredictor:
                 "implied_probability": 1 / bet.odds,
                 "ev": bet.ev,
                 "kelly_percentage": bet.kelly_percentage,
-                "recommended_stake_percentage": float(bet.recommended_stake.strip('%'))
+                "recommended_stake_percentage": float(bet.recommended_stake.strip('%')),
+                "tier": bet.tier
             })
         
         try:
@@ -450,15 +471,38 @@ class FootyEdgePredictor:
             logger.error(f"Supabase insert failed for value_bets: {e}")
 
     def _find_value_bets(self, probabilities: Dict, odds: Dict) -> List[ValueBet]:
-        # ... (same as before, no changes needed here)
         value_bets = []
-        market_map = {"home_win": ("Match Odds", "Home Win"), "draw": ("Match Odds", "Draw"), "away_win": ("Match Odds", "Away Win"), "Over 2.5": ("Over/Under", "Over 2.5"), "Under 2.5": ("Over/Under", "Under 2.5"), "BTTS Yes": ("Both Teams to Score", "Yes"), "BTTS No": ("Both Teams to Score", "No"),}
+        market_map = {
+            "home_win": ("Match Odds", "Home Win"),
+            "draw": ("Match Odds", "Draw"),
+            "away_win": ("Match Odds", "Away Win"),
+            "Over 2.5": ("Over/Under", "Over 2.5"),
+            "Under 2.5": ("Over/Under", "Under 2.5"),
+            "BTTS Yes": ("Both Teams to Score", "Yes"),
+            "BTTS No": ("Both Teams to Score", "No"),
+        }
         for key, (market_name, selection) in market_map.items():
             if (prob := probabilities.get(key)) and (odd := odds.get(key)):
                 if (ev := (prob * odd) - 1) > 0.05:
                     kelly = self.kelly_criterion(prob, odd)
-                    value_bets.append(ValueBet(market_name=market_name, selection=selection, odds=odd, our_probability=round(prob, 3), ev=round(ev, 3), kelly_percentage=round(kelly, 3), recommended_stake=f"{round(kelly * 0.25 * 100, 1)}%"))
-        value_bets.sort(key=lambda x: x.ev, reverse=True); return value_bets
+                    
+                    # Tiering Logic
+                    tier = "Neutral"
+                    if ev > 0.20: tier = "Hot 🔥"
+                    elif ev > 0.10: tier = "Solid"
+                    
+                    value_bets.append(ValueBet(
+                        market_name=market_name, 
+                        selection=selection, 
+                        odds=odd, 
+                        our_probability=round(prob, 3), 
+                        ev=round(ev, 3), 
+                        kelly_percentage=round(kelly, 3), 
+                        recommended_stake=f"{round(kelly * 0.25 * 100, 1)}%",
+                        tier=tier
+                    ))
+        value_bets.sort(key=lambda x: x.ev, reverse=True)
+        return value_bets
 
     async def analyze_custom_bet(self, home_team: str, away_team: str, market: str, selection: str, odds: float) -> Dict:
         # ... (same as before, no changes needed here)
