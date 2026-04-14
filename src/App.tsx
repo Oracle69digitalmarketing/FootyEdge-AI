@@ -514,7 +514,7 @@ export default function App() {
                       selectedBookmaker={selectedBookmaker} 
                       isAdded={(id) => accaSelections.some(s => s.id === id)} 
                     />
-                  )}
+                  ))}
                 </div>
               </section>
 
