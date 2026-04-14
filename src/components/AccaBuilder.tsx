@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Layers, PlusCircle, XCircle } from 'lucide-react';
+import { Layers, PlusCircle, XCircle, Copy, Share2, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface AccaBuilderProps {
-  selections: any[]; // Define a more specific type if available
+  selections: any[];
   onRemove: (idx: number) => void;
   onGenerateCode: (stake: number, totalOdds: number) => void;
   bankroll: number;
@@ -12,6 +12,36 @@ interface AccaBuilderProps {
 const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGenerateCode, bankroll }) => {
   const totalOdds = selections.reduce((acc, s) => acc * s.odds, 1).toFixed(2);
   const [stake, setStake] = useState(1000);
+  const [copied, setCopied] = useState(false);
+
+  const formatAccaText = () => {
+    let text = "FootyEdge AI Accumulator\n\n";
+    selections.forEach(s => {
+      text += `${s.match.homeTeam.name} vs ${s.match.awayTeam.name}\n`;
+      text += `Selection: ${s.market.replace('_', ' ')} @ ${s.odds}\n\n`;
+    });
+    text += `Total Odds: ${totalOdds}\n`;
+    text += `Stake: ₦${stake.toLocaleString()}\n`;
+    text += `Potential Return: ₦${(parseFloat(totalOdds) * stake).toLocaleString()}`;
+    return text;
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(formatAccaText());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: 'FootyEdge AI Acca',
+        text: formatAccaText(),
+      });
+    } else {
+      handleCopy();
+    }
+  };
 
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
@@ -20,7 +50,27 @@ const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGener
           <Layers className="w-5 h-5 text-orange-500" />
           <h3 className="font-bold">Acca Builder</h3>
         </div>
-        <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{selections.length} Selections</span>
+        <div className="flex items-center gap-2">
+          {selections.length > 0 && (
+            <>
+              <button 
+                onClick={handleCopy}
+                className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-white transition-colors"
+                title="Copy to Clipboard"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              </button>
+              <button 
+                onClick={handleShare}
+                className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-white transition-colors"
+                title="Share Acca"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest pl-2 border-l border-zinc-800">{selections.length} Selections</span>
+        </div>
       </div>
       
       <div className="p-6 space-y-4">

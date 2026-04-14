@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import asyncio
 from predictor import FootyEdgePredictor
 from football_api_client import FootballAPIClient
+from agents.strategy_agent import StrategyAgent
 
 # --- App Setup ---
 app = FastAPI(
@@ -42,6 +43,7 @@ else:
     football_client = FootballAPIClient()
 
 predictor = FootyEdgePredictor()
+strategy_agent = StrategyAgent()
 
 @app.middleware("http")
 async def log_requests(request, call_next):
@@ -98,7 +100,16 @@ class AccaRecordRequest(BaseModel):
 
 class SubscribeRequest(BaseModel):
     userId: str
-    plan: str
+
+class StrategyAnalyzeRequest(BaseModel):
+    text: str
+    stake: float = 1000
+
+@router.post("/analyze-strategy", summary="Analyze a natural language betting strategy")
+async def analyze_strategy_endpoint(req: StrategyAnalyzeRequest):
+    selections = strategy_agent.parse_strategy(req.text)
+    analysis = strategy_agent.analyze(selections, req.stake)
+    return analysis
 
 class BetRecordRequest(BaseModel):
     user_id: str
@@ -497,10 +508,15 @@ async def search_leagues_ext(q: str):
 
 
 @router.get("/matches", summary="Get matches by date from external API")
-async def get_matches_by_date_ext(date: str):
+async def get_matches_by_date_ext(from_date: Optional[str] = None, to_date: Optional[str] = None, date: Optional[str] = None):
     if not football_client:
         raise HTTPException(status_code=503, detail="Football API not configured.")
-    return await football_client.get_matches_by_date(date)
+    
+    # Support legacy 'date' param or new from_date/to_date
+    f_date = from_date or date or datetime.now().strftime("%Y-%m-%d")
+    t_date = to_date or f_date
+    
+    return await football_client.get_matches_by_date(f_date, t_date)
 
 
 @router.get("/odds/{event_id}", summary="Get odds by event ID from external API")

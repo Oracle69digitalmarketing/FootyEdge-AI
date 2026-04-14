@@ -14,15 +14,20 @@ class FootballAPIClient:
     def __init__(self):
         self.rapidapi_key = os.environ.get('RAPIDAPI_KEY')
         self.sportradar_key = os.environ.get('SPORTRADAR_API_KEY')
+        self.fd_org_key = os.environ.get('FOOTBALL_DATA_API_KEY')
         
-        # Multiple RapidAPI Hosts
+        # Hosts and Headers
+        self.fd_host = "api.football-data.org/v4"
         self.rapid_host_main = "api-football-v1.p.rapidapi.com"
         self.rapid_host_ratings = "sportapi7.p.rapidapi.com"
         self.rapid_host_search = "free-api-live-football-data.p.rapidapi.com"
+        self.rapid_host = self.rapid_host_main  # Default host for fixtures/odds
         
+        self.headers_fd = {'X-Auth-Token': self.fd_org_key}
         self.headers_main = {'x-rapidapi-key': self.rapidapi_key, 'x-rapidapi-host': self.rapid_host_main}
         self.headers_ratings = {'x-rapidapi-key': self.rapidapi_key, 'x-rapidapi-host': self.rapid_host_ratings}
         self.headers_search = {'x-rapidapi-key': self.rapidapi_key, 'x-rapidapi-host': self.rapid_host_search}
+        self.headers_rapid = self.headers_main # Default headers for fixtures/odds
 
     async def get_player_ratings(self, player_id: int, tournament_id: int, season_id: int):
         """Fetch SofaScore player ratings (SportAPI7)."""
@@ -56,25 +61,32 @@ class FootballAPIClient:
             return None
 
     # --- Unified Fixtures Method ---
-    async def get_matches_by_date(self, date_str: str) -> List[Dict]:
+    async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
         """
         Attempts to fetch matches from all providers in order of priority.
+        Supports single date (date_from) or range (date_from to date_to).
         """
+        if not date_to:
+            date_to = date_from
+
         # 1. Try Football-Data.org (Fast and reliable for daily matches)
         if self.fd_org_key:
             url = f"https://{self.fd_host}/matches"
-            res = await self._make_request(url, self.headers_fd, {"dateFrom": date_str, "dateTo": date_str})
+            res = await self._make_request(url, self.headers_fd, {"dateFrom": date_from, "dateTo": date_to})
             if res and 'matches' in res:
                 return self._normalize_fd_matches(res['matches'])
 
         # 2. Try RapidAPI (fallback)
         if self.rapidapi_key:
             url = f"https://{self.rapid_host}/v3/fixtures"
-            res = await self._make_request(url, self.headers_rapid, {"date": date_str})
+            params = {"from": date_from, "to": date_to}
+            if date_from == date_to:
+                params = {"date": date_from}
+            res = await self._make_request(url, self.headers_rapid, params)
             if res and 'response' in res:
                 return self._normalize_rapid_matches(res['response'])
         
-        return []
+        return {"response": []}
 
     # --- Unified Team Search ---
     async def search_teams(self, query: str) -> Dict:
@@ -124,3 +136,7 @@ class FootballAPIClient:
     async def get_standings(self, league_id: int):
         url = f"https://{self.rapid_host}/v3/standings"
         return await self._make_request(url, self.headers_rapid, {"league": str(league_id), "season": str(datetime.now().year)})
+
+    async def get_h2h(self, team1_id: int, team2_id: int):
+        url = f"https://{self.rapid_host}/v3/fixtures/headtohead"
+        return await self._make_request(url, self.headers_rapid, {"h2h": f"{team1_id}-{team2_id}", "last": "10"})
