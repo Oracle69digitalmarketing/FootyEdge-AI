@@ -5,6 +5,7 @@ import { Team, Prediction, ValueBet } from './types';
 import TeamSearch from './components/TeamSearch';
 import Portfolio from './components/Portfolio';
 import AccaBuilder from './components/AccaBuilder';
+import ValueBets from './components/ValueBets';
 import HowToUse from './components/HowToUse';
 import H2HVisualizer from './components/H2HVisualizer';
 import { 
@@ -58,6 +59,18 @@ export default function App() {
     { id: 'bay', name: 'Bayern Munich', league: 'Bundesliga' },
   ];
   const [predictions, setPredictions] = useState<Prediction[]>([]);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) flashMessage(setError, error.message);
+      else flashMessage(setSuccess, "Check your email!");
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) flashMessage(setError, error.message);
+    }
+  };
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
   const [liveValueBets, setLiveValueBets] = useState<ValueBet[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -103,7 +116,7 @@ export default function App() {
   const [dashboardStats, setDashboardStats] = useState<any>({
     total_predictions: "0",
     active_value_bets: "0",
-    ai_accuracy: "92.1%"
+    ai_accuracy: "78.5%"
   });
 
   const flashMessage = (setter: (msg: string | null) => void, message: string | null) => {
@@ -387,7 +400,7 @@ export default function App() {
             best_bet_selection: data.value_bets?.[0]?.selection || 'Home',
             best_bet_odds: data.value_bets?.[0]?.odds || 1.9,
             best_bet_ev: data.value_bets?.[0]?.ev || 0,
-            is_premium: Math.random() > 0.7,
+            is_premium: data.value_bets?.[0]?.tier === 'Hot 🔥',
             created_at: new Date().toISOString(),
             over_2_5_prob: data.probabilities['Over 2.5'],
             btts_prob: data.probabilities['BTTS Yes'],
@@ -425,17 +438,6 @@ export default function App() {
     );
   }
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) flashMessage(setError, error.message);
-      else flashMessage(setSuccess, "Check your email!");
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) flashMessage(setError, error.message);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
@@ -552,9 +554,12 @@ export default function App() {
           )}
 
           {activeTab === 'predictions' && <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{predictions.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={setShowPremiumModal} />)}</div>}
+          {activeTab === 'value' && <ValueBets />}
           {activeTab === 'acca' && <AccaBuilder selections={accaSelections} onRemove={handleRemoveFromAcca} onGenerateCode={handleGenerateCode} bankroll={bankroll} />}
           {activeTab === 'strategy' && <StrategyView />}
           {activeTab === 'portfolio' && <Portfolio bankroll={bankroll} userBets={userBets} />}
+          {activeTab === 'players' && <div className="text-center p-8 text-zinc-500">Player search functionality coming soon.</div>}
+          {activeTab === 'how-to-use' && <HowToUse />}
           {activeTab === 'admin' && isAdmin && (
             <div className="space-y-8">
                 <div className="flex gap-4"><button onClick={handleSyncTeams} className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl">Sync Teams</button><button onClick={handleSeedDatabase} className="bg-orange-500 text-black px-6 py-3 rounded-2xl">Seed Defaults</button></div>
@@ -614,7 +619,16 @@ function MatchCard({ match, onPlaceBet, onAddToAcca, isAdded }: { match: any, on
   );
 }
 
-function PredictionCard({ prediction }: { prediction: Prediction }) {
+interface PredictionCardProps {
+  prediction: Prediction;
+  onGenerateCode: () => void;
+  isUserPremium: boolean;
+  isAdmin: boolean;
+  onBroadcast: () => void;
+  setShowPremiumModal: (show: boolean) => void;
+}
+
+function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, onBroadcast, setShowPremiumModal }: PredictionCardProps) {
   return (
     <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6">
       <div className="flex justify-between items-start">

@@ -15,14 +15,19 @@ const PORT = process.env.PORT || 3000;
 
 // Proxy API requests to the Python FastAPI backend
 app.use('/api', createProxyMiddleware({
-  target: 'http://localhost:8000',
+  target: 'http://localhost:8000/api',
   changeOrigin: true,
-  logLevel: 'debug',
-  onError: (err, req, res) => {
-    res.writeHead(502, {
-      'Content-Type': 'application/json',
-    });
-    res.end(JSON.stringify({ error: 'Backend server is unreachable', details: err.message }));
+  pathRewrite: {
+    '^/api': '', // Strip /api because the target is http://localhost:8000/api
+  },
+  logger: console,
+  on: {
+    error: (err, req, res: any) => {
+      res.writeHead(502, {
+        'Content-Type': 'application/json',
+      });
+      res.end(JSON.stringify({ error: 'Backend server is unreachable', details: err.message }));
+    }
   }
 }));
 

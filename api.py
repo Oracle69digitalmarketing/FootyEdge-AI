@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # --- Environment Variable Checks & Client Initialization ---
 supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_KEY")
+supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
 rapidapi_key = os.environ.get("RAPIDAPI_KEY")
 fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY")
 sportradar_key = os.environ.get("SPORTRADAR_API_KEY")
@@ -141,6 +141,10 @@ async def health_check():
     }
 
 
+@app.get("/health", summary="Root health check")
+async def root_health():
+    return await health_check()
+
 # --- Core Features ---
 @router.post("/predict", summary="Generate predictions using live odds")
 async def predict(request: PredictRequest):
@@ -245,19 +249,17 @@ async def sync_teams():
     if not football_client or not supabase:
         raise HTTPException(status_code=503, detail="Clients not configured.")
     
-    # Predefined major league IDs if list_leagues is empty or limited
-    major_league_ids = [39, 140, 78, 135, 61, 94, 88, 144] # PL, La Liga, Bundesliga, Serie A, Ligue 1, etc.
+    # Predefined major league IDs for new provider (Fotmob/Creativesdev)
+    major_league_ids = [47, 87, 54, 55, 53, 42, 73] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL
     
     try:
         leagues_data = await football_client.list_leagues()
         league_items = leagues_data.get('response', [])
         
-        # If API returns many leagues, we might want to filter or just use major ones
-        # For now, let's ensure we at least get the major ones
         found_league_ids = [item.get('league', {}).get('id') for item in league_items if item.get('league', {}).get('id')]
         
-        # Combine found leagues with our major list to be sure
-        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20] # Limit to 20 for safety/performance
+        # Combine found leagues with our major list and LIMIT strongly for BASIC plans
+        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:10]
         
         all_teams = []
         for league_id in leagues_to_sync:
@@ -268,21 +270,20 @@ async def sync_teams():
                     team_info = team_item.get('team', {})
                     if team_info.get('id') and team_info.get('name'):
                         all_teams.append({
-                            "id": team_info['id'],
+                            "id": str(team_info['id']),
                             "name": team_info['name'],
                             "country": team_info.get('country'),
-                            "logo_url": team_info.get('logo'),
-                            "league_name": team_item.get('league', {}).get('name', 'Unknown'),
+                            "league": team_item.get('league', {}).get('name', 'Unknown'),
                         })
             await asyncio.sleep(0.5) # Slight delay
         
         if not all_teams:
             raise HTTPException(status_code=500, detail="No teams found from external API.")
         
-        # Filter duplicates just in case
-        unique_teams = {t['id']: t for t in all_teams}.values()
+        # Filter duplicates by name since ID types might clash
+        unique_teams = {t['name']: t for t in all_teams}.values()
         
-        upsert_response = supabase.table("teams").upsert(list(unique_teams)).execute()
+        upsert_response = supabase.table("teams").upsert(list(unique_teams), on_conflict="name").execute()
         if upsert_response.data:
             return {"status": "success", "synced_count": len(upsert_response.data)}
         else:
@@ -298,17 +299,17 @@ async def seed_database():
         raise HTTPException(status_code=503, detail="Database not configured.")
     
     initial_teams = [
-        {"id": 33, "name": "Manchester United", "country": "England", "league_name": "Premier League", "elo_rating": 1850, "attack_strength": 2.1, "defense_strength": 0.9},
-        {"id": 34, "name": "Newcastle", "country": "England", "league_name": "Premier League", "elo_rating": 1800, "attack_strength": 2.0, "defense_strength": 1.0},
-        {"id": 40, "name": "Liverpool", "country": "England", "league_name": "Premier League", "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 0.8},
-        {"id": 42, "name": "Arsenal", "country": "England", "league_name": "Premier League", "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.7},
-        {"id": 50, "name": "Manchester City", "country": "England", "league_name": "Premier League", "elo_rating": 1980, "attack_strength": 2.5, "defense_strength": 0.6},
-        {"id": 529, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "elo_rating": 1880, "attack_strength": 2.2, "defense_strength": 0.9},
-        {"id": 541, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8},
+        {"name": "Manchester United", "country": "England", "league": "Premier League", "elo_rating": 1850, "attack_strength": 2.1, "defense_strength": 0.9, "form_rating": 0.7},
+        {"name": "Newcastle", "country": "England", "league": "Premier League", "elo_rating": 1800, "attack_strength": 2.0, "defense_strength": 1.0, "form_rating": 0.6},
+        {"name": "Liverpool", "country": "England", "league": "Premier League", "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 0.8, "form_rating": 0.8},
+        {"name": "Arsenal", "country": "England", "league": "Premier League", "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.7, "form_rating": 0.8},
+        {"name": "Manchester City", "country": "England", "league": "Premier League", "elo_rating": 1980, "attack_strength": 2.5, "defense_strength": 0.6, "form_rating": 0.9},
+        {"name": "Barcelona", "country": "Spain", "league": "La Liga", "elo_rating": 1880, "attack_strength": 2.2, "defense_strength": 0.9, "form_rating": 0.7},
+        {"name": "Real Madrid", "country": "Spain", "league": "La Liga", "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8, "form_rating": 0.8},
     ]
     
     try:
-        response = supabase.table("teams").upsert(initial_teams).execute()
+        response = supabase.table("teams").upsert(initial_teams, on_conflict="name").execute()
         return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
@@ -325,11 +326,14 @@ async def get_admin_stats():
     total_premium = premium_users_response.count or 0
     estimated_daily_revenue = (total_premium * 35000) / 30
     
-    logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
-    if logs_response.data:
-        success_count = sum(log['success'] for log in logs_response.data)
-        bot_health = (success_count / len(logs_response.data)) * 100
-    else:
+    try:
+        logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
+        if logs_response.data:
+            success_count = sum(log['success'] for log in logs_response.data)
+            bot_health = (success_count / len(logs_response.data)) * 100
+        else:
+            bot_health = 100.0
+    except Exception:
         bot_health = 100.0
     
     return {
@@ -344,15 +348,18 @@ async def get_admin_stats():
 async def get_admin_activity(limit: int = 10):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
-    return response.data or []
+    try:
+        response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
+        return response.data or []
+    except Exception:
+        return []
 
 
 @router.get("/dashboard/stats", summary="Get overall platform statistics")
 async def get_dashboard_stats():
     total_preds = 0
     active_value = 0
-    accuracy = 92.1 # Base placeholder if no data
+    accuracy = 0.0
 
     if supabase:
         try:
@@ -363,17 +370,20 @@ async def get_dashboard_stats():
             active_value = value_res.count or 0
 
             # Calculate accuracy from settled predictions
-            settled_res = supabase.table("predictions").select("actual_result").not_.is_("actual_result", "null").execute()
+            # actual_result should match best_bet_selection for a 'win'
+            settled_res = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute()
             if settled_res.data:
-                # Mock logic for accuracy calculation until actual results are reliably piped
-                accuracy = 85.0 + (len(settled_res.data) % 10)
+                correct = sum(1 for p in settled_res.data if p['best_bet_selection'] == p['actual_result'])
+                accuracy = (correct / len(settled_res.data)) * 100
+            else:
+                accuracy = 0.0
         except Exception as e:
             logger.error(f"Error fetching dashboard stats: {e}")
 
     return {
         "total_predictions": total_preds,
         "active_value_bets": active_value,
-        "ai_accuracy": f"{accuracy}%"
+        "ai_accuracy": f"{round(accuracy, 1)}%" if accuracy > 0 else "N/A"
     }
 
 
@@ -608,12 +618,12 @@ app.include_router(router)
 
 # --- Static File Serving (Production) ---
 if os.path.exists("dist"):
-    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
-    
     @app.exception_handler(404)
     async def not_found_exception_handler(request, exc):
         if not request.url.path.startswith("/api"):
             return FileResponse("dist/index.html")
         return JSONResponse(status_code=404, content={"message": "Not found"})
+
+    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
 else:
     logger.info("Frontend 'dist' directory not found. Static file serving is disabled.")

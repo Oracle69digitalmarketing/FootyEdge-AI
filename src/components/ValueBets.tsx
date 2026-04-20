@@ -11,6 +11,7 @@ interface ValueBet {
   ev: number;
   kelly_percentage: number;
   recommended_stake_percentage: number;
+  tier: 'Hot 🔥' | 'Solid' | 'Neutral';
   created_at: string;
 }
 
