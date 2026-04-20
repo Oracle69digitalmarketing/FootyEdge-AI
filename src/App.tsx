@@ -558,6 +558,8 @@ export default function App() {
           {activeTab === 'acca' && <AccaBuilder selections={accaSelections} onRemove={handleRemoveFromAcca} onGenerateCode={handleGenerateCode} bankroll={bankroll} />}
           {activeTab === 'strategy' && <StrategyView />}
           {activeTab === 'portfolio' && <Portfolio bankroll={bankroll} userBets={userBets} />}
+          {activeTab === 'players' && <div className="text-center p-8 text-zinc-500">Player search functionality coming soon.</div>}
+          {activeTab === 'how-to-use' && <HowToUse />}
           {activeTab === 'admin' && isAdmin && (
             <div className="space-y-8">
                 <div className="flex gap-4"><button onClick={handleSyncTeams} className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl">Sync Teams</button><button onClick={handleSeedDatabase} className="bg-orange-500 text-black px-6 py-3 rounded-2xl">Seed Defaults</button></div>

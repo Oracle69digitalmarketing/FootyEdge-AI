@@ -249,19 +249,17 @@ async def sync_teams():
     if not football_client or not supabase:
         raise HTTPException(status_code=503, detail="Clients not configured.")
     
-    # Predefined major league IDs if list_leagues is empty or limited
-    major_league_ids = [39, 140, 78, 135, 61, 94, 88, 144] # PL, La Liga, Bundesliga, Serie A, Ligue 1, etc.
+    # Predefined major league IDs for new provider (Fotmob/Creativesdev)
+    major_league_ids = [47, 87, 54, 55, 53, 42, 73] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL
     
     try:
         leagues_data = await football_client.list_leagues()
         league_items = leagues_data.get('response', [])
         
-        # If API returns many leagues, we might want to filter or just use major ones
-        # For now, let's ensure we at least get the major ones
         found_league_ids = [item.get('league', {}).get('id') for item in league_items if item.get('league', {}).get('id')]
         
-        # Combine found leagues with our major list to be sure
-        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20] # Limit to 20 for safety/performance
+        # Combine found leagues with our major list and LIMIT strongly for BASIC plans
+        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:10]
         
         all_teams = []
         for league_id in leagues_to_sync:
@@ -272,21 +270,20 @@ async def sync_teams():
                     team_info = team_item.get('team', {})
                     if team_info.get('id') and team_info.get('name'):
                         all_teams.append({
-                            "id": team_info['id'],
+                            "id": str(team_info['id']),
                             "name": team_info['name'],
                             "country": team_info.get('country'),
-                            "logo_url": team_info.get('logo'),
-                            "league_name": team_item.get('league', {}).get('name', 'Unknown'),
+                            "league": team_item.get('league', {}).get('name', 'Unknown'),
                         })
             await asyncio.sleep(0.5) # Slight delay
         
         if not all_teams:
             raise HTTPException(status_code=500, detail="No teams found from external API.")
         
-        # Filter duplicates just in case
-        unique_teams = {t['id']: t for t in all_teams}.values()
+        # Filter duplicates by name since ID types might clash
+        unique_teams = {t['name']: t for t in all_teams}.values()
         
-        upsert_response = supabase.table("teams").upsert(list(unique_teams)).execute()
+        upsert_response = supabase.table("teams").upsert(list(unique_teams), on_conflict="name").execute()
         if upsert_response.data:
             return {"status": "success", "synced_count": len(upsert_response.data)}
         else:
@@ -302,17 +299,17 @@ async def seed_database():
         raise HTTPException(status_code=503, detail="Database not configured.")
     
     initial_teams = [
-        {"id": 33, "name": "Manchester United", "country": "England", "league_name": "Premier League", "elo_rating": 1850, "attack_strength": 2.1, "defense_strength": 0.9},
-        {"id": 34, "name": "Newcastle", "country": "England", "league_name": "Premier League", "elo_rating": 1800, "attack_strength": 2.0, "defense_strength": 1.0},
-        {"id": 40, "name": "Liverpool", "country": "England", "league_name": "Premier League", "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 0.8},
-        {"id": 42, "name": "Arsenal", "country": "England", "league_name": "Premier League", "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.7},
-        {"id": 50, "name": "Manchester City", "country": "England", "league_name": "Premier League", "elo_rating": 1980, "attack_strength": 2.5, "defense_strength": 0.6},
-        {"id": 529, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "elo_rating": 1880, "attack_strength": 2.2, "defense_strength": 0.9},
-        {"id": 541, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8},
+        {"name": "Manchester United", "country": "England", "league": "Premier League", "elo_rating": 1850, "attack_strength": 2.1, "defense_strength": 0.9, "form_rating": 0.7},
+        {"name": "Newcastle", "country": "England", "league": "Premier League", "elo_rating": 1800, "attack_strength": 2.0, "defense_strength": 1.0, "form_rating": 0.6},
+        {"name": "Liverpool", "country": "England", "league": "Premier League", "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 0.8, "form_rating": 0.8},
+        {"name": "Arsenal", "country": "England", "league": "Premier League", "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.7, "form_rating": 0.8},
+        {"name": "Manchester City", "country": "England", "league": "Premier League", "elo_rating": 1980, "attack_strength": 2.5, "defense_strength": 0.6, "form_rating": 0.9},
+        {"name": "Barcelona", "country": "Spain", "league": "La Liga", "elo_rating": 1880, "attack_strength": 2.2, "defense_strength": 0.9, "form_rating": 0.7},
+        {"name": "Real Madrid", "country": "Spain", "league": "La Liga", "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8, "form_rating": 0.8},
     ]
     
     try:
-        response = supabase.table("teams").upsert(initial_teams).execute()
+        response = supabase.table("teams").upsert(initial_teams, on_conflict="name").execute()
         return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
@@ -329,11 +326,14 @@ async def get_admin_stats():
     total_premium = premium_users_response.count or 0
     estimated_daily_revenue = (total_premium * 35000) / 30
     
-    logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
-    if logs_response.data:
-        success_count = sum(log['success'] for log in logs_response.data)
-        bot_health = (success_count / len(logs_response.data)) * 100
-    else:
+    try:
+        logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
+        if logs_response.data:
+            success_count = sum(log['success'] for log in logs_response.data)
+            bot_health = (success_count / len(logs_response.data)) * 100
+        else:
+            bot_health = 100.0
+    except Exception:
         bot_health = 100.0
     
     return {
@@ -348,8 +348,11 @@ async def get_admin_stats():
 async def get_admin_activity(limit: int = 10):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
-    return response.data or []
+    try:
+        response = supabase.table("activity_log").select("*").order("created_at", desc=True).limit(limit).execute()
+        return response.data or []
+    except Exception:
+        return []
 
 
 @router.get("/dashboard/stats", summary="Get overall platform statistics")
