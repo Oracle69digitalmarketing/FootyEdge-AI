@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # --- Environment Variable Checks & Client Initialization ---
 supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
+supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_SERVICE_KEY")
 rapidapi_key = os.environ.get("RAPIDAPI_KEY")
 fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY")
 sportradar_key = os.environ.get("SPORTRADAR_API_KEY")
