@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # --- Environment Variable Checks & Client Initialization ---
 supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_KEY")
+supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_SERVICE_KEY")
 rapidapi_key = os.environ.get("RAPIDAPI_KEY")
 fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY")
 sportradar_key = os.environ.get("SPORTRADAR_API_KEY")
@@ -140,6 +140,10 @@ async def health_check():
         "rapidapi_host": os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
     }
 
+
+@app.get("/health", summary="Root health check")
+async def root_health():
+    return await health_check()
 
 # --- Core Features ---
 @router.post("/predict", summary="Generate predictions using live odds")
@@ -352,7 +356,7 @@ async def get_admin_activity(limit: int = 10):
 async def get_dashboard_stats():
     total_preds = 0
     active_value = 0
-    accuracy = 92.1 # Base placeholder if no data
+    accuracy = 0.0
 
     if supabase:
         try:
@@ -363,17 +367,20 @@ async def get_dashboard_stats():
             active_value = value_res.count or 0
 
             # Calculate accuracy from settled predictions
-            settled_res = supabase.table("predictions").select("actual_result").not_.is_("actual_result", "null").execute()
+            # actual_result should match best_bet_selection for a 'win'
+            settled_res = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute()
             if settled_res.data:
-                # Mock logic for accuracy calculation until actual results are reliably piped
-                accuracy = 85.0 + (len(settled_res.data) % 10)
+                correct = sum(1 for p in settled_res.data if p['best_bet_selection'] == p['actual_result'])
+                accuracy = (correct / len(settled_res.data)) * 100
+            else:
+                accuracy = 0.0
         except Exception as e:
             logger.error(f"Error fetching dashboard stats: {e}")
 
     return {
         "total_predictions": total_preds,
         "active_value_bets": active_value,
-        "ai_accuracy": f"{accuracy}%"
+        "ai_accuracy": f"{round(accuracy, 1)}%" if accuracy > 0 else "N/A"
     }
 
 
@@ -608,12 +615,12 @@ app.include_router(router)
 
 # --- Static File Serving (Production) ---
 if os.path.exists("dist"):
-    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
-    
     @app.exception_handler(404)
     async def not_found_exception_handler(request, exc):
         if not request.url.path.startswith("/api"):
             return FileResponse("dist/index.html")
         return JSONResponse(status_code=404, content={"message": "Not found"})
+
+    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
 else:
     logger.info("Frontend 'dist' directory not found. Static file serving is disabled.")
