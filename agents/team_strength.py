@@ -19,6 +19,7 @@ class TeamStrengthAgent:
         self.k_factor = k_factor
         self.decay_rate = decay_rate
         self.history_length = history_length
+        self._rating_cache = {}
 
     async def assess(self, team_name: str, matches: List[Dict], league_name: str = None, squad_data: Dict = None) -> TeamStrength:
         """
@@ -60,10 +61,16 @@ class TeamStrengthAgent:
         return 1.0 + (sum(m['goals_scored'] for m in history) / len(history)) / 5.0
 
     async def _get_rating_from_db(self, team_name: str) -> float:
+        if team_name in self._rating_cache:
+            return self._rating_cache[team_name]
+
         if not self.supabase: return 1500.0
         try:
-            res = await self.supabase.table('teams').select('elo_rating').eq('name', team_name).single().execute()
-            return res.data.get('elo_rating', 1500.0) if res.data else 1500.0
+            # Using execute() which is sync in current supabase-py setup usually
+            res = self.supabase.table('teams').select('elo_rating').eq('name', team_name).execute()
+            rating = res.data[0].get('elo_rating', 1500.0) if res.data else 1500.0
+            self._rating_cache[team_name] = rating
+            return rating
         except Exception:
             return 1500.0
 

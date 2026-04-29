@@ -1,4 +1,5 @@
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -18,6 +19,20 @@ app = FastAPI(
     title="FootyEdge AI - Production Betting Analysis",
     version="3.0.0",
     description="Provides sophisticated, production-ready match predictions and betting analysis."
+)
+
+ALLOWED_ORIGINS = [
+    "https://footy-edge-ai.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)

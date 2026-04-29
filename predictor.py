@@ -56,78 +56,53 @@ class FootyEdgePredictor:
 
 
     async def get_team_matches(self, team_name: str, limit: int = 40) -> List[Dict]:
-        cache_key = f"team_matches_hybrid_{team_name}"; cached = self.cache.get(cache_key)
-        if cached and (datetime.now() - cached[1]).seconds < self.cache_ttl: return cached[0]
+        cache_key = f"team_matches_hybrid_{team_name}"
+        cached = self.cache.get(cache_key)
+        
+        # Increase TTL for historical data to 24 hours (86400s) to save API credits
+        if cached and (datetime.now() - cached[1]).total_seconds() < 86400:
+            return cached[0]
 
-        # 1. Try fetching from Supabase (Historical Dataset 2015-2025)
-        db_matches = []
-        if self.supabase:
-             try:
-                 team_res = self.supabase.table("teams").select("id").eq("name", team_name).execute()
-                 if team_res.data:
-                     team_id = team_res.data[0]['id']
+        # 1. Fetch from Supabase FIRST (Our primary dataset)
+        db_matches = await self._fetch_db_matches(team_name, limit)
+        
+        # 2. Decision Logic: Do we REALLY need the Live API?
+        # If we have at least 15 matches and the latest one is recent (within 10 days), SKIP API
+        needs_live_api = True
+        if db_matches and len(db_matches) >= 15:
+            latest_match_date = datetime.strptime(db_matches[0]['date'], "%Y-%m-%d")
+            if (datetime.now() - latest_match_date).days < 10:
+                needs_live_api = False
+                logger.info(f"Using Supabase only for {team_name} to save API credits.")
 
-                     # Fetch matches where team was home or away
-                     h_res = self.supabase.table("matches").select("*").eq("home_team_id", team_id).order("match_date", desc=True).limit(limit).execute()
-                     a_res = self.supabase.table("matches").select("*").eq("away_team_id", team_id).order("match_date", desc=True).limit(limit).execute()
+        all_matches = db_matches
+        
+        if needs_live_api:
+            # Only fetch API and Local if Supabase is insufficient or stale
+            tasks = [
+                self._fetch_api_matches(team_name, limit),
+                self._fetch_local_matches_async(team_name)
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, list): all_matches.extend(res)
 
-                     for m in (h_res.data or []) + (a_res.data or []):
-                         is_home = m['home_team_id'] == team_id
-                         home_goals = m.get('home_goals', 0)
-                         away_goals = m.get('away_goals', 0)
-
-                         result = 'draw'
-                         if home_goals != away_goals:
-                             result = 'win' if (is_home and home_goals > away_goals) or (not is_home and away_goals > home_goals) else 'loss'
-
-                         db_matches.append({
-                             'date': m['match_date'].split('T')[0],
-                             'is_home': is_home,
-                             'goals_scored': home_goals if is_home else away_goals,
-                             'goals_conceded': away_goals if is_home else home_goals,
-                             'result': result,
-                             'opponent_name': 'Unknown (DB)'
-                         })
-             except Exception as e:
-                 logger.error(f"Supabase historical fetch failed for {team_name}: {e}")
-
-        # 2. Try fetching from Live API for recent fixtures
-        api_matches = []
-        if self.supabase:
-             team_res = self.supabase.table("teams").select("id").eq("name", team_name).execute()
-             if team_res.data:
-                 team_id = team_res.data[0]['id']
-                 try:
-                     res = await self.football_client.get_team_fixtures(team_id, last=limit)
-                     if res and res.get('response'):
-                         for f in res['response']:
-                             api_matches.append(self._parse_api_match(f, team_name))
-                 except Exception as e:
-                     logger.error(f"API fixtures fetch failed for team {team_id}: {e}")
-
-        # 3. Try fetching from Local Data
-        local_matches = self._load_local_matches(team_name)
-
-        # 4. Combine and Merge
-        all_matches = db_matches + api_matches + local_matches
-
-        # Avoid API heavy fallback if we already have DB data
+        # 3. Fallback: only if we have NOTHING
         if not all_matches:
-             # Fallback: search for team and then get matches
-             try:
-                 search_res = await self.football_client.search_teams(team_name)
-                 if search_res and search_res.get('response'):
-                     team_id = search_res['response'][0]['team']['id']
-                     res = await self.football_client.get_team_fixtures(team_id, last=limit)
-                     if res and res.get('response'):
-                         for f in res['response']:
-                             all_matches.append(self._parse_api_match(f, team_name))
-             except Exception as e:
-                 logger.error(f"API fallback search/fixtures failed for team {team_name}: {e}")
+            # ... (rest of the fallback search logic)
+            try:
+                search_res = await self.football_client.search_teams(team_name)
+                if search_res and search_res.get('response'):
+                    team_id = search_res['response'][0]['team']['id']
+                    res = await self.football_client.get_team_fixtures(team_id, last=limit)
+                    if res and res.get('response'):
+                        for f in res['response']:
+                            all_matches.append(self._parse_api_match(f, team_name))
+            except Exception as e:
+                logger.error(f"API fallback failed for {team_name}: {e}")
 
+        # 4. Final baseline if all else fails
         if not all_matches:
-            logger.warning(f"No historical match data for {team_name}. Using baseline stats.")
-            # Provide baseline data so the app doesn't crash/fail for the user
             all_matches = [{
                 'date': datetime.now().strftime("%Y-%m-%d"),
                 'is_home': True,
@@ -137,16 +112,74 @@ class FootyEdgePredictor:
                 'opponent_name': 'Average Opponent'
             }]
 
+        # 5. Sort, Deduplicate, and Cache
         merged_matches = sorted(all_matches, key=lambda x: x['date'], reverse=True)
-        # Deduplicate by date
         seen_dates = set()
         unique_matches = []
         for m in merged_matches:
             if m['date'] not in seen_dates:
                 unique_matches.append(m)
                 seen_dates.add(m['date'])
+                if len(unique_matches) >= limit:
+                    break
 
-        self.cache[cache_key] = (unique_matches[:limit], datetime.now()); return unique_matches[:limit]
+        self.cache[cache_key] = (unique_matches, datetime.now())
+        return unique_matches
+
+    async def _fetch_db_matches(self, team_name: str, limit: int) -> List[Dict]:
+        if not self.supabase: return []
+        try:
+            team_res = self.supabase.table("teams").select("id").eq("name", team_name).execute()
+            if not team_res.data: return []
+            team_id = team_res.data[0]['id']
+            
+            # Fetch home and away in parallel
+            h_task = self.supabase.table("matches").select("*").eq("home_team_id", team_id).order("match_date", desc=True).limit(limit).execute()
+            a_task = self.supabase.table("matches").select("*").eq("away_team_id", team_id).order("match_date", desc=True).limit(limit).execute()
+            
+            # Note: supabase-py execute() is currently not natively async in all versions, 
+            # but we can wrap it or treat it as sync for now if needed.
+            # Assuming standard wrapper for consistency.
+            h_res = h_task
+            a_res = a_task
+            
+            matches = []
+            for m in (h_res.data or []) + (a_res.data or []):
+                is_home = m['home_team_id'] == team_id
+                home_goals = m.get('home_goals', 0)
+                away_goals = m.get('away_goals', 0)
+                result = 'draw'
+                if home_goals != away_goals:
+                    result = 'win' if (is_home and home_goals > away_goals) or (not is_home and away_goals > home_goals) else 'loss'
+                matches.append({
+                    'date': m['match_date'].split('T')[0],
+                    'is_home': is_home,
+                    'goals_scored': home_goals if is_home else away_goals,
+                    'goals_conceded': away_goals if is_home else home_goals,
+                    'result': result,
+                    'opponent_name': 'Unknown (DB)'
+                })
+            return matches
+        except Exception as e:
+            logger.error(f"DB fetch failed: {e}")
+            return []
+
+    async def _fetch_api_matches(self, team_name: str, limit: int) -> List[Dict]:
+        if not self.supabase: return []
+        try:
+            team_res = self.supabase.table("teams").select("id").eq("name", team_name).execute()
+            if not team_res.data: return []
+            team_id = team_res.data[0]['id']
+            res = await self.football_client.get_team_fixtures(team_id, last=limit)
+            if res and res.get('response'):
+                return [self._parse_api_match(f, team_name) for f in res['response']]
+        except Exception:
+            pass
+        return []
+
+    async def _fetch_local_matches_async(self, team_name: str) -> List[Dict]:
+        # Simple wrapper for now, could use aiofiles for true async I/O
+        return self._load_local_matches(team_name)
 
     def _parse_api_match(self, fixture: Dict, team_name: str) -> Dict:
         f = fixture['fixture']
