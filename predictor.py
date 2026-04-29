@@ -248,41 +248,48 @@ class FootyEdgePredictor:
         if not self.rapidapi_key:
             raise ValueError("RapidAPI key not configured.")
 
-        # Limited league list for BASIC API plans to avoid 429
+        # Major leagues only for the quick scan
         if not league_ids:
-            league_ids = [
-                47, 87, 54, 55, 53, # Premier League, LaLiga, Bundesliga, Serie A, Ligue 1
-                42, 73, # UCL, UEL
-            ]
+            league_ids = [47, 87, 54, 55, 53] # PL, LaLiga, Bundesliga, Serie A, Ligue 1
+        
+        all_fixtures = []
+        # Fetch fixtures for all leagues in parallel
+        fixture_tasks = [self._fetch_upcoming_fixtures(lid) for lid in league_ids]
+        fixture_results = await asyncio.gather(*fixture_tasks, return_exceptions=True)
+        
+        for res in fixture_results:
+            if isinstance(res, list): all_fixtures.extend(res)
+        
+        # Limit to top 12 fixtures to prevent timeout (Senior Dev optimization)
+        target_fixtures = all_fixtures[:12]
+        
+        async def process_fixture(fixture):
+            try:
+                fid = fixture.get('fixture', {}).get('id')
+                home = fixture.get('teams', {}).get('home', {}).get('name')
+                away = fixture.get('teams', {}).get('away', {}).get('name')
+                if not fid or not home or not away: return []
+                
+                odds = await self._fetch_odds_for_fixture(fid, bookmaker_id=8)
+                if not odds: return []
+                
+                prediction = await self.predict_match(home, away, odds)
+                bets = prediction.get('value_bets', [])
+                for b in bets:
+                    b['home_team'], b['away_team'] = home, away
+                return bets
+            except Exception:
+                return []
+
+        # Predict all matches in parallel
+        prediction_tasks = [process_fixture(f) for f in target_fixtures]
+        prediction_results = await asyncio.gather(*prediction_tasks)
         
         all_value_bets = []
-        
-        for league_id in league_ids:
-            fixtures = await self._fetch_upcoming_fixtures(league_id)
-            for fixture in fixtures:
-                fixture_id = fixture.get('fixture', {}).get('id')
-                home_team = fixture.get('teams', {}).get('home', {}).get('name')
-                away_team = fixture.get('teams', {}).get('away', {}).get('name')
-
-                if not all([fixture_id, home_team, away_team]):
-                    continue
-
-                # Fetch odds (assuming Bet365 bookmaker ID 8)
-                odds = await self._fetch_odds_for_fixture(fixture_id, bookmaker_id=8)
-                if not odds:
-                    continue
-
-                try:
-                    prediction = await self.predict_match(home_team, away_team, odds)
-                    if prediction.get('value_bets'):
-                        for bet in prediction['value_bets']:
-                            bet['home_team'] = home_team
-                            bet['away_team'] = away_team
-                            all_value_bets.append(bet)
-                except Exception as e:
-                    logger.error(f"Error predicting match {home_team} vs {away_team}: {e}")
-        
-        return all_value_bets
+        for bets in prediction_results:
+            all_value_bets.extend(bets)
+            
+        return sorted(all_value_bets, key=lambda x: x.get('ev', 0), reverse=True)
 
     async def _fetch_upcoming_fixtures(self, league_id: int) -> List[Dict]:
         try:
