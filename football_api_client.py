@@ -9,11 +9,11 @@ logger = logging.getLogger(__name__)
 class FootballAPIClient:
     """
     Unified Football Data Client with Multi-Provider Fallback.
-    Providers: RapidAPI (Creativesdev), Football-Data.org, Sofascore (H2H)
+    Providers: RapidAPI, TheSportDB, Sofascore (H2H)
     """
     def __init__(self):
         self.rapidapi_key = os.environ.get('RAPIDAPI_KEY')
-        self.fd_org_key = os.environ.get('FOOTBALL_DATA_API_KEY')
+        self.tsdb_key = "3" # TheSportDB Public Test Key (Stable for scores)
         self.rapid_host = "free-api-live-football-data.p.rapidapi.com"
         self.sofascore_host = "sofascore.p.rapidapi.com"
         
@@ -28,11 +28,6 @@ class FootballAPIClient:
             'x-rapidapi-host': self.sofascore_host,
             'Content-Type': 'application/json'
         }
-        
-        self.headers_fd = {
-            'X-Auth-Token': self.fd_org_key or "",
-            'Content-Type': 'application/json'
-        }
 
     async def _make_request(self, endpoint: str, params: Dict = None, provider: str = "rapid"):
         if provider == "rapid":
@@ -41,9 +36,11 @@ class FootballAPIClient:
         elif provider == "sofascore":
             url = f"https://{self.sofascore_host}/{endpoint}"
             headers = self.headers_sofascore
+        elif provider == "tsdb":
+            url = f"https://www.thesportdb.com/api/v1/json/{self.tsdb_key}/{endpoint}"
+            headers = {'Content-Type': 'application/json'}
         else:
-            url = f"https://api.football-data.org/v4/{endpoint}"
-            headers = self.headers_fd
+            return None
 
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
@@ -54,6 +51,39 @@ class FootballAPIClient:
         except Exception as e:
             logger.error(f"Request failed to {provider}: {e}")
             return None
+
+    async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
+        """
+        Fetches matches with fallback to TheSportDB.
+        """
+        # 1. Try RapidAPI
+        clean_date = date_from.replace("-", "")
+        res = await self._make_request("football-get-matches-by-date", {"date": clean_date}, provider="rapid")
+        if res and 'response' in res:
+            return {"response": self._normalize_matches(res['response'].get('matches', []))}
+            
+        # 2. Fallback to TheSportDB (No Key Required for Public API)
+        logger.info("RapidAPI limit hit. Falling back to TheSportDB for today's scores...")
+        res_tsdb = await self._make_request("eventsday.php", {"d": date_from, "s": "Soccer"}, provider="tsdb")
+        if res_tsdb and 'events' in res_tsdb:
+            return {"response": self._normalize_tsdb_matches(res_tsdb['events'])}
+                
+        return {"response": []}
+
+    def _normalize_tsdb_matches(self, events: List[Dict]) -> List[Dict]:
+        normalized = []
+        for e in events:
+            normalized.append({
+                "fixture": {"id": e.get('idEvent'), "date": f"{e.get('dateEvent')}T{e.get('strTime')}"},
+                "teams": {
+                    "home": {"name": e.get('strHomeTeam'), "id": e.get('idHomeTeam'), "logo": ""},
+                    "away": {"name": e.get('strAwayTeam'), "id": e.get('idAwayTeam'), "logo": ""}
+                },
+                "league": {"name": e.get('strLeague'), "id": e.get('idLeague')},
+                "goals": {"home": e.get('intHomeScore'), "away": e.get('intAwayScore')},
+                "status": {"long": e.get('strStatus')}
+            })
+        return normalized
 
     async def get_sofascore_h2h(self, team1_id: int, team2_id: int):
         """
