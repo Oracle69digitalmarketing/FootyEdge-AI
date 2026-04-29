@@ -286,23 +286,39 @@ class FootyEdgePredictor:
 
     async def _fetch_upcoming_fixtures(self, league_id: int) -> List[Dict]:
         try:
-            # Use FootballAPIClient for a more unified approach
-            season = datetime.now().year
-            from_date = datetime.now().strftime("%Y-%m-%d")
-            to_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            # 1. Try Live API (RapidAPI with Football-Data fallback)
+            all_fixtures = []
+            for i in range(2): # Scan next 2 days
+                target_date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
+                res = await self.football_client.get_matches_by_date(target_date)
+                day_matches = res.get('response', [])
+                all_fixtures.extend(day_matches)
+            
+            # 2. Fallback: Pull from Dataset (Supabase) if API returns nothing
+            if not all_fixtures and self.supabase:
+                logger.info("API fixtures empty. Pulling future matches from Supabase dataset...")
+                now_iso = datetime.now().isoformat()
+                # Query matches in the future where we have no scores yet
+                db_res = self.supabase.table("matches").select("*, home_team:home_team_id(name, logo_url), away_team:away_team_id(name, logo_url)")\
+                    .gte("match_date", now_iso)\
+                    .is_("home_goals", "null")\
+                    .limit(20).execute()
+                
+                if db_res.data:
+                    for m in db_res.data:
+                        all_fixtures.append({
+                            "fixture": {"id": m['id'], "date": m['match_date']},
+                            "teams": {
+                                "home": {"name": m['home_team']['name'], "id": m['home_team_id'], "logo": m['home_team']['logo_url']},
+                                "away": {"name": m['away_team']['name'], "id": m['away_team_id'], "logo": m['away_team']['logo_url']}
+                            },
+                            "league": {"name": m.get('league', 'Dataset'), "id": 0}
+                        })
 
-            res = await self.football_client._make_request("fixtures", params={
-                "league": league_id,
-                "season": season,
-                "from": from_date,
-                "to": to_date
-            })
-
-            fixtures = res.get('response', [])
-            return fixtures
+            return all_fixtures
             
         except Exception as e:
-            logger.error(f"Error fetching fixtures for league {league_id}: {e}")
+            logger.error(f"Error fetching fixtures fallback: {e}")
             return []
 
     async def _fetch_odds_for_fixture(self, fixture_id: int, bookmaker_id: int) -> Dict:
