@@ -394,8 +394,8 @@ async def get_dashboard_stats():
                     accuracy = (correct / len(settled_res.data)) * 100
                 else:
                     accuracy = 0.0
-            except Exception:
-                # Fallback if column doesn't exist yet
+            except Exception as schema_err:
+                logger.warning(f"Accuracy calc failed (likely missing column): {schema_err}")
                 accuracy = 0.0
         except Exception as e:
             logger.error(f"Error fetching dashboard stats: {e}")

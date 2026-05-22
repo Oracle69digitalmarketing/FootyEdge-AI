@@ -467,16 +467,37 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="space-y-12">
               <div className="bg-green-500/5 border border-green-500/20 rounded-[2rem] p-8 space-y-6 relative overflow-hidden">
-                <div className="flex items-center justify-between"><div className="flex items-center gap-3"><Zap className="text-green-500" /><h2 className="text-2xl font-bold">Live Value Alerts</h2></div><button onClick={handleScanValueBets} disabled={scanning} className="bg-zinc-900 p-3 rounded-full">{scanning ? <Loader2 className="animate-spin w-4 h-4"/> : <RefreshCw className="w-4 h-4"/>}</button></div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Zap className="text-green-500" />
+                    <h2 className="text-2xl font-bold">Live Value Alerts</h2>
+                  </div>
+                  <button 
+                    onClick={handleScanValueBets} 
+                    disabled={scanning} 
+                    className="bg-zinc-900 p-3 rounded-full hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  >
+                    {scanning ? <Loader2 className="animate-spin w-4 h-4 text-orange-500"/> : <RefreshCw className="w-4 h-4 text-zinc-400"/>}
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {liveValueBets.length > 0 ? (
+                    {scanning ? (
+                      [1,2,3].map(i => <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl animate-pulse"><p className="text-sm text-zinc-500">Analyzing markets...</p></div>)
+                    ) : liveValueBets.length > 0 ? (
                       liveValueBets.slice(0, 3).map((alert, i) => (
-                        <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl">
+                        <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl border-l-4 border-l-green-500">
                           <p className="font-bold text-sm mb-1">{alert.match || `${alert.home_team} vs ${alert.away_team}`}</p>
-                          <div className="flex justify-between items-center"><span className="text-xs text-zinc-400">{alert.selection}</span><span className="text-sm font-bold">@{alert.odds.toFixed(2)}</span></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-zinc-400">{alert.selection}</span>
+                            <span className="text-sm font-bold text-green-500">@{alert.odds.toFixed(2)}</span>
+                          </div>
                         </div>
                       ))
-                    ) : [1,2,3].map(i => <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl opacity-50"><p className="text-sm">Scanning matches...</p></div>)}
+                    ) : (
+                      <div className="col-span-full py-4 text-center text-zinc-600 text-sm italic">
+                        No live value bets detected. Try refreshing or check back later.
+                      </div>
+                    )}
                 </div>
               </div>
 
