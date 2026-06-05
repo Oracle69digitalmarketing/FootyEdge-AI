@@ -153,6 +153,7 @@ async def health_check():
         "rapidapi": "configured" if rapidapi_key else "missing",
         "football_data_org": "configured" if fd_org_key else "missing",
         "sportradar": "configured" if sportradar_key else "missing",
+        "external_resources": ["365scores"],
         "rapidapi_host": os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
     }
 
@@ -405,6 +406,17 @@ async def get_dashboard_stats():
         "active_value_bets": active_value,
         "ai_accuracy": f"{round(accuracy, 1)}%" if accuracy > 0 else "N/A"
     }
+
+
+@router.get("/external/365scores", summary="Get 365scores external link")
+async def get_365scores_link(home_team: Optional[str] = None, away_team: Optional[str] = None):
+    """
+    Returns the 365scores URL. If home_team and away_team are provided, 
+    it returns a search URL for the match.
+    """
+    if home_team and away_team:
+        return {"url": football_client.get_365scores_match_url(home_team, away_team)}
+    return {"url": "https://www.365scores.com/football"}
 
 
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")

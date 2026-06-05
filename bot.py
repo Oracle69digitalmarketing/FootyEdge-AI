@@ -80,6 +80,8 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎯 *Expected Goals:*
 🏠 {data['home_xg']:.2f}
 ✈️ {data['away_xg']:.2f}
+
+🔗 [View on 365Scores]({data['external_links']['365scores']})
 """
                 if data.get('value_bets'):
                     message += "\n\n💰 *Value Bets Found:*"

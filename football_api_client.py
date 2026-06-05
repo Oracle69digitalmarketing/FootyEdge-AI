@@ -126,3 +126,11 @@ class FootballAPIClient:
         # Using poll result as a fallback for 'sentiment' odds if available.
         res = await self._make_request("football-get-odds-poll-match-events", {"eventid": event_id})
         return {"response": []} # Return empty for now to trigger internal model defaults
+
+    def get_365scores_match_url(self, home_team: str, away_team: str) -> str:
+        """
+        Generates a 365scores search URL for a given match.
+        """
+        query = f"{home_team} vs {away_team}"
+        encoded_query = query.replace(" ", "%20")
+        return f"https://www.365scores.com/football/search?query={encoded_query}"

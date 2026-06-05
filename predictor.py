@@ -436,18 +436,20 @@ class FootyEdgePredictor:
                 logger.error(f"Error saving prediction to database: {e}")
 
         return {
-            "home_team": home_team, 
-            "away_team": away_team, 
+            "home_team": home_team,
+            "away_team": away_team,
             "home_id": home_id,
             "away_id": away_id,
             "probabilities": prediction_data["probabilities"],
-            "home_xg": prediction_data["home_xg"], 
+            "home_xg": prediction_data["home_xg"],
             "away_xg": prediction_data["away_xg"],
-            "key_factors": prediction_data["key_factors"], 
+            "key_factors": prediction_data["key_factors"],
             "value_bets": [bet.__dict__ for bet in value_bets],
-            "correct_scores": prediction_data.get("correct_scores", [])
+            "correct_scores": prediction_data.get("correct_scores", []),
+            "external_links": {
+                "365scores": self.football_client.get_365scores_match_url(home_team, away_team)
+            }
         }
-
     def _save_prediction_to_db(self, prediction_data: Dict, best_bet: ValueBet = None) -> int:
         if not self.supabase: return None
 
