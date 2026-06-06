@@ -127,6 +127,8 @@ export default function App() {
     }
   }, [activeTab, picksDate, fetchDailyPicks]);
   const [syncingTeams, setSyncingTeams] = useState(false);
+  const [syncingPlayers, setSyncingPlayers] = useState(false);
+  const [seedingData, setSeedingData] = useState(false);
 
   const [dashboardStats, setDashboardStats] = useState<any>({
     total_predictions: "0",
@@ -380,14 +382,29 @@ export default function App() {
   }, [fetchTeams]);
 
   const handleSeedDatabase = useCallback(async () => {
+    setSeedingData(true);
     try {
       await safeFetchJson('/api/admin/seed-database', { method: 'POST' });
-      flashMessage(setSuccess, "Database seeded.");
+      flashMessage(setSuccess, "Database seeded successfully.");
       fetchTeams();
     } catch (err: any) {
-      flashMessage(setError, err.message);
+      flashMessage(setError, "Seeding failed: " + err.message);
+    } finally {
+      setSeedingData(false);
     }
   }, [fetchTeams]);
+
+  const handleSyncPlayers = useCallback(async () => {
+    setSyncingPlayers(true);
+    try {
+      const data = await safeFetchJson('/api/admin/sync-players', { method: 'POST' });
+      flashMessage(setSuccess, `Successfully synced ${data.synced_count} players.`);
+    } catch (err: any) {
+      flashMessage(setError, "Player sync failed: " + err.message);
+    } finally {
+      setSyncingPlayers(false);
+    }
+  }, []);
 
   const handlePredict = useCallback(async () => {
     if (!selectedHome || !selectedAway) return;
@@ -804,19 +821,15 @@ export default function App() {
                     <AdminActionCard 
                       title="Sync Players" 
                       description="Fetch and update player squads for all teams."
-                      onClick={async () => {
-                        try {
-                          const res = await fetch('/api/admin/sync-players', { method: 'POST' });
-                          const data = await res.json();
-                          flashMessage(setSuccess, `Synced ${data.synced_count} players.`);
-                        } catch(e:any) { flashMessage(setError, e.message); }
-                      }}
+                      onClick={handleSyncPlayers}
+                      loading={syncingPlayers}
                       icon={<User className="text-green-500" />}
                     />
                     <AdminActionCard 
                       title="Seed Data" 
                       description="Populate DB with high-quality base stats."
                       onClick={handleSeedDatabase}
+                      loading={seedingData}
                       icon={<Database className="text-orange-500" />}
                     />
                   </div>
@@ -843,12 +856,16 @@ function StatItem({ icon, label, value }: { icon: any, label: string, value: str
 
 function AdminActionCard({ title, description, onClick, loading, icon }: any) {
   return (
-    <button onClick={onClick} disabled={loading} className="w-full text-left bg-[#111] border border-zinc-800 p-8 rounded-[2rem] space-y-4 hover:border-white/20 transition-all group">
+    <button 
+      onClick={onClick} 
+      disabled={loading} 
+      className="w-full text-left bg-[#111] border border-zinc-800 p-8 rounded-[2rem] space-y-4 hover:border-orange-500/40 hover:scale-[1.02] transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+    >
       <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-white/5 group-hover:bg-zinc-800 transition-colors">
-        {loading ? <Loader2 className="animate-spin" /> : icon}
+        {loading ? <Loader2 className="animate-spin text-orange-500" /> : icon}
       </div>
       <div className="space-y-1">
-        <h3 className="text-xl font-bold">{title}</h3>
+        <h3 className="text-xl font-bold group-hover:text-orange-500 transition-colors">{title}</h3>
         <p className="text-sm text-zinc-500">{description}</p>
       </div>
     </button>
