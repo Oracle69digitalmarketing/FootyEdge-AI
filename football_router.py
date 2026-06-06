@@ -2,18 +2,20 @@ import logging
 from typing import Dict, List, Any, Optional
 from football_api_client import FootballAPIClient
 from football_data_org_client import FootballDataOrgClient
+from sofascore_client import SofascoreClient
 from agents.three_six_five_scores import ThreeSixFiveScoresClient
 
 logger = logging.getLogger(__name__)
 
 class FootballRouter:
     """
-    Routes football data requests between football-data.org (Major Leagues)
-    and RapidAPI (Others/Regional Leagues).
+    Routes football data requests between football-data.org (Major Leagues),
+    RapidAPI (Others), and Sofascore (Deep Stats/H2H).
     """
     def __init__(self, fd_client: FootballDataOrgClient, rapid_client: FootballAPIClient):
         self.fd_client = fd_client
         self.rapid_client = rapid_client
+        self.sofascore = SofascoreClient()
         self.three_six_five = ThreeSixFiveScoresClient()
         
         # Leagues that football-data.org handles well on the free tier

@@ -615,6 +615,34 @@ async def get_365scores_link(home_team: Optional[str] = None, away_team: Optiona
     return {"url": "https://www.365scores.com/football"}
 
 
+@router.get("/external/sofascore/h2h", summary="Get deep H2H from Sofascore")
+async def get_sofascore_h2h(team1_id: int, team2_id: int):
+    """
+    Fetches head-to-head history using Sofascore IDs.
+    """
+    if not football_client:
+        raise HTTPException(status_code=503, detail="Football API not configured.")
+    
+    res = await football_client.sofascore.get_h2h_events(team1_id, team2_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="H2H data not found on Sofascore.")
+    return res
+
+
+@router.get("/external/sofascore/search/teams", summary="Search Sofascore teams")
+async def search_sofascore_teams(q: str):
+    if not football_client:
+        raise HTTPException(status_code=503, detail="Football API not configured.")
+    return await football_client.sofascore.search_teams(q)
+
+
+@router.get("/external/sofascore/search/players", summary="Search Sofascore players")
+async def search_sofascore_players(q: str):
+    if not football_client:
+        raise HTTPException(status_code=503, detail="Football API not configured.")
+    return await football_client.sofascore.search_players(q)
+
+
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
 async def telegram_broadcast(request: TelegramBroadcastRequest):
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
