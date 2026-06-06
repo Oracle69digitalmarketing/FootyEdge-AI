@@ -203,7 +203,36 @@ async def scan_value_bets():
 # --- Database Endpoints ---
 @router.get("/dashboard/stats", summary="Get overall platform statistics")
 async def get_dashboard_stats():
-    # ... (rest of implementation)
+    total_preds = 0
+    active_value = 0
+    accuracy = 0.0
+
+    if supabase:
+        try:
+            preds_res = supabase.table("predictions").select("id", count="exact").execute()
+            total_preds = preds_res.count or 0
+
+            value_res = supabase.table("value_bets").select("id", count="exact").eq("status", "active").execute()
+            active_value = value_res.count or 0
+
+            try:
+                settled_res = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute()
+                if settled_res.data:
+                    correct = sum(1 for p in settled_res.data if p.get('best_bet_selection') == p.get('actual_result'))
+                    accuracy = (correct / len(settled_res.data)) * 100
+                else:
+                    accuracy = 0.0
+            except Exception as schema_err:
+                logger.warning(f"Accuracy calc failed: {schema_err}")
+                accuracy = 0.0
+        except Exception as e:
+            logger.error(f"Error fetching dashboard stats: {e}")
+
+    return {
+        "total_predictions": total_preds,
+        "active_value_bets": active_value,
+        "ai_accuracy": f"{round(accuracy, 1)}%" if accuracy > 0 else "N/A"
+    }
 
 @router.get("/teams", summary="Get all teams from database")
 async def get_teams(league: Optional[str] = None):
