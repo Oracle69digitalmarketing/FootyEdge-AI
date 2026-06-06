@@ -158,11 +158,11 @@ async def health_check():
     return {
         "status": "healthy",
         "supabase": "configured" if supabase else "missing",
-        "rapidapi": "configured" if rapidapi_key else "missing",
+        "rapidapi": "configured" if rapidapi_key else "missing (using fallback)",
         "football_data_org": "configured" if fd_org_key else "missing",
         "sportradar": "configured" if sportradar_key else "missing",
-        "external_resources": ["365scores"],
-        "rapidapi_host": os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
+        "external_resources": ["365scores", "sofascore"],
+        "router_active": "yes" if isinstance(football_client, FootballRouter) else "no"
     }
 
 
@@ -380,13 +380,10 @@ async def subscribe(request: SubscribeRequest):
 @router.post("/admin/sync-teams", summary="Sync teams from external API to Supabase")
 async def sync_teams():
     if not football_client or not supabase:
-        raise HTTPException(status_code=503, detail="Clients not configured.")
+        raise HTTPException(status_code=503, detail="Clients not configured. Check environment variables.")
     
-    # Predefined major league IDs/Codes
-    if isinstance(football_client, FootballDataOrgClient):
-        major_league_ids = ["PL", "PD", "BL1", "SA", "FL1", "CL", "DED"]
-    else:
-        major_league_ids = [47, 87, 54, 55, 53, 42, 73] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL
+    # Predefined major league IDs (using RapidAPI IDs as default)
+    major_league_ids = [47, 87, 54, 55, 53, 42, 73, 342] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL, NPFL
     
     try:
         leagues_data = await football_client.list_leagues()
@@ -395,12 +392,12 @@ async def sync_teams():
         found_league_ids = []
         for item in league_items:
             l_info = item.get('league', {})
-            l_id = l_info.get('code') if isinstance(football_client, FootballDataOrgClient) else l_info.get('id')
+            l_id = l_info.get('id')
             if l_id:
                 found_league_ids.append(l_id)
         
-        # Combine found leagues with our major list and LIMIT strongly for BASIC plans
-        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:10]
+        # Combine found leagues with our major list
+        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:15]
         
         all_teams = []
         for league_id in leagues_to_sync:
@@ -415,7 +412,7 @@ async def sync_teams():
                             "name": team_info['name'],
                             "country": team_info.get('country'),
                             "league_name": team_item.get('league', {}).get('name', 'Unknown'),
-                            "logo_url": team_info.get('crest', team_info.get('crest', team_info.get('logo')))
+                            "logo_url": team_info.get('crest', team_info.get('logo'))
                         })
             await asyncio.sleep(0.5) # Slight delay
         
@@ -438,7 +435,7 @@ async def sync_teams():
 @router.post("/admin/sync-players", summary="Sync players for existing teams in database")
 async def sync_players():
     if not football_client or not supabase:
-        raise HTTPException(status_code=503, detail="Clients not configured.")
+        raise HTTPException(status_code=503, detail="Clients not configured. Check environment variables.")
     
     try:
         # Get all teams from DB
@@ -451,31 +448,27 @@ async def sync_players():
             players_data = await football_client.list_players_by_team(team['id'])
             
             if players_data and 'response' in players_data:
-                # Provider specific mapping
-                player_list = players_data['response']
+                player_list = players_data.get('response', [])
+                if isinstance(player_list, dict) and 'players' in player_list: # Some formats
+                    player_list = player_list['players']
                 
                 db_players = []
-                for p in player_list[:20]: # Limit to 20 per team for performance
-                    photo_url = None
-                    if not isinstance(football_client, FootballDataOrgClient) and p.get('id'):
-                         photo_url = f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png"
-                    
+                for p in player_list[:25]: # Limit per team
                     db_players.append({
-                        "external_id": p.get('id'),
+                        "external_id": str(p.get('id')),
                         "team_id": team['id'],
                         "name": p.get('name'),
                         "position": p.get('position'),
                         "nationality": p.get('country') or p.get('nationality'),
                         "age": p.get('age'),
-                        "photo_url": photo_url
+                        "photo_url": f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png" if p.get('id') else None
                     })
                 
                 if db_players:
-                    # Upsert to prevent duplicates using (name, team_id) unique constraint
                     supabase.table("players").upsert(db_players, on_conflict="name, team_id").execute()
                     total_synced += len(db_players)
             
-            await asyncio.sleep(0.5) # Avoid rate limiting
+            await asyncio.sleep(0.4) # Avoid rate limiting
             
         return {"status": "success", "synced_count": total_synced}
     except Exception as e:
