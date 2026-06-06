@@ -292,11 +292,19 @@ async def get_daily_picks(from_date: Optional[str] = None, to_date: Optional[str
             else:
                 try:
                     # Generate new prediction
-                    prediction = await predictor.predict_match(home, away)
-                    results.append(prediction)
-                except Exception as e:
-                    logger.error(f"Failed to predict {home} vs {away}: {e}")
-        
+                    try:
+                        # Provide default odds for daily picks generator
+                        default_odds = {
+                            "home_win": 1.90, "draw": 3.30, "away_win": 4.20,
+                            "Over 2.5": 1.90, "Under 2.5": 1.90,
+                            "BTTS Yes": 1.80, "BTTS No": 2.00
+                        }
+                        # Attempt to generate new prediction
+                        prediction = await predictor.predict_match(home, away, default_odds)
+                        results.append(prediction)
+                    except Exception as e:
+                        logger.error(f"Failed to predict {home} vs {away}: {e}")
+
         return results
     except Exception as e:
         logger.error(f"Daily picks failed: {e}")

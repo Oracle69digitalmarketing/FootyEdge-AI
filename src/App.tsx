@@ -113,8 +113,9 @@ export default function App() {
 
       const data = await safeFetchJson(`/api/daily-picks?from_date=${from}&to_date=${to}`);
       setDailyPicks(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      flashMessage(setError, "Failed to load daily picks: " + err.message);
     } finally {
       setFetchingPicks(false);
     }
