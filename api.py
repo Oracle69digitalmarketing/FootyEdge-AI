@@ -25,8 +25,8 @@ app = FastAPI(
 
 # I'm updating the ALLOWED_ORIGINS to be more robust
 ALLOWED_ORIGINS = [
-    "https://footyedge-ai.onrender.com/api/health",
-    "https://footyedge-ai.onrender.com/api/health",
+    "https://footyedge-ai.onrender.com",
+    "https://footy-edge-ai.vercel.app",
     "http://localhost:5173",
     "http://localhost:3000",
     "*" # Temporary wildcard to confirm connectivity

@@ -4,7 +4,7 @@
 -- ============================================
 
 -- 0. PROFILES TABLE
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE NOT NULL,
     full_name TEXT,
@@ -16,9 +16,9 @@ CREATE TABLE profiles (
 );
 
 -- 1. TEAMS TABLE
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
     id BIGINT PRIMARY KEY,
-    name TEXT NOT NULL,
+    name TEXT UNIQUE NOT NULL, -- UNIQUE required for upsert on name
     country TEXT,
     logo_url TEXT,
     league_name TEXT,
@@ -38,7 +38,7 @@ CREATE TABLE teams (
 );
 
 -- 2. MATCHES TABLE
-CREATE TABLE matches (
+CREATE TABLE IF NOT EXISTS matches (
     id BIGSERIAL PRIMARY KEY,
     home_team_id BIGINT REFERENCES teams(id),
     away_team_id BIGINT REFERENCES teams(id),
@@ -67,7 +67,7 @@ CREATE TABLE matches (
 );
 
 -- 3. PREDICTIONS TABLE
-CREATE TABLE predictions (
+CREATE TABLE IF NOT EXISTS predictions (
     id BIGSERIAL PRIMARY KEY,
     match_id BIGINT REFERENCES matches(id),
     home_team VARCHAR(100),
@@ -90,8 +90,9 @@ CREATE TABLE predictions (
 );
 
 -- 4. VALUE_BETS TABLE
-CREATE TABLE value_bets (
+CREATE TABLE IF NOT EXISTS value_bets (
     id BIGSERIAL PRIMARY KEY,
+    prediction_id BIGINT REFERENCES predictions(id) ON DELETE CASCADE,
     match_id BIGINT,
     home_team VARCHAR(100),
     away_team VARCHAR(100),
@@ -111,11 +112,12 @@ CREATE TABLE value_bets (
     actual_win BOOLEAN,
     profit_loss FLOAT,
     match_timestamp TIMESTAMP WITH TIME ZONE,
+    tier VARCHAR(20) DEFAULT 'Neutral',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. TEAM_RATINGS_HISTORY (Time-series)
-CREATE TABLE team_ratings_history (
+-- 5. TEAM_RATINGS_HISTORY
+CREATE TABLE IF NOT EXISTS team_ratings_history (
     id BIGSERIAL PRIMARY KEY,
     team_id BIGINT REFERENCES teams(id),
     rating_date DATE NOT NULL,
@@ -128,7 +130,7 @@ CREATE TABLE team_ratings_history (
 );
 
 -- 6. ACCAS TABLE
-CREATE TABLE accas (
+CREATE TABLE IF NOT EXISTS accas (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id),
     selections_json JSONB,
@@ -140,9 +142,8 @@ CREATE TABLE accas (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-
--- 7. AGENT_LOGS (for debugging)
-CREATE TABLE agent_logs (
+-- 7. AGENT_LOGS
+CREATE TABLE IF NOT EXISTS agent_logs (
     id BIGSERIAL PRIMARY KEY,
     agent_name VARCHAR(50),
     action VARCHAR(100),
@@ -154,8 +155,8 @@ CREATE TABLE agent_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 8. ACTIVITY_LOG TABLE
-CREATE TABLE activity_log (
+-- 8. ACTIVITY_LOG
+CREATE TABLE IF NOT EXISTS activity_log (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id),
     action VARCHAR(100),
@@ -163,22 +164,8 @@ CREATE TABLE activity_log (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ============================================
--- INDEXES FOR PERFORMANCE
--- ============================================
-
-CREATE INDEX idx_predictions_created ON predictions(created_at DESC);
-CREATE INDEX idx_predictions_match ON predictions(match_id);
-CREATE INDEX idx_matches_date ON matches(match_date);
-CREATE INDEX idx_matches_teams ON matches(home_team_id, away_team_id);
-CREATE INDEX idx_value_bets_active ON value_bets(status, created_at);
-CREATE INDEX idx_team_ratings_date ON team_ratings_history(rating_date DESC);
-CREATE INDEX idx_agent_logs_created ON agent_logs(created_at DESC);
-CREATE INDEX idx_activity_log_created ON activity_log(created_at DESC);
-CREATE INDEX idx_teams_name ON teams(name);
-
 -- 10. PLAYERS TABLE
-CREATE TABLE players (
+CREATE TABLE IF NOT EXISTS players (
     id BIGSERIAL PRIMARY KEY,
     external_id BIGINT,
     team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE,
@@ -195,63 +182,27 @@ CREATE TABLE players (
     UNIQUE(name, team_id)
 );
 
-CREATE INDEX idx_players_team ON players(team_id);
-CREATE INDEX idx_players_name ON players(name);
-
 -- ============================================
--- ENABLE ROW LEVEL SECURITY
+-- INDEXES
 -- ============================================
 
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
-ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE value_bets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE team_ratings_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
-ALTER TABLE players ENABLE ROW LEVEL SECURITY;
-
-
--- Public read access
-CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
-CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-
-CREATE POLICY "Enable read access for all users" ON teams FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON matches FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON predictions FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON value_bets FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON team_ratings_history FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON players FOR SELECT USING (true);
-
--- Authenticated write access
-CREATE POLICY "Enable insert for authenticated users" ON predictions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Enable insert for authenticated users" ON value_bets FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Users can insert their own accas" ON accas FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can view their own accas" ON accas FOR SELECT USING (auth.uid() = user_id);
-
-
--- ============================================
--- ENABLE REALTIME SUBSCRIPTIONS
--- ============================================
-
-ALTER TABLE predictions REPLICA IDENTITY FULL;
-ALTER TABLE value_bets REPLICA IDENTITY FULL;
-ALTER TABLE accas REPLICA IDENTITY FULL;
-
-ALTER PUBLICATION supabase_realtime ADD TABLE predictions;
-ALTER PUBLICATION supabase_realtime ADD TABLE value_bets;
-ALTER PUBLICATION supabase_realtime ADD TABLE accas;
-
+CREATE INDEX IF NOT EXISTS idx_predictions_created ON predictions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
+CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date);
+CREATE INDEX IF NOT EXISTS idx_matches_teams ON matches(home_team_id, away_team_id);
+CREATE INDEX IF NOT EXISTS idx_value_bets_active ON value_bets(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_team_ratings_date ON team_ratings_history(rating_date DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_teams_name ON teams(name);
+CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id);
+CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);
 
 -- ============================================
 -- FUNCTIONS AND TRIGGERS
--- =emulated_user_command
-I have made some changes to the SQL can you take a look at it and tell me what you think?
 -- ============================================
 
--- Update updated_at timestamp
+-- Update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -263,11 +214,11 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_teams_updated_at BEFORE UPDATE ON teams
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Calculate team stats after match
+-- Update team stats after match result
 CREATE OR REPLACE FUNCTION update_team_stats()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Update home team stats
+    -- Home Team
     UPDATE teams
     SET 
         total_matches = total_matches + 1,
@@ -278,7 +229,7 @@ BEGIN
         losses = losses + CASE WHEN NEW.home_goals < NEW.away_goals THEN 1 ELSE 0 END
     WHERE id = NEW.home_team_id;
     
-    -- Update away team stats
+    -- Away Team
     UPDATE teams
     SET 
         total_matches = total_matches + 1,
@@ -296,16 +247,79 @@ $$ language 'plpgsql';
 CREATE TRIGGER after_match_insert AFTER INSERT ON matches
     FOR EACH ROW EXECUTE FUNCTION update_team_stats();
 
--- 9. AUTO-CREATE PROFILE ON SIGNUP
+-- Profile on Signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO public.profiles (id, email, role, is_premium)
-    VALUES (new.id, new.email, 'user', false);
+    VALUES (new.id, new.email, 'user', (new.email = 'sophiemabel69@gmail.com'));
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+-- Check if trigger exists before creating
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'on_auth_user_created') THEN
+        CREATE TRIGGER on_auth_user_created
+            AFTER INSERT ON auth.users
+            FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+    END IF;
+END $$;
+
+-- ============================================
+-- RLS POLICIES
+-- ============================================
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE value_bets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_ratings_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+
+-- Select: Public
+CREATE POLICY "Public read access" ON profiles FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON teams FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON matches FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON predictions FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON value_bets FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON players FOR SELECT USING (true);
+
+-- Auth Profile
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Accas
+CREATE POLICY "Users can insert their own accas" ON accas FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view their own accas" ON accas FOR SELECT USING (auth.uid() = user_id);
+
+-- Admin / Maintenance (Email based for simplicity in this project)
+CREATE POLICY "Admin full access" ON teams FOR ALL USING (auth.jwt()->>'email' = 'sophiemabel69@gmail.com');
+CREATE POLICY "Admin full access" ON matches FOR ALL USING (auth.jwt()->>'email' = 'sophiemabel69@gmail.com');
+CREATE POLICY "Admin full access" ON predictions FOR ALL USING (auth.jwt()->>'email' = 'sophiemabel69@gmail.com');
+CREATE POLICY "Admin full access" ON value_bets FOR ALL USING (auth.jwt()->>'email' = 'sophiemabel69@gmail.com');
+CREATE POLICY "Admin full access" ON players FOR ALL USING (auth.jwt()->>'email' = 'sophiemabel69@gmail.com');
+
+-- ============================================
+-- REALTIME
+-- ============================================
+
+ALTER TABLE predictions REPLICA IDENTITY FULL;
+ALTER TABLE value_bets REPLICA IDENTITY FULL;
+ALTER TABLE accas REPLICA IDENTITY FULL;
+
+-- Publications
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        CREATE PUBLICATION supabase_realtime;
+    END IF;
+END $$;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE predictions;
+ALTER PUBLICATION supabase_realtime ADD TABLE value_bets;
+ALTER PUBLICATION supabase_realtime ADD TABLE accas;
