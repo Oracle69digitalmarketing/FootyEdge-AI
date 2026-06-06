@@ -1,22 +1,24 @@
-# FootyEdge AI - Supabase Database Schema (REPAIR VERSION)
+# FootyEdge AI - Supabase Database Schema (FORCE REPAIR)
 
-This version fixes the "Incompatible Types: bigint and uuid" error. Copy and paste the code below into your **Supabase SQL Editor** and click **Run**.
+This version uses `CASCADE` to force-drop old tables and fix dependency errors. Copy and paste the code below into your **Supabase SQL Editor** and click **Run**.
 
-**Warning:** This script will drop existing tables to ensure a clean setup.
+**Warning:** This script will completely wipe existing FootyEdge data for a fresh start.
 
 ```sql
 -- ============================================
--- 0. CLEANUP (Optional: Remove if you want to keep existing data)
+-- 0. FORCE CLEANUP
 -- ============================================
-DROP TABLE IF EXISTS players;
-DROP TABLE IF EXISTS team_ratings_history;
-DROP TABLE IF EXISTS accas;
-DROP TABLE IF EXISTS user_bets;
-DROP TABLE IF EXISTS predictions;
-DROP TABLE IF EXISTS matches;
-DROP TABLE IF EXISTS teams;
-DROP TABLE IF EXISTS profiles;
-DROP TABLE IF EXISTS activity_log;
+DROP TABLE IF EXISTS players CASCADE;
+DROP TABLE IF EXISTS team_ratings_history CASCADE;
+DROP TABLE IF EXISTS accas CASCADE;
+DROP TABLE IF EXISTS user_bets CASCADE;
+DROP TABLE IF EXISTS predictions CASCADE;
+DROP TABLE IF EXISTS value_bets CASCADE;
+DROP TABLE IF EXISTS matches CASCADE;
+DROP TABLE IF EXISTS teams CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
+DROP TABLE IF EXISTS activity_log CASCADE;
+DROP TABLE IF EXISTS agent_logs CASCADE;
 
 -- ============================================
 -- 1. PROFILES TABLE
@@ -36,7 +38,7 @@ CREATE TABLE profiles (
 -- 2. TEAMS TABLE
 -- ============================================
 CREATE TABLE teams (
-    id BIGINT PRIMARY KEY, -- External Football API ID
+    id BIGINT PRIMARY KEY,
     name TEXT NOT NULL,
     country TEXT,
     logo_url TEXT,
@@ -81,8 +83,8 @@ CREATE TABLE players (
 -- ============================================
 CREATE TABLE matches (
     id BIGSERIAL PRIMARY KEY,
-    home_team_id BIGINT REFERENCES teams(id),
-    away_team_id BIGINT REFERENCES teams(id),
+    home_team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE,
+    away_team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE,
     match_date TIMESTAMP NOT NULL,
     league VARCHAR(100),
     home_goals INT,
@@ -135,7 +137,7 @@ CREATE TABLE value_bets (
 -- ============================================
 CREATE TABLE team_ratings_history (
     id BIGSERIAL PRIMARY KEY,
-    team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE, -- Fixed: type is BIGINT
+    team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE,
     rating_date DATE NOT NULL,
     elo_rating FLOAT,
     attack_strength FLOAT,
@@ -177,7 +179,7 @@ CREATE TABLE accas (
 -- ============================================
 CREATE TABLE activity_log (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     action VARCHAR(100),
     details JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -198,12 +200,12 @@ ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
 -- ============================================
 -- PUBLIC READ POLICIES
 -- ============================================
-CREATE POLICY "Public read access profiles" ON profiles FOR SELECT USING (true);
-CREATE POLICY "Public read access teams" ON teams FOR SELECT USING (true);
-CREATE POLICY "Public read access players" ON players FOR SELECT USING (true);
-CREATE POLICY "Public read access matches" ON matches FOR SELECT USING (true);
-CREATE POLICY "Public read access predictions" ON predictions FOR SELECT USING (true);
-CREATE POLICY "Public read access value_bets" ON value_bets FOR SELECT USING (true);
+CREATE POLICY "Public read profiles" ON profiles FOR SELECT USING (true);
+CREATE POLICY "Public read teams" ON teams FOR SELECT USING (true);
+CREATE POLICY "Public read players" ON players FOR SELECT USING (true);
+CREATE POLICY "Public read matches" ON matches FOR SELECT USING (true);
+CREATE POLICY "Public read predictions" ON predictions FOR SELECT USING (true);
+CREATE POLICY "Public read value_bets" ON value_bets FOR SELECT USING (true);
 
 -- ============================================
 -- USER PRIVATE POLICIES
