@@ -482,19 +482,20 @@ async def seed_database():
         raise HTTPException(status_code=503, detail="Database not configured.")
     
     initial_teams = [
-        {"name": "Manchester United", "country": "England", "league": "Premier League", "elo_rating": 1850, "attack_strength": 2.1, "defense_strength": 0.9, "form_rating": 0.7},
-        {"name": "Newcastle", "country": "England", "league": "Premier League", "elo_rating": 1800, "attack_strength": 2.0, "defense_strength": 1.0, "form_rating": 0.6},
-        {"name": "Liverpool", "country": "England", "league": "Premier League", "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 0.8, "form_rating": 0.8},
-        {"name": "Arsenal", "country": "England", "league": "Premier League", "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.7, "form_rating": 0.8},
-        {"name": "Manchester City", "country": "England", "league": "Premier League", "elo_rating": 1980, "attack_strength": 2.5, "defense_strength": 0.6, "form_rating": 0.9},
-        {"name": "Barcelona", "country": "Spain", "league": "La Liga", "elo_rating": 1880, "attack_strength": 2.2, "defense_strength": 0.9, "form_rating": 0.7},
-        {"name": "Real Madrid", "country": "Spain", "league": "La Liga", "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8, "form_rating": 0.8},
+        {"name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
+        {"name": "Newcastle", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10261.png"},
+        {"name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
+        {"name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
+        {"name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
+        {"name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"},
+        {"name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
     ]
     
     try:
         response = supabase.table("teams").upsert(initial_teams, on_conflict="name").execute()
         return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
     except Exception as e:
+        logger.error(f"Seeding failed: {e}")
         raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
 
 

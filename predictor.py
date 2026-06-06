@@ -274,26 +274,25 @@ class FootyEdgePredictor:
             from_date = datetime.now().strftime("%Y-%m-%d")
             to_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
-            client = await self._get_client_for_league(league_id)
-            
-            if isinstance(client, FootballDataOrgClient):
-                res = await client.get_matches_by_date(
+            # Use the router to get the correct client and method
+            if league_id in self.football_client.MAJOR_LEAGUE_CODES or league_id in self.football_client.MAJOR_LEAGUE_IDS:
+                # For major leagues, we can use football-data.org range
+                res = await self.fd_client.get_matches_by_date(
                     date_from=from_date, 
                     date_to=to_date, 
                     competitions=[str(league_id)]
                 )
-            else: # RapidAPI
-                # Use FootballAPIClient for a more unified approach
-                season = datetime.now().year
-                res = await client._make_request("fixtures", params={
-                    "league": league_id,
-                    "season": season,
-                    "from": from_date,
-                    "to": to_date
-                })
-
-            fixtures = res.get('response', []) if res else []
-            return fixtures
+                return res.get('response', []) if res else []
+            else:
+                # For others, we use RapidAPI. RapidAPI client usually does one day at a time.
+                # We'll fetch for the next 3 days to avoid hitting 429 too fast while still giving data.
+                all_fixtures = []
+                for i in range(3):
+                    target_date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
+                    res = await self.rapid_client.get_matches_by_date(target_date)
+                    if res and res.get('response'):
+                        all_fixtures.extend(res['response'])
+                return all_fixtures
             
         except Exception as e:
             logger.error(f"Error fetching fixtures for league {league_id}: {e}")
