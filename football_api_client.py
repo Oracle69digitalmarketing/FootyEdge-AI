@@ -19,6 +19,30 @@ class FootballAPIClient:
             'x-rapidapi-host': self.rapid_host,
             'Content-Type': 'application/json'
         }
+        # Priority mapping for major leagues (IDs from the provider)
+        self.POPULAR_LEAGUES = {
+            47: "Premier League", 
+            87: "La Liga", 
+            54: "Bundesliga", 
+            55: "Serie A", 
+            53: "Ligue 1", 
+            42: "Champions League", 
+            73: "Europa League",
+            102: "Friendly International",
+            530: "Morocco Botola Pro",
+            50: "MLS",
+            67: "Eredivisie",
+            108: "FIFA World Cup",
+            104: "Euro Championship",
+            105: "Copa America",
+            77: "FA Cup",
+            110: "AFCON",
+            9085: "Egypt League Cup",
+            918043: "Ettan Norra",
+            268: "Liga BetPlay",
+            259: "Uruguayan Championship",
+            262: "Bolivian Primera División"
+        }
 
     async def _make_request(self, endpoint: str, params: Dict = None):
         url = f"https://{self.rapid_host}/{endpoint}"
@@ -44,7 +68,23 @@ class FootballAPIClient:
         clean_date = date_from.replace("-", "")
         res = await self._make_request("football-get-matches-by-date", {"date": clean_date})
         if res and 'response' in res:
-            return {"response": self._normalize_matches(res['response'].get('matches', []))}
+            matches = self._normalize_matches(res['response'].get('matches', []))
+            
+            # SORTING LOGIC: 
+            # 1. Matches in POPULAR_LEAGUES come first
+            # 2. Within popular, we follow the order defined in the dict keys
+            # 3. Everything else alphabetical by league name
+            
+            priority_ids = list(self.POPULAR_LEAGUES.keys())
+            
+            def sort_key(m):
+                lid = m['league']['id']
+                if lid in priority_ids:
+                    return (0, priority_ids.index(lid), m['fixture']['date'])
+                return (1, m['league']['name'], m['fixture']['date'])
+                
+            matches.sort(key=sort_key)
+            return {"response": matches}
         return {"response": []}
 
     def _normalize_matches(self, matches: List[Dict]) -> List[Dict]:
@@ -52,13 +92,17 @@ class FootballAPIClient:
         for m in matches:
             home = m.get('home', {})
             away = m.get('away', {})
+            league_id = m.get('leagueId')
+            # Resolve league name from mapping or use ID as fallback
+            league_name = self.POPULAR_LEAGUES.get(league_id, f"League {league_id}")
+            
             normalized.append({
                 "fixture": {"id": m.get('id'), "date": m.get('status', {}).get('utcTime') or m.get('time')},
                 "teams": {
                     "home": {"name": home.get('name'), "id": home.get('id'), "logo": f"https://images.fotmob.com/image_resources/logo/teamlogo/{home.get('id')}.png"},
                     "away": {"name": away.get('name'), "id": away.get('id'), "logo": f"https://images.fotmob.com/image_resources/logo/teamlogo/{away.get('id')}.png"}
                 },
-                "league": {"name": str(m.get('leagueId')), "id": m.get('leagueId')},
+                "league": {"name": league_name, "id": league_id},
                 "goals": {"home": home.get('score'), "away": away.get('score')},
                 "status": m.get('status', {})
             })
@@ -86,6 +130,8 @@ class FootballAPIClient:
         """
         res = await self.get_standings(str(league_id))
         teams = []
+        league_name = self.POPULAR_LEAGUES.get(league_id, f"League {league_id}")
+        
         if res and 'response' in res and 'standing' in res['response']:
              for t in res['response']['standing']:
                  teams.append({
@@ -95,7 +141,7 @@ class FootballAPIClient:
                          "logo": f"https://images.fotmob.com/image_resources/logo/teamlogo/{t.get('id')}.png",
                          "country": "Unknown" # Provider doesn't give country in standing
                      },
-                     "league": {"name": "League " + str(league_id)}
+                     "league": {"name": league_name}
                  })
         return {"response": teams}
 

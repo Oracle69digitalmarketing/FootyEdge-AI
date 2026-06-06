@@ -273,21 +273,25 @@ async def get_daily_picks(from_date: Optional[str] = None, to_date: Optional[str
 
     try:
         # 1. Fetch matches for the range
-        matches_data = await football_client.get_matches_by_date(from_date)
+        matches_data = await football_client.get_matches_by_date(from_date, to_date)
         match_list = matches_data.get('response', [])
         
+        # Note: Matches are already sorted by league priority in football_client
+        
         results = []
-        for m in match_list[:15]: 
+        # Increase limit to 30 to show more popular games
+        for m in match_list[:30]: 
             home = m['teams']['home']['name']
             away = m['teams']['away']['name']
             
-            # 3. Check if prediction exists in DB
+            # Check if prediction exists in DB
             pred_res = supabase.table("predictions").select("*").eq("home_team", home).eq("away_team", away).order("created_at", desc=True).limit(1).execute()
             
             if pred_res.data:
                 results.append(pred_res.data[0])
             else:
                 try:
+                    # Generate new prediction
                     prediction = await predictor.predict_match(home, away)
                     results.append(prediction)
                 except Exception as e:
