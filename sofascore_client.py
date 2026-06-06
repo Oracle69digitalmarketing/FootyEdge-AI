@@ -11,7 +11,7 @@ class SofascoreClient:
     Provides deep match stats, H2H, and player ratings.
     """
     def __init__(self):
-        self.rapidapi_key = os.environ.get('RAPIDAPI_KEY', "9d484677a1mshd7d8d62a256ff73p138c8bjsn0e732e2acfd1")
+        self.rapidapi_key = os.environ.get('RAPIDAPI_KEY') or os.environ.get('RAPID_API_KEY', "9d484677a1mshd7d8d62a256ff73p138c8bjsn0e732e2acfd1")
         self.rapid_host = "sofascore.p.rapidapi.com"
         self.headers = {
             'x-rapidapi-key': self.rapidapi_key,

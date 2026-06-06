@@ -6,6 +6,10 @@ import logging
 from datetime import datetime
 import io
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

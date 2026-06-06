@@ -725,6 +725,9 @@ export default function App() {
                       {isAdmin && (
                         <div className="flex justify-center gap-4">
                           <button onClick={handleSyncTeams} className="bg-zinc-900 border border-zinc-800 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-800 transition-all">Sync Teams</button>
+                          <a href="/api/health" target="_blank" className="bg-zinc-900 border border-zinc-800 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-800 transition-all flex items-center gap-2">
+                            <Server className="w-4 h-4" /> System Health
+                          </a>
                         </div>
                       )}
                     </div>

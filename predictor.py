@@ -35,12 +35,16 @@ class FootyEdgePredictor:
         # Initialize Supabase client if possible
         if self.supabase_url and self.supabase_key:
             from supabase import create_client
-            self.supabase = create_client(self.supabase_url, self.supabase_key)
+            try:
+                self.supabase = create_client(self.supabase_url, self.supabase_key)
+            except Exception as e:
+                logger.error(f"Failed to connect to Supabase: {e}")
+                self.supabase = None
         else:
             self.supabase = None
 
         self.fd_client = FootballDataOrgClient() if self.fd_org_key else None
-        self.rapid_client = FootballAPIClient() if self.rapidapi_key else None
+        self.rapid_client = FootballAPIClient() # This one has an internal fallback
         
         # Use the router for all football data requests
         self.football_client = FootballRouter(self.fd_client, self.rapid_client)
@@ -274,22 +278,27 @@ class FootyEdgePredictor:
             from_date = datetime.now().strftime("%Y-%m-%d")
             to_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
-            # Use the router to get the correct client and method
+            # Use the router to get the correct client and method - handles None clients safely
             if league_id in self.football_client.MAJOR_LEAGUE_CODES or league_id in self.football_client.MAJOR_LEAGUE_IDS:
-                # For major leagues, we can use football-data.org range
-                res = await self.fd_client.get_matches_by_date(
-                    date_from=from_date, 
-                    date_to=to_date, 
-                    competitions=[str(league_id)]
-                )
-                return res.get('response', []) if res else []
+                # For major leagues, we can use football-data.org range if available
+                if self.fd_client:
+                    res = await self.fd_client.get_matches_by_date(
+                        date_from=from_date, 
+                        date_to=to_date, 
+                        competitions=[str(league_id)]
+                    )
+                    return res.get('response', []) if res else []
+                else:
+                    # Fallback to RapidAPI via router
+                    res = await self.football_client.get_matches_by_date(from_date, to_date, league_id=league_id)
+                    return res.get('response', []) if res else []
             else:
                 # For others, we use RapidAPI. RapidAPI client usually does one day at a time.
                 # We'll fetch for the next 3 days to avoid hitting 429 too fast while still giving data.
                 all_fixtures = []
                 for i in range(3):
                     target_date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
-                    res = await self.rapid_client.get_matches_by_date(target_date)
+                    res = await self.rapid_client.get_matches_by_date(target_date) if self.rapid_client else None
                     if res and res.get('response'):
                         all_fixtures.extend(res['response'])
                 return all_fixtures

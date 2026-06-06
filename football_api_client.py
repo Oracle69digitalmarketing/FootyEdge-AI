@@ -1,6 +1,7 @@
 import os
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta
+import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 
@@ -12,7 +13,7 @@ class FootballAPIClient:
     """
     def __init__(self):
         # Prefer the key provided in environment, fallback to User's key
-        self.rapidapi_key = os.environ.get('RAPIDAPI_KEY', "9d484677a1mshd7d8d62a256ff73p138c8bjsn0e732e2acfd1")
+        self.rapidapi_key = os.environ.get('RAPIDAPI_KEY') or os.environ.get('RAPID_API_KEY', "9d484677a1mshd7d8d62a256ff73p138c8bjsn0e732e2acfd1")
         self.rapid_host = "free-api-live-football-data.p.rapidapi.com"
         self.headers = {
             'x-rapidapi-key': self.rapidapi_key,
@@ -64,29 +65,48 @@ class FootballAPIClient:
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
         """
-        Fetches matches for a specific date. Format: YYYYMMDD
+        Fetches matches for a specific date or range. Format: YYYY-MM-DD
         """
-        clean_date = date_from.replace("-", "")
-        res = await self._make_request("football-get-matches-by-date", {"date": clean_date})
-        if res and 'response' in res:
-            matches = self._normalize_matches(res['response'].get('matches', []))
+        if not date_to or date_to == date_from:
+            clean_date = date_from.replace("-", "")
+            res = await self._make_request("football-get-matches-by-date", {"date": clean_date})
+            if res and 'response' in res:
+                matches = self._normalize_matches(res['response'].get('matches', []))
+                self._sort_matches(matches)
+                return {"response": matches}
+            return {"response": []}
+        
+        # Handle range
+        start = datetime.strptime(date_from, "%Y-%m-%d")
+        end = datetime.strptime(date_to, "%Y-%m-%d")
+        all_matches = []
+        
+        # Limit to 7 days to avoid excessive API calls
+        days = (end - start).days
+        if days > 7:
+            end = start + timedelta(days=7)
+            days = 7
             
-            # SORTING LOGIC: 
-            # 1. Matches in POPULAR_LEAGUES come first
-            # 2. Within popular, we follow the order defined in the dict keys
-            # 3. Everything else alphabetical by league name
+        for i in range(days + 1):
+            target_date = (start + timedelta(days=i)).strftime("%Y%m%d")
+            res = await self._make_request("football-get-matches-by-date", {"date": target_date})
+            if res and 'response' in res:
+                all_matches.extend(self._normalize_matches(res['response'].get('matches', [])))
+            await asyncio.sleep(0.1) # Small delay to avoid rate limiting
             
-            priority_ids = list(self.POPULAR_LEAGUES.keys())
+        self._sort_matches(all_matches)
+        return {"response": all_matches}
+
+    def _sort_matches(self, matches: List[Dict]):
+        priority_ids = list(self.POPULAR_LEAGUES.keys())
+        
+        def sort_key(m):
+            lid = m['league']['id']
+            if lid in priority_ids:
+                return (0, priority_ids.index(lid), m['fixture']['date'])
+            return (1, m['league']['name'], m['fixture']['date'])
             
-            def sort_key(m):
-                lid = m['league']['id']
-                if lid in priority_ids:
-                    return (0, priority_ids.index(lid), m['fixture']['date'])
-                return (1, m['league']['name'], m['fixture']['date'])
-                
-            matches.sort(key=sort_key)
-            return {"response": matches}
-        return {"response": []}
+        matches.sort(key=sort_key)
 
     def _normalize_matches(self, matches: List[Dict]) -> List[Dict]:
         normalized = []

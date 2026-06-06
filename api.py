@@ -10,6 +10,11 @@ import httpx
 from supabase import create_client, Client
 from datetime import datetime, timedelta, timezone
 import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from predictor import FootyEdgePredictor
 from football_api_client import FootballAPIClient
 from football_data_org_client import FootballDataOrgClient
@@ -29,6 +34,10 @@ ALLOWED_ORIGINS = [
     "https://footy-edge-ai.vercel.app",
     "http://localhost:5173",
     "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
     "*" # Temporary wildcard to confirm connectivity
 ]
 
@@ -45,29 +54,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Environment Variable Checks & Client Initialization ---
-supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
-rapidapi_key = os.environ.get("RAPIDAPI_KEY")
-fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY")
+supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("VITE_SUPABASE_URL")
+supabase_key = (
+    os.environ.get("SUPABASE_SERVICE_KEY") or 
+    os.environ.get("SUPABASE_KEY") or 
+    os.environ.get("SUPABASE_ANON_KEY") or
+    os.environ.get("VITE_SUPABASE_ANON_KEY")
+)
+rapidapi_key = os.environ.get("RAPIDAPI_KEY") or os.environ.get("RAPID_API_KEY")
+fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY") or os.environ.get("FOOTBALL_DATA_KEY")
 sportradar_key = os.environ.get("SPORTRADAR_API_KEY")
 
 if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables not found. Database client will not be available.")
     supabase = None
 else:
-    supabase = create_client(supabase_url, supabase_key)
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Supabase client: {e}")
+        supabase = None
 
-if not any([rapidapi_key, fd_org_key, sportradar_key]):
-    logger.warning("No Football Data API keys found. Football API client will not be available.")
-    football_client = None
-    rapid_client = None
-else:
-    # We initialize both if keys are present to allow smart routing
-    fd_client = FootballDataOrgClient() if fd_org_key else None
-    rapid_client = FootballAPIClient() if rapidapi_key else None
-    
-    # football_client remains for legacy compatibility, now using the router
-    football_client = FootballRouter(fd_client, rapid_client)
+# Initialize clients even if keys are missing from env, as they might have internal fallbacks or handles
+fd_client = FootballDataOrgClient() if fd_org_key else None
+rapid_client = FootballAPIClient() # This one has an internal fallback
+
+# football_client remains for legacy compatibility, now using the router
+football_client = FootballRouter(fd_client, rapid_client)
 
 predictor = FootyEdgePredictor()
 strategy_agent = StrategyAgent()
@@ -85,6 +98,17 @@ if not sportradar_key:
     logger.warning("SPORTRADAR_API_KEY is not set. Sportradar features disabled.")
 if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables are not set. Database features will be unavailable.")
+
+@router.get("/health")
+async def health_check():
+    return {
+        "status": "operational",
+        "supabase_connected": supabase is not None,
+        "football_api_configured": football_client is not None,
+        "rapid_api_key_present": rapidapi_key is not None,
+        "football_data_key_present": fd_org_key is not None,
+        "environment": "production" if os.environ.get("RENDER") or os.environ.get("VERCEL") else "development"
+    }
 
 # --- Pydantic Models ---
 class PredictRequest(BaseModel):
@@ -295,11 +319,17 @@ async def get_daily_picks(from_date: Optional[str] = None, to_date: Optional[str
             home = m['teams']['home']['name']
             away = m['teams']['away']['name']
             
-            # Check if prediction exists in DB
-            pred_res = supabase.table("predictions").select("*").eq("home_team", home).eq("away_team", away).order("created_at", desc=True).limit(1).execute()
+            # Check if prediction exists in DB (if connected)
+            pred_data = None
+            if supabase:
+                try:
+                    pred_res = supabase.table("predictions").select("*").eq("home_team", home).eq("away_team", away).order("created_at", desc=True).limit(1).execute()
+                    pred_data = pred_res.data
+                except Exception as db_err:
+                    logger.warning(f"DB Prediction lookup failed: {db_err}")
             
-            if pred_res.data:
-                results.append(pred_res.data[0])
+            if pred_data:
+                results.append(pred_data[0])
             else:
                 try:
                     # Provide default odds for daily picks generator
@@ -399,28 +429,31 @@ async def sync_teams():
             if l_id:
                 found_league_ids.append(l_id)
         
-        # Combine found leagues with our major list
-        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:15]
+        # Combine found leagues with our major list, ensuring major leagues are always included
+        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20]
         
         all_teams = []
         for league_id in leagues_to_sync:
             logger.info(f"Fetching teams for league ID: {league_id}")
-            teams_data = await football_client.get_teams_by_league(league_id)
-            if teams_data and 'response' in teams_data:
-                for team_item in teams_data['response']:
-                    team_info = team_item.get('team', {})
-                    if team_info.get('id') and team_info.get('name'):
-                        all_teams.append({
-                            "id": str(team_info['id']),
-                            "name": team_info['name'],
-                            "country": team_info.get('country'),
-                            "league_name": team_item.get('league', {}).get('name', 'Unknown'),
-                            "logo_url": team_info.get('crest', team_info.get('logo'))
-                        })
+            try:
+                teams_data = await football_client.get_teams_by_league(league_id)
+                if teams_data and 'response' in teams_data:
+                    for team_item in teams_data['response']:
+                        team_info = team_item.get('team', {})
+                        if team_info.get('id') and team_info.get('name'):
+                            all_teams.append({
+                                "id": str(team_info['id']),
+                                "name": team_info['name'],
+                                "country": team_info.get('country') or 'Unknown',
+                                "league_name": team_item.get('league', {}).get('name', 'Unknown'),
+                                "logo_url": team_info.get('crest', team_info.get('logo'))
+                            })
+            except Exception as e:
+                logger.error(f"Failed to fetch teams for league {league_id}: {e}")
             await asyncio.sleep(0.5) # Slight delay
         
         if not all_teams:
-            raise HTTPException(status_code=500, detail="No teams found from external API.")
+            return JSONResponse(status_code=500, content={"status": "error", "detail": "No teams found from external API. Check your API keys and quota."})
         
         # Filter duplicates by name since ID types might clash
         unique_teams = {t['name']: t for t in all_teams}.values()
@@ -429,10 +462,10 @@ async def sync_teams():
         if upsert_response.data:
             return {"status": "success", "synced_count": len(upsert_response.data)}
         else:
-            raise HTTPException(status_code=500, detail="Failed to upsert teams to Supabase.")
+            return JSONResponse(status_code=500, content={"status": "error", "detail": "Failed to upsert teams to Supabase. Check database permissions."})
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Sync failed: {str(e)}"})
 
 
 @router.post("/admin/sync-players", summary="Sync players for existing teams in database")
@@ -445,38 +478,44 @@ async def sync_players():
         teams_res = supabase.table("teams").select("id, name").execute()
         teams = teams_res.data or []
         
+        if not teams:
+            return JSONResponse(status_code=400, content={"status": "error", "detail": "No teams found in database. Sync teams first."})
+
         total_synced = 0
         for team in teams:
             logger.info(f"Syncing players for {team['name']} (ID: {team['id']})")
-            players_data = await football_client.list_players_by_team(team['id'])
-            
-            if players_data and 'response' in players_data:
-                player_list = players_data.get('response', [])
-                if isinstance(player_list, dict) and 'players' in player_list: # Some formats
-                    player_list = player_list['players']
+            try:
+                players_data = await football_client.list_players_by_team(team['id'])
                 
-                db_players = []
-                for p in player_list[:25]: # Limit per team
-                    db_players.append({
-                        "external_id": str(p.get('id')),
-                        "team_id": team['id'],
-                        "name": p.get('name'),
-                        "position": p.get('position'),
-                        "nationality": p.get('country') or p.get('nationality'),
-                        "age": p.get('age'),
-                        "photo_url": f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png" if p.get('id') else None
-                    })
-                
-                if db_players:
-                    supabase.table("players").upsert(db_players, on_conflict="name, team_id").execute()
-                    total_synced += len(db_players)
+                if players_data and 'response' in players_data:
+                    player_list = players_data.get('response', [])
+                    if isinstance(player_list, dict) and 'players' in player_list: # Some formats
+                        player_list = player_list['players']
+                    
+                    db_players = []
+                    for p in player_list[:25]: # Limit per team
+                        db_players.append({
+                            "external_id": str(p.get('id')),
+                            "team_id": team['id'],
+                            "name": p.get('name'),
+                            "position": p.get('position'),
+                            "nationality": p.get('country') or p.get('nationality'),
+                            "age": p.get('age'),
+                            "photo_url": f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png" if p.get('id') else None
+                        })
+                    
+                    if db_players:
+                        supabase.table("players").upsert(db_players, on_conflict="name, team_id").execute()
+                        total_synced += len(db_players)
+            except Exception as e:
+                logger.error(f"Failed to sync players for team {team['id']}: {e}")
             
             await asyncio.sleep(0.4) # Avoid rate limiting
             
         return {"status": "success", "synced_count": total_synced}
     except Exception as e:
         logger.error(f"Sync players failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Sync failed: {str(e)}"})
 
 
 @router.post("/admin/seed-database", summary="Seed the database with initial data")
@@ -485,13 +524,13 @@ async def seed_database():
         raise HTTPException(status_code=503, detail="Database not configured.")
     
     initial_teams = [
-        {"name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
-        {"name": "Newcastle", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10261.png"},
-        {"name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
-        {"name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
-        {"name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
-        {"name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"},
-        {"name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
+        {"id": 10260, "name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
+        {"id": 10261, "name": "Newcastle", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10261.png"},
+        {"id": 8650, "name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
+        {"id": 9825, "name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
+        {"id": 8456, "name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
+        {"id": 8634, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"},
+        {"id": 8633, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
     ]
     
     try:
@@ -499,7 +538,7 @@ async def seed_database():
         return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
     except Exception as e:
         logger.error(f"Seeding failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Seeding failed: {str(e)}"})
 
 
 @router.get("/admin/stats", summary="Get admin dashboard statistics")
