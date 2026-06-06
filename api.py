@@ -23,16 +23,19 @@ app = FastAPI(
     description="Provides sophisticated, production-ready match predictions and betting analysis."
 )
 
+# I'm updating the ALLOWED_ORIGINS to be more robust
 ALLOWED_ORIGINS = [
-    "https://footy-edge-ai.vercel.app",
+    "https://footyedge-ai.onrender.com/api/health",
+    "https://footyedge-ai.onrender.com/api/health",
     "http://localhost:5173",
     "http://localhost:3000",
+    "*" # Temporary wildcard to confirm connectivity
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False, # Must be False if "*" is in origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
