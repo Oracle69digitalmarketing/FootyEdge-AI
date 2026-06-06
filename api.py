@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import asyncio
 from predictor import FootyEdgePredictor
 from football_api_client import FootballAPIClient
+from football_data_org_client import FootballDataOrgClient
 from agents.strategy_agent import StrategyAgent
 
 # --- App Setup ---
@@ -56,7 +57,12 @@ if not any([rapidapi_key, fd_org_key, sportradar_key]):
     logger.warning("No Football Data API keys found. Football API client will not be available.")
     football_client = None
 else:
-    football_client = FootballAPIClient()
+    if fd_org_key:
+        logger.info("Using football-data.org as primary data provider.")
+        football_client = FootballDataOrgClient()
+    else:
+        logger.info("Using RapidAPI as primary data provider.")
+        football_client = FootballAPIClient()
 
 predictor = FootyEdgePredictor()
 strategy_agent = StrategyAgent()
@@ -374,14 +380,22 @@ async def sync_teams():
     if not football_client or not supabase:
         raise HTTPException(status_code=503, detail="Clients not configured.")
     
-    # Predefined major league IDs for new provider (Fotmob/Creativesdev)
-    major_league_ids = [47, 87, 54, 55, 53, 42, 73] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL
+    # Predefined major league IDs/Codes
+    if isinstance(football_client, FootballDataOrgClient):
+        major_league_ids = ["PL", "PD", "BL1", "SA", "FL1", "CL", "DED"]
+    else:
+        major_league_ids = [47, 87, 54, 55, 53, 42, 73] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL
     
     try:
         leagues_data = await football_client.list_leagues()
         league_items = leagues_data.get('response', [])
         
-        found_league_ids = [item.get('league', {}).get('id') for item in league_items if item.get('league', {}).get('id')]
+        found_league_ids = []
+        for item in league_items:
+            l_info = item.get('league', {})
+            l_id = l_info.get('code') if isinstance(football_client, FootballDataOrgClient) else l_info.get('id')
+            if l_id:
+                found_league_ids.append(l_id)
         
         # Combine found leagues with our major list and LIMIT strongly for BASIC plans
         leagues_to_sync = list(set(found_league_ids + major_league_ids))[:10]
@@ -440,14 +454,18 @@ async def sync_players():
                 
                 db_players = []
                 for p in player_list[:20]: # Limit to 20 per team for performance
+                    photo_url = None
+                    if not isinstance(football_client, FootballDataOrgClient) and p.get('id'):
+                         photo_url = f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png"
+                    
                     db_players.append({
                         "external_id": p.get('id'),
                         "team_id": team['id'],
                         "name": p.get('name'),
                         "position": p.get('position'),
-                        "nationality": p.get('country'),
+                        "nationality": p.get('country') or p.get('nationality'),
                         "age": p.get('age'),
-                        "photo_url": f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png" if p.get('id') else None
+                        "photo_url": photo_url
                     })
                 
                 if db_players:

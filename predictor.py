@@ -17,6 +17,7 @@ from agents.player_impact import PlayerImpactAgent
 from agents.three_six_five_scores import ThreeSixFiveScoresClient
 from agents.models import TeamStrength, ValueBet
 from football_api_client import FootballAPIClient
+from football_data_org_client import FootballDataOrgClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,8 +25,9 @@ logger = logging.getLogger(__name__)
 class FootyEdgePredictor:
     
     def __init__(self, supabase_url: str = None, supabase_key: str = None, 
-                 rapidapi_key: str = None):
+                 rapidapi_key: str = None, fd_org_key: str = None):
         self.rapidapi_key = rapidapi_key or os.environ.get('RAPIDAPI_KEY')
+        self.fd_org_key = fd_org_key or os.environ.get('FOOTBALL_DATA_API_KEY')
         self.supabase_url = supabase_url or os.environ.get('SUPABASE_URL')
         self.supabase_key = supabase_key or os.environ.get('SUPABASE_KEY')
         
@@ -36,7 +38,11 @@ class FootyEdgePredictor:
         else:
             self.supabase = None
 
-        self.football_client = FootballAPIClient()
+        if self.fd_org_key:
+            self.football_client = FootballDataOrgClient()
+        else:
+            self.football_client = FootballAPIClient()
+            
         self.three_six_five_client = ThreeSixFiveScoresClient()
         
         self.cache = {}
@@ -213,16 +219,16 @@ class FootyEdgePredictor:
         all_matches.sort(key=lambda x: x['date'], reverse=True)
         return all_matches
 
-    async def find_all_value_bets(self, league_ids: List[int] = None) -> List[Dict]:
-        if not self.rapidapi_key:
-            raise ValueError("RapidAPI key not configured.")
+    async def find_all_value_bets(self, league_ids: List[Any] = None) -> List[Dict]:
+        if not self.rapidapi_key and not self.fd_org_key:
+            raise ValueError("No Football API key configured.")
 
         # Limited league list for BASIC API plans to avoid 429
         if not league_ids:
-            league_ids = [
-                47, 87, 54, 55, 53, # Premier League, LaLiga, Bundesliga, Serie A, Ligue 1
-                42, 73, # UCL, UEL
-            ]
+            if hasattr(self.football_client, 'LEAGUE_MAP'): # football-data.org
+                league_ids = ["PL", "PD", "BL1", "SA", "FL1", "CL"]
+            else: # RapidAPI
+                league_ids = [47, 87, 54, 55, 53, 42, 73]
         
         all_value_bets = []
         
@@ -253,21 +259,28 @@ class FootyEdgePredictor:
         
         return all_value_bets
 
-    async def _fetch_upcoming_fixtures(self, league_id: int) -> List[Dict]:
+    async def _fetch_upcoming_fixtures(self, league_id: Any) -> List[Dict]:
         try:
-            # Use FootballAPIClient for a more unified approach
-            season = datetime.now().year
             from_date = datetime.now().strftime("%Y-%m-%d")
             to_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
-            res = await self.football_client._make_request("fixtures", params={
-                "league": league_id,
-                "season": season,
-                "from": from_date,
-                "to": to_date
-            })
+            if hasattr(self.football_client, 'LEAGUE_MAP'): # football-data.org
+                res = await self.football_client.get_matches_by_date(
+                    date_from=from_date, 
+                    date_to=to_date, 
+                    competitions=[str(league_id)]
+                )
+            else: # RapidAPI
+                # Use FootballAPIClient for a more unified approach
+                season = datetime.now().year
+                res = await self.football_client._make_request("fixtures", params={
+                    "league": league_id,
+                    "season": season,
+                    "from": from_date,
+                    "to": to_date
+                })
 
-            fixtures = res.get('response', [])
+            fixtures = res.get('response', []) if res else []
             return fixtures
             
         except Exception as e:
