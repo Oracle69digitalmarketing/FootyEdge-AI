@@ -14,6 +14,7 @@ from pathlib import Path
 from agents.team_strength import TeamStrengthAgent
 from agents.tactical_agent import TacticalAgent
 from agents.player_impact import PlayerImpactAgent
+from agents.three_six_five_scores import ThreeSixFiveScoresClient
 from agents.models import TeamStrength, ValueBet
 from football_api_client import FootballAPIClient
 
@@ -36,6 +37,7 @@ class FootyEdgePredictor:
             self.supabase = None
 
         self.football_client = FootballAPIClient()
+        self.three_six_five_client = ThreeSixFiveScoresClient()
         
         self.cache = {}
         self.cache_ttl = 3600
@@ -352,13 +354,29 @@ class FootyEdgePredictor:
         home_strength = await self.team_strength_agent.assess(home_team, home_matches)
         away_strength = await self.team_strength_agent.assess(away_team, away_matches)
 
+        # --- Advanced Stats: 365Scores xG Integration ---
+        # Fetching live xG averages if possible
+        live_xg = {'home': 0.0, 'away': 0.0}
+        game_id = await self.three_six_five_client.find_match_id(home_team, away_team)
+        if game_id:
+            match_data = await self.three_six_five_client.get_match_details(game_id)
+            if match_data:
+                live_xg = self.three_six_five_client.extract_xg(match_data)
+                logger.info(f"Retrieved 365Scores xG for {home_team} vs {away_team}: {live_xg}")
+
         # --- Tactical Analysis ---
         tactical_analysis = self.tactical_agent.analyze_matchup(home_strength, away_strength)
         mods = tactical_analysis.probability_modifiers
 
         # --- Base Probability Calculation (Poisson) ---
-        lambda_home = home_strength.attack_strength * away_strength.defense_strength
-        lambda_away = away_strength.attack_strength * home_strength.defense_strength
+        # Weighting: 70% Historical Strength, 30% Live xG (if available)
+        lambda_home = (home_strength.attack_strength * away_strength.defense_strength)
+        lambda_away = (away_strength.attack_strength * home_strength.defense_strength)
+        
+        if live_xg['home'] > 0 and live_xg['away'] > 0:
+            lambda_home = (lambda_home * 0.7) + (live_xg['home'] * 0.3)
+            lambda_away = (lambda_away * 0.7) + (live_xg['away'] * 0.3)
+
         max_goals = 6
         score_matrix = np.outer(
             np.array([self._poisson_pmf(i, lambda_home) for i in range(max_goals + 1)]),

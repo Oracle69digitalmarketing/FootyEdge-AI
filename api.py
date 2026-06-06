@@ -201,6 +201,75 @@ async def scan_value_bets():
 
 
 # --- Database Endpoints ---
+@router.get("/dashboard/stats", summary="Get overall platform statistics")
+async def get_dashboard_stats():
+    # ... (rest of implementation)
+
+@router.get("/teams", summary="Get all teams from database")
+async def get_teams(league: Optional[str] = None):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    query = supabase.table("teams").select("*")
+    if league:
+        query = query.eq("league_name", league)
+    response = query.order("name").execute()
+    return response.data or []
+
+
+@router.get("/teams/{team_id}", summary="Get detailed team info from DB")
+async def get_team_detail_db(team_id: int):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    
+    # Get team basic info
+    team_res = supabase.table("teams").select("*").eq("id", team_id).single().execute()
+    if not team_res.data:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    # Get players
+    players_res = supabase.table("players").select("*").eq("team_id", team_id).execute()
+    
+    return {
+        "team": team_res.data,
+        "players": players_res.data or []
+    }
+
+
+@router.get("/daily-picks", summary="Get AI predictions for a date range")
+async def get_daily_picks(from_date: Optional[str] = None, to_date: Optional[str] = None):
+    if not from_date:
+        from_date = datetime.now().strftime("%Y-%m-%d")
+    if not to_date:
+        to_date = from_date
+
+    try:
+        # 1. Fetch matches for the range
+        matches_data = await football_client.get_matches_by_date(from_date)
+        match_list = matches_data.get('response', [])
+        
+        results = []
+        for m in match_list[:15]: 
+            home = m['teams']['home']['name']
+            away = m['teams']['away']['name']
+            
+            # 3. Check if prediction exists in DB
+            pred_res = supabase.table("predictions").select("*").eq("home_team", home).eq("away_team", away).order("created_at", desc=True).limit(1).execute()
+            
+            if pred_res.data:
+                results.append(pred_res.data[0])
+            else:
+                try:
+                    prediction = await predictor.predict_match(home, away)
+                    results.append(prediction)
+                except Exception as e:
+                    logger.error(f"Failed to predict {home} vs {away}: {e}")
+        
+        return results
+    except Exception as e:
+        logger.error(f"Daily picks failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/recent-predictions", summary="Get the last N predictions")
 async def recent_predictions(limit: int = 10):
     if not supabase:
@@ -290,7 +359,8 @@ async def sync_teams():
                             "id": str(team_info['id']),
                             "name": team_info['name'],
                             "country": team_info.get('country'),
-                            "league": team_item.get('league', {}).get('name', 'Unknown'),
+                            "league_name": team_item.get('league', {}).get('name', 'Unknown'),
+                            "logo_url": team_info.get('logo')
                         })
             await asyncio.sleep(0.5) # Slight delay
         
@@ -307,6 +377,50 @@ async def sync_teams():
             raise HTTPException(status_code=500, detail="Failed to upsert teams to Supabase.")
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+
+@router.post("/admin/sync-players", summary="Sync players for existing teams in database")
+async def sync_players():
+    if not football_client or not supabase:
+        raise HTTPException(status_code=503, detail="Clients not configured.")
+    
+    try:
+        # Get all teams from DB
+        teams_res = supabase.table("teams").select("id, name").execute()
+        teams = teams_res.data or []
+        
+        total_synced = 0
+        for team in teams:
+            logger.info(f"Syncing players for {team['name']} (ID: {team['id']})")
+            players_data = await football_client.list_players_by_team(team['id'])
+            
+            if players_data and 'response' in players_data:
+                # Provider specific mapping
+                player_list = players_data['response']
+                
+                db_players = []
+                for p in player_list[:20]: # Limit to 20 per team for performance
+                    db_players.append({
+                        "external_id": p.get('id'),
+                        "team_id": team['id'],
+                        "name": p.get('name'),
+                        "position": p.get('position'),
+                        "nationality": p.get('country'),
+                        "age": p.get('age'),
+                        "photo_url": f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png" if p.get('id') else None
+                    })
+                
+                if db_players:
+                    # Upsert to prevent duplicates using (name, team_id) unique constraint
+                    supabase.table("players").upsert(db_players, on_conflict="name, team_id").execute()
+                    total_synced += len(db_players)
+            
+            await asyncio.sleep(0.5) # Avoid rate limiting
+            
+        return {"status": "success", "synced_count": total_synced}
+    except Exception as e:
+        logger.error(f"Sync players failed: {e}")
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
 
 
@@ -408,6 +522,29 @@ async def get_dashboard_stats():
     }
 
 
+@router.get("/external/365scores/stats", summary="Get detailed stats from 365Scores")
+async def get_365scores_stats(home_team: str, away_team: str):
+    try:
+        game_id = await predictor.three_six_five_client.find_match_id(home_team, away_team)
+        if not game_id:
+            return {"error": "Match not found on 365Scores"}
+        
+        data = await predictor.three_six_five_client.get_match_details(game_id)
+        if not data:
+            return {"error": "Failed to retrieve match details"}
+            
+        return {
+            "game_id": game_id,
+            "xg": predictor.three_six_five_client.extract_xg(data),
+            "stats": data.get('games', [{}])[0].get('stats', []),
+            "incidents": data.get('games', [{}])[0].get('incidents', []),
+            "shot_map": data.get('chartEvents', {}).get('events', [])
+        }
+    except Exception as e:
+        logger.error(f"Error fetching 365Scores stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/external/365scores", summary="Get 365scores external link")
 async def get_365scores_link(home_team: Optional[str] = None, away_team: Optional[str] = None):
     """
@@ -459,6 +596,17 @@ async def get_user_bets(user_id: str):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
     response = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    return response.data or []
+
+
+@router.get("/players", summary="Get all players from database")
+async def get_players(team_id: Optional[int] = None, limit: int = 50):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    query = supabase.table("players").select("*, teams(name, logo_url)")
+    if team_id:
+        query = query.eq("team_id", team_id)
+    response = query.order("name").limit(limit).execute()
     return response.data or []
 
 

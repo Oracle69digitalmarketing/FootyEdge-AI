@@ -115,6 +115,51 @@ class FootballAPIClient:
             return {"response": leagues}
         return {"response": []}
 
+    async def search_leagues(self, query: str):
+        res = await self._make_request("football-teams-search", {"search": query})
+        if res and 'response' in res:
+             leagues = []
+             for item in res['response'].get('suggestions', []):
+                 if item.get('type') == 'league':
+                     leagues.append({
+                         "league": {
+                             "id": item.get('id'),
+                             "name": item.get('name')
+                         }
+                     })
+             return {"response": leagues}
+        return {"response": []}
+
+    async def search_players(self, query: str):
+        res = await self._make_request("football-teams-search", {"search": query})
+        if res and 'response' in res:
+             players = []
+             for item in res['response'].get('suggestions', []):
+                 if item.get('type') == 'player':
+                     players.append({
+                         "player": {
+                             "id": item.get('id'),
+                             "name": item.get('name')
+                         }
+                     })
+             return {"response": players}
+        return {"response": []}
+
+    async def get_team_detail(self, team_id: int):
+        return await self._make_request("football-get-team-info", {"teamid": team_id})
+
+    async def get_league_detail(self, league_id: int):
+        return await self._make_request("football-get-league-info", {"leagueid": league_id})
+
+    async def list_players_by_team(self, team_id: int):
+        return await self._make_request("football-get-team-players", {"teamid": team_id})
+
+    async def get_player_detail(self, player_id: int):
+        return await self._make_request("football-get-player-info", {"playerid": player_id})
+
+    async def get_stats_by_event_id(self, event_id: int):
+        return await self._make_request("football-get-match-stats", {"eventid": event_id})
+
     async def get_standings(self, league_id: str):
         return await self._make_request("football-get-standing-all", {"leagueid": league_id})
 

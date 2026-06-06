@@ -3,6 +3,18 @@
 -- Run this in Supabase SQL Editor
 -- ============================================
 
+-- 0. PROFILES TABLE
+CREATE TABLE profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    full_name TEXT,
+    avatar_url TEXT,
+    is_premium BOOLEAN DEFAULT FALSE,
+    role TEXT DEFAULT 'user',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- 1. TEAMS TABLE
 CREATE TABLE teams (
     id BIGINT PRIMARY KEY,
@@ -165,11 +177,32 @@ CREATE INDEX idx_agent_logs_created ON agent_logs(created_at DESC);
 CREATE INDEX idx_activity_log_created ON activity_log(created_at DESC);
 CREATE INDEX idx_teams_name ON teams(name);
 
+-- 10. PLAYERS TABLE
+CREATE TABLE players (
+    id BIGSERIAL PRIMARY KEY,
+    external_id BIGINT,
+    team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position TEXT,
+    nationality TEXT,
+    age INT,
+    photo_url TEXT,
+    number INT,
+    is_injured BOOLEAN DEFAULT FALSE,
+    is_suspended BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(name, team_id)
+);
+
+CREATE INDEX idx_players_team ON players(team_id);
+CREATE INDEX idx_players_name ON players(name);
 
 -- ============================================
 -- ENABLE ROW LEVEL SECURITY
 -- ============================================
 
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
@@ -178,14 +211,19 @@ ALTER TABLE team_ratings_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE accas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
 
 
 -- Public read access
+CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+
 CREATE POLICY "Enable read access for all users" ON teams FOR SELECT USING (true);
 CREATE POLICY "Enable read access for all users" ON matches FOR SELECT USING (true);
 CREATE POLICY "Enable read access for all users" ON predictions FOR SELECT USING (true);
 CREATE POLICY "Enable read access for all users" ON value_bets FOR SELECT USING (true);
 CREATE POLICY "Enable read access for all users" ON team_ratings_history FOR SELECT USING (true);
+CREATE POLICY "Enable read access for all users" ON players FOR SELECT USING (true);
 
 -- Authenticated write access
 CREATE POLICY "Enable insert for authenticated users" ON predictions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
@@ -257,3 +295,17 @@ $$ language 'plpgsql';
 
 CREATE TRIGGER after_match_insert AFTER INSERT ON matches
     FOR EACH ROW EXECUTE FUNCTION update_team_stats();
+
+-- 9. AUTO-CREATE PROFILE ON SIGNUP
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.profiles (id, email, role, is_premium)
+    VALUES (new.id, new.email, 'user', false);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
