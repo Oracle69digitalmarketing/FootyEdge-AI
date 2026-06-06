@@ -413,7 +413,7 @@ async def sync_teams():
                             "name": team_info['name'],
                             "country": team_info.get('country'),
                             "league_name": team_item.get('league', {}).get('name', 'Unknown'),
-                            "logo_url": team_info.get('logo')
+                            "logo_url": team_info.get('crest', team_info.get('crest', team_info.get('logo')))
                         })
             await asyncio.sleep(0.5) # Slight delay
         

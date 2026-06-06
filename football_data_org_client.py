@@ -202,7 +202,7 @@ class FootballDataOrgClient:
                     "id": p.get('id'),
                     "name": p.get('name'),
                     "position": p.get('position'),
-                    "country": p.get('nationality'),
+                    "country": p.get('nationality', p.get('country', 'Unknown')),
                     "age": self._calculate_age(p.get('dateOfBirth'))
                 })
             return {"response": players}
