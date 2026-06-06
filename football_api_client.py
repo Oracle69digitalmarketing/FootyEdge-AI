@@ -38,6 +38,7 @@ class FootballAPIClient:
             77: "FA Cup",
             110: "AFCON",
             9085: "Egypt League Cup",
+            342: "Nigeria Professional Football League",
             918043: "Ettan Norra",
             268: "Liga BetPlay",
             259: "Uruguayan Championship",

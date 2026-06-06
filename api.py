@@ -13,6 +13,7 @@ import asyncio
 from predictor import FootyEdgePredictor
 from football_api_client import FootballAPIClient
 from football_data_org_client import FootballDataOrgClient
+from football_router import FootballRouter
 from agents.strategy_agent import StrategyAgent
 
 # --- App Setup ---
@@ -56,13 +57,14 @@ else:
 if not any([rapidapi_key, fd_org_key, sportradar_key]):
     logger.warning("No Football Data API keys found. Football API client will not be available.")
     football_client = None
+    rapid_client = None
 else:
-    if fd_org_key:
-        logger.info("Using football-data.org as primary data provider.")
-        football_client = FootballDataOrgClient()
-    else:
-        logger.info("Using RapidAPI as primary data provider.")
-        football_client = FootballAPIClient()
+    # We initialize both if keys are present to allow smart routing
+    fd_client = FootballDataOrgClient() if fd_org_key else None
+    rapid_client = FootballAPIClient() if rapidapi_key else None
+    
+    # football_client remains for legacy compatibility, now using the router
+    football_client = FootballRouter(fd_client, rapid_client)
 
 predictor = FootyEdgePredictor()
 strategy_agent = StrategyAgent()

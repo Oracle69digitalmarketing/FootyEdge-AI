@@ -18,6 +18,7 @@ from agents.three_six_five_scores import ThreeSixFiveScoresClient
 from agents.models import TeamStrength, ValueBet
 from football_api_client import FootballAPIClient
 from football_data_org_client import FootballDataOrgClient
+from football_router import FootballRouter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,10 +39,11 @@ class FootyEdgePredictor:
         else:
             self.supabase = None
 
-        if self.fd_org_key:
-            self.football_client = FootballDataOrgClient()
-        else:
-            self.football_client = FootballAPIClient()
+        self.fd_client = FootballDataOrgClient() if self.fd_org_key else None
+        self.rapid_client = FootballAPIClient() if self.rapidapi_key else None
+        
+        # Use the router for all football data requests
+        self.football_client = FootballRouter(self.fd_client, self.rapid_client)
             
         self.three_six_five_client = ThreeSixFiveScoresClient()
         
@@ -51,6 +53,14 @@ class FootyEdgePredictor:
         self.tactical_agent = TacticalAgent()
         self.player_agent = PlayerImpactAgent(football_client=self.football_client, team_agent=self.team_strength_agent)
         self.local_data_path = Path("data/football.json")
+
+    async def _get_client_for_league(self, league_id: Any):
+        """
+        Smart Routing: 
+        1. Use football-data.org (FD) for Top 12 European leagues (Free).
+        2. Use RapidAPI only for others to save quota.
+        """
+        return self.football_client._get_client(league_id)
 
     def _init_supabase(self, url, key):
         supabase_url = url or os.environ.get('SUPABASE_URL')
@@ -264,8 +274,10 @@ class FootyEdgePredictor:
             from_date = datetime.now().strftime("%Y-%m-%d")
             to_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
-            if hasattr(self.football_client, 'LEAGUE_MAP'): # football-data.org
-                res = await self.football_client.get_matches_by_date(
+            client = await self._get_client_for_league(league_id)
+            
+            if isinstance(client, FootballDataOrgClient):
+                res = await client.get_matches_by_date(
                     date_from=from_date, 
                     date_to=to_date, 
                     competitions=[str(league_id)]
@@ -273,7 +285,7 @@ class FootyEdgePredictor:
             else: # RapidAPI
                 # Use FootballAPIClient for a more unified approach
                 season = datetime.now().year
-                res = await self.football_client._make_request("fixtures", params={
+                res = await client._make_request("fixtures", params={
                     "league": league_id,
                     "season": season,
                     "from": from_date,
