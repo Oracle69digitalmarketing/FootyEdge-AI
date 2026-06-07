@@ -10,8 +10,15 @@ import httpx
 from supabase import create_client, Client
 from datetime import datetime, timedelta, timezone
 import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from predictor import FootyEdgePredictor
 from football_api_client import FootballAPIClient
+from football_data_org_client import FootballDataOrgClient
+from football_router import FootballRouter
 from agents.strategy_agent import StrategyAgent
 
 # --- App Setup ---
@@ -21,16 +28,23 @@ app = FastAPI(
     description="Provides sophisticated, production-ready match predictions and betting analysis."
 )
 
+# I'm updating the ALLOWED_ORIGINS to be more robust
 ALLOWED_ORIGINS = [
+    "https://footyedge-ai.onrender.com",
     "https://footy-edge-ai.vercel.app",
     "http://localhost:5173",
     "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+    "*" # Temporary wildcard to confirm connectivity
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False, # Must be False if "*" is in origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -40,23 +54,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Environment Variable Checks & Client Initialization ---
-supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
-rapidapi_key = os.environ.get("RAPIDAPI_KEY")
-fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY")
+supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("VITE_SUPABASE_URL")
+supabase_key = (
+    os.environ.get("SUPABASE_SERVICE_KEY") or 
+    os.environ.get("SUPABASE_KEY") or 
+    os.environ.get("SUPABASE_ANON_KEY") or
+    os.environ.get("VITE_SUPABASE_ANON_KEY")
+)
+rapidapi_key = os.environ.get("RAPIDAPI_KEY") or os.environ.get("RAPID_API_KEY")
+fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY") or os.environ.get("FOOTBALL_DATA_KEY")
 sportradar_key = os.environ.get("SPORTRADAR_API_KEY")
 
 if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables not found. Database client will not be available.")
     supabase = None
 else:
-    supabase = create_client(supabase_url, supabase_key)
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Supabase client: {e}")
+        supabase = None
 
-if not any([rapidapi_key, fd_org_key, sportradar_key]):
-    logger.warning("No Football Data API keys found. Football API client will not be available.")
-    football_client = None
-else:
-    football_client = FootballAPIClient()
+# Initialize clients even if keys are missing from env, as they might have internal fallbacks or handles
+fd_client = FootballDataOrgClient() if fd_org_key else None
+rapid_client = FootballAPIClient() # This one has an internal fallback
+
+# football_client remains for legacy compatibility, now using the router
+football_client = FootballRouter(fd_client, rapid_client)
 
 predictor = FootyEdgePredictor()
 strategy_agent = StrategyAgent()
@@ -74,6 +98,17 @@ if not sportradar_key:
     logger.warning("SPORTRADAR_API_KEY is not set. Sportradar features disabled.")
 if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables are not set. Database features will be unavailable.")
+
+@router.get("/health")
+async def health_check():
+    return {
+        "status": "operational",
+        "supabase_connected": supabase is not None,
+        "football_api_configured": football_client is not None,
+        "rapid_api_key_present": rapidapi_key is not None,
+        "football_data_key_present": fd_org_key is not None,
+        "environment": "production" if os.environ.get("RENDER") or os.environ.get("VERCEL") else "development"
+    }
 
 # --- Pydantic Models ---
 class PredictRequest(BaseModel):
@@ -150,11 +185,11 @@ async def health_check():
     return {
         "status": "healthy",
         "supabase": "configured" if supabase else "missing",
-        "rapidapi": "configured" if rapidapi_key else "missing",
+        "rapidapi": "configured" if rapidapi_key else "missing (using fallback)",
         "football_data_org": "configured" if fd_org_key else "missing",
         "sportradar": "configured" if sportradar_key else "missing",
-        "external_resources": ["365scores"],
-        "rapidapi_host": os.environ.get('RAPIDAPI_HOST', 'free-api-live-football-data.p.rapidapi.com')
+        "external_resources": ["365scores", "sofascore"],
+        "router_active": "yes" if isinstance(football_client, FootballRouter) else "no"
     }
 
 
@@ -201,6 +236,120 @@ async def scan_value_bets():
 
 
 # --- Database Endpoints ---
+@router.get("/dashboard/stats", summary="Get overall platform statistics")
+async def get_dashboard_stats():
+    total_preds = 0
+    active_value = 0
+    accuracy = 0.0
+
+    if supabase:
+        try:
+            preds_res = supabase.table("predictions").select("id", count="exact").execute()
+            total_preds = preds_res.count or 0
+
+            value_res = supabase.table("value_bets").select("id", count="exact").eq("status", "active").execute()
+            active_value = value_res.count or 0
+
+            try:
+                settled_res = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute()
+                if settled_res.data:
+                    correct = sum(1 for p in settled_res.data if p.get('best_bet_selection') == p.get('actual_result'))
+                    accuracy = (correct / len(settled_res.data)) * 100
+                else:
+                    accuracy = 0.0
+            except Exception as schema_err:
+                logger.warning(f"Accuracy calc failed: {schema_err}")
+                accuracy = 0.0
+        except Exception as e:
+            logger.error(f"Error fetching dashboard stats: {e}")
+
+    return {
+        "total_predictions": total_preds,
+        "active_value_bets": active_value,
+        "ai_accuracy": f"{round(accuracy, 1)}%" if accuracy > 0 else "N/A"
+    }
+
+@router.get("/teams", summary="Get all teams from database")
+async def get_teams(league: Optional[str] = None):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    query = supabase.table("teams").select("*")
+    if league:
+        query = query.eq("league_name", league)
+    response = query.order("name").execute()
+    return response.data or []
+
+
+@router.get("/teams/{team_id}", summary="Get detailed team info from DB")
+async def get_team_detail_db(team_id: int):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    
+    # Get team basic info
+    team_res = supabase.table("teams").select("*").eq("id", team_id).single().execute()
+    if not team_res.data:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    # Get players
+    players_res = supabase.table("players").select("*").eq("team_id", team_id).execute()
+    
+    return {
+        "team": team_res.data,
+        "players": players_res.data or []
+    }
+
+
+@router.get("/daily-picks", summary="Get AI predictions for a date range")
+async def get_daily_picks(from_date: Optional[str] = None, to_date: Optional[str] = None):
+    if not from_date:
+        from_date = datetime.now().strftime("%Y-%m-%d")
+    if not to_date:
+        to_date = from_date
+
+    try:
+        # 1. Fetch matches for the range
+        matches_data = await football_client.get_matches_by_date(from_date, to_date)
+        match_list = matches_data.get('response', [])
+        
+        # Note: Matches are already sorted by league priority in football_client
+        
+        results = []
+        # Increase limit to 30 to show more popular games
+        for m in match_list[:30]: 
+            home = m['teams']['home']['name']
+            away = m['teams']['away']['name']
+            
+            # Check if prediction exists in DB (if connected)
+            pred_data = None
+            if supabase:
+                try:
+                    pred_res = supabase.table("predictions").select("*").eq("home_team", home).eq("away_team", away).order("created_at", desc=True).limit(1).execute()
+                    pred_data = pred_res.data
+                except Exception as db_err:
+                    logger.warning(f"DB Prediction lookup failed: {db_err}")
+            
+            if pred_data:
+                results.append(pred_data[0])
+            else:
+                try:
+                    # Provide default odds for daily picks generator
+                    default_odds = {
+                        "home_win": 1.90, "draw": 3.30, "away_win": 4.20,
+                        "Over 2.5": 1.90, "Under 2.5": 1.90,
+                        "BTTS Yes": 1.80, "BTTS No": 2.00
+                    }
+                    # Attempt to generate new prediction
+                    prediction = await predictor.predict_match(home, away, default_odds)
+                    results.append(prediction)
+                except Exception as e:
+                    logger.error(f"Failed to predict {home} vs {away}: {e}")
+
+        return results
+    except Exception as e:
+        logger.error(f"Daily picks failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/recent-predictions", summary="Get the last N predictions")
 async def recent_predictions(limit: int = 10):
     if not supabase:
@@ -264,38 +413,47 @@ async def subscribe(request: SubscribeRequest):
 @router.post("/admin/sync-teams", summary="Sync teams from external API to Supabase")
 async def sync_teams():
     if not football_client or not supabase:
-        raise HTTPException(status_code=503, detail="Clients not configured.")
+        raise HTTPException(status_code=503, detail="Clients not configured. Check environment variables.")
     
-    # Predefined major league IDs for new provider (Fotmob/Creativesdev)
-    major_league_ids = [47, 87, 54, 55, 53, 42, 73] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL
+    # Predefined major league IDs (using RapidAPI IDs as default)
+    major_league_ids = [47, 87, 54, 55, 53, 42, 73, 342] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL, NPFL
     
     try:
         leagues_data = await football_client.list_leagues()
         league_items = leagues_data.get('response', [])
         
-        found_league_ids = [item.get('league', {}).get('id') for item in league_items if item.get('league', {}).get('id')]
+        found_league_ids = []
+        for item in league_items:
+            l_info = item.get('league', {})
+            l_id = l_info.get('id')
+            if l_id:
+                found_league_ids.append(l_id)
         
-        # Combine found leagues with our major list and LIMIT strongly for BASIC plans
-        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:10]
+        # Combine found leagues with our major list, ensuring major leagues are always included
+        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20]
         
         all_teams = []
         for league_id in leagues_to_sync:
             logger.info(f"Fetching teams for league ID: {league_id}")
-            teams_data = await football_client.get_teams_by_league(league_id)
-            if teams_data and 'response' in teams_data:
-                for team_item in teams_data['response']:
-                    team_info = team_item.get('team', {})
-                    if team_info.get('id') and team_info.get('name'):
-                        all_teams.append({
-                            "id": str(team_info['id']),
-                            "name": team_info['name'],
-                            "country": team_info.get('country'),
-                            "league": team_item.get('league', {}).get('name', 'Unknown'),
-                        })
+            try:
+                teams_data = await football_client.get_teams_by_league(league_id)
+                if teams_data and 'response' in teams_data:
+                    for team_item in teams_data['response']:
+                        team_info = team_item.get('team', {})
+                        if team_info.get('id') and team_info.get('name'):
+                            all_teams.append({
+                                "id": str(team_info['id']),
+                                "name": team_info['name'],
+                                "country": team_info.get('country') or 'Unknown',
+                                "league_name": team_item.get('league', {}).get('name', 'Unknown'),
+                                "logo_url": team_info.get('crest', team_info.get('logo'))
+                            })
+            except Exception as e:
+                logger.error(f"Failed to fetch teams for league {league_id}: {e}")
             await asyncio.sleep(0.5) # Slight delay
         
         if not all_teams:
-            raise HTTPException(status_code=500, detail="No teams found from external API.")
+            return JSONResponse(status_code=500, content={"status": "error", "detail": "No teams found from external API. Check your API keys and quota."})
         
         # Filter duplicates by name since ID types might clash
         unique_teams = {t['name']: t for t in all_teams}.values()
@@ -304,10 +462,60 @@ async def sync_teams():
         if upsert_response.data:
             return {"status": "success", "synced_count": len(upsert_response.data)}
         else:
-            raise HTTPException(status_code=500, detail="Failed to upsert teams to Supabase.")
+            return JSONResponse(status_code=500, content={"status": "error", "detail": "Failed to upsert teams to Supabase. Check database permissions."})
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Sync failed: {str(e)}"})
+
+
+@router.post("/admin/sync-players", summary="Sync players for existing teams in database")
+async def sync_players():
+    if not football_client or not supabase:
+        raise HTTPException(status_code=503, detail="Clients not configured. Check environment variables.")
+    
+    try:
+        # Get all teams from DB
+        teams_res = supabase.table("teams").select("id, name").execute()
+        teams = teams_res.data or []
+        
+        if not teams:
+            return JSONResponse(status_code=400, content={"status": "error", "detail": "No teams found in database. Sync teams first."})
+
+        total_synced = 0
+        for team in teams:
+            logger.info(f"Syncing players for {team['name']} (ID: {team['id']})")
+            try:
+                players_data = await football_client.list_players_by_team(team['id'])
+                
+                if players_data and 'response' in players_data:
+                    player_list = players_data.get('response', [])
+                    if isinstance(player_list, dict) and 'players' in player_list: # Some formats
+                        player_list = player_list['players']
+                    
+                    db_players = []
+                    for p in player_list[:25]: # Limit per team
+                        db_players.append({
+                            "external_id": str(p.get('id')),
+                            "team_id": team['id'],
+                            "name": p.get('name'),
+                            "position": p.get('position'),
+                            "nationality": p.get('country') or p.get('nationality'),
+                            "age": p.get('age'),
+                            "photo_url": f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png" if p.get('id') else None
+                        })
+                    
+                    if db_players:
+                        supabase.table("players").upsert(db_players, on_conflict="name, team_id").execute()
+                        total_synced += len(db_players)
+            except Exception as e:
+                logger.error(f"Failed to sync players for team {team['id']}: {e}")
+            
+            await asyncio.sleep(0.4) # Avoid rate limiting
+            
+        return {"status": "success", "synced_count": total_synced}
+    except Exception as e:
+        logger.error(f"Sync players failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Sync failed: {str(e)}"})
 
 
 @router.post("/admin/seed-database", summary="Seed the database with initial data")
@@ -316,20 +524,21 @@ async def seed_database():
         raise HTTPException(status_code=503, detail="Database not configured.")
     
     initial_teams = [
-        {"name": "Manchester United", "country": "England", "league": "Premier League", "elo_rating": 1850, "attack_strength": 2.1, "defense_strength": 0.9, "form_rating": 0.7},
-        {"name": "Newcastle", "country": "England", "league": "Premier League", "elo_rating": 1800, "attack_strength": 2.0, "defense_strength": 1.0, "form_rating": 0.6},
-        {"name": "Liverpool", "country": "England", "league": "Premier League", "elo_rating": 1920, "attack_strength": 2.3, "defense_strength": 0.8, "form_rating": 0.8},
-        {"name": "Arsenal", "country": "England", "league": "Premier League", "elo_rating": 1900, "attack_strength": 2.2, "defense_strength": 0.7, "form_rating": 0.8},
-        {"name": "Manchester City", "country": "England", "league": "Premier League", "elo_rating": 1980, "attack_strength": 2.5, "defense_strength": 0.6, "form_rating": 0.9},
-        {"name": "Barcelona", "country": "Spain", "league": "La Liga", "elo_rating": 1880, "attack_strength": 2.2, "defense_strength": 0.9, "form_rating": 0.7},
-        {"name": "Real Madrid", "country": "Spain", "league": "La Liga", "elo_rating": 1950, "attack_strength": 2.4, "defense_strength": 0.8, "form_rating": 0.8},
+        {"id": 10260, "name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
+        {"id": 10261, "name": "Newcastle", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10261.png"},
+        {"id": 8650, "name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
+        {"id": 9825, "name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
+        {"id": 8456, "name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
+        {"id": 8634, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"},
+        {"id": 8633, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
     ]
     
     try:
         response = supabase.table("teams").upsert(initial_teams, on_conflict="name").execute()
         return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
+        logger.error(f"Seeding failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Seeding failed: {str(e)}"})
 
 
 @router.get("/admin/stats", summary="Get admin dashboard statistics")
@@ -408,6 +617,29 @@ async def get_dashboard_stats():
     }
 
 
+@router.get("/external/365scores/stats", summary="Get detailed stats from 365Scores")
+async def get_365scores_stats(home_team: str, away_team: str):
+    try:
+        game_id = await predictor.three_six_five_client.find_match_id(home_team, away_team)
+        if not game_id:
+            return {"error": "Match not found on 365Scores"}
+        
+        data = await predictor.three_six_five_client.get_match_details(game_id)
+        if not data:
+            return {"error": "Failed to retrieve match details"}
+            
+        return {
+            "game_id": game_id,
+            "xg": predictor.three_six_five_client.extract_xg(data),
+            "stats": data.get('games', [{}])[0].get('stats', []),
+            "incidents": data.get('games', [{}])[0].get('incidents', []),
+            "shot_map": data.get('chartEvents', {}).get('events', [])
+        }
+    except Exception as e:
+        logger.error(f"Error fetching 365Scores stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/external/365scores", summary="Get 365scores external link")
 async def get_365scores_link(home_team: Optional[str] = None, away_team: Optional[str] = None):
     """
@@ -417,6 +649,34 @@ async def get_365scores_link(home_team: Optional[str] = None, away_team: Optiona
     if home_team and away_team:
         return {"url": football_client.get_365scores_match_url(home_team, away_team)}
     return {"url": "https://www.365scores.com/football"}
+
+
+@router.get("/external/sofascore/h2h", summary="Get deep H2H from Sofascore")
+async def get_sofascore_h2h(team1_id: int, team2_id: int):
+    """
+    Fetches head-to-head history using Sofascore IDs.
+    """
+    if not football_client:
+        raise HTTPException(status_code=503, detail="Football API not configured.")
+    
+    res = await football_client.sofascore.get_h2h_events(team1_id, team2_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="H2H data not found on Sofascore.")
+    return res
+
+
+@router.get("/external/sofascore/search/teams", summary="Search Sofascore teams")
+async def search_sofascore_teams(q: str):
+    if not football_client:
+        raise HTTPException(status_code=503, detail="Football API not configured.")
+    return await football_client.sofascore.search_teams(q)
+
+
+@router.get("/external/sofascore/search/players", summary="Search Sofascore players")
+async def search_sofascore_players(q: str):
+    if not football_client:
+        raise HTTPException(status_code=503, detail="Football API not configured.")
+    return await football_client.sofascore.search_players(q)
 
 
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
@@ -459,6 +719,17 @@ async def get_user_bets(user_id: str):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
     response = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    return response.data or []
+
+
+@router.get("/players", summary="Get all players from database")
+async def get_players(team_id: Optional[int] = None, limit: int = 50):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
+    query = supabase.table("players").select("*, teams(name, logo_url)")
+    if team_id:
+        query = query.eq("team_id", team_id)
+    response = query.order("name").limit(limit).execute()
     return response.data or []
 
 

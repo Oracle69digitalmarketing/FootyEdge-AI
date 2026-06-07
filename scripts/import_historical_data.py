@@ -5,6 +5,10 @@ from supabase import create_client, Client
 import logging
 from datetime import datetime
 import hashlib
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

@@ -8,6 +8,9 @@ import AccaBuilder from './components/AccaBuilder';
 import ValueBets from './components/ValueBets';
 import HowToUse from './components/HowToUse';
 import H2HVisualizer from './components/H2HVisualizer';
+import TeamsList from './components/TeamsList';
+import PlayersList from './components/PlayersList';
+import Pricing from './components/Pricing';
 import { 
   Activity,
   LayoutDashboard, 
@@ -37,10 +40,15 @@ import {
   ExternalLink,
   Crown,
   Bell,
-  TrendingUp as TrendingUpIcon,
   HelpCircle,
   RefreshCw,
-  Server
+  Server,
+  Menu,
+  X,
+  CreditCard,
+  BookOpen,
+  Target,
+  Shield
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
@@ -49,28 +57,9 @@ import { cn } from './lib/utils';
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
-  const fallbackTeams: any[] = [
-    { id: 'mc', name: 'Manchester City', league: 'Premier League' },
-    { id: 'liv', name: 'Liverpool', league: 'Premier League' },
-    { id: 'ars', name: 'Arsenal', league: 'Premier League' },
-    { id: 'rm', name: 'Real Madrid', league: 'La Liga' },
-    { id: 'bar', name: 'Barcelona', league: 'La Liga' },
-    { id: 'bay', name: 'Bayern Munich', league: 'Bundesliga' },
-  ];
   const [predictions, setPredictions] = useState<Prediction[]>([]);
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) flashMessage(setError, error.message);
-      else flashMessage(setSuccess, "Check your email!");
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) flashMessage(setError, error.message);
-    }
-  };
   const [valueBets, setValueBets] = useState<ValueBet[]>([]);
   const [liveValueBets, setLiveValueBets] = useState<ValueBet[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -94,25 +83,53 @@ export default function App() {
   const [fromDate, setFromDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [toDate, setToDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [userBets, setUserBets] = useState<any[]>([]);
-  const [bankroll, setBankroll] = useState(1000); // Dynamic bankroll
+  const [bankroll, setBankroll] = useState(1000); 
   const [bookingCode, setBookingCode] = useState<string | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
   const [accaSelections, setAccaSelections] = useState<any[]>([]);
   const [selectedBookmaker, setSelectedBookmaker] = useState<'bet9ja' | 'sportybet' | '1xbet'>('sportybet');
   const [isPremium, setIsPremium] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [showPremiumModal, setShowPremiumModal] = useState(false);
-  const [showTelegramConfigModal, setShowTelegramConfigModal] = useState(false);
-  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
-  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [dailyPicks, setDailyPicks] = useState<Prediction[]>([]);
+  const [fetchingPicks, setFetchingPicks] = useState(false);
+  const [picksDate, setPicksDate] = useState<'today' | 'tomorrow' | 'week'>('today');
+
+  const fetchDailyPicks = useCallback(async (period: 'today' | 'tomorrow' | 'week') => {
+    setFetchingPicks(true);
+    try {
+      let from = new Date().toISOString().split('T')[0];
+      let to = from;
+      
+      if (period === 'tomorrow') {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        from = tomorrow.toISOString().split('T')[0];
+        to = from;
+      } else if (period === 'week') {
+        const week = new Date();
+        week.setDate(week.getDate() + 7);
+        to = week.toISOString().split('T')[0];
+      }
+
+      const data = await safeFetchJson(`/api/daily-picks?from_date=${from}&to_date=${to}`);
+      setDailyPicks(data || []);
+    } catch (err: any) {
+      console.error(err);
+      flashMessage(setError, "Failed to load daily picks: " + err.message);
+    } finally {
+      setFetchingPicks(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'predictions') {
+      fetchDailyPicks(picksDate);
+    }
+  }, [activeTab, picksDate, fetchDailyPicks]);
   const [syncingTeams, setSyncingTeams] = useState(false);
+  const [syncingPlayers, setSyncingPlayers] = useState(false);
+  const [seedingData, setSeedingData] = useState(false);
 
-  const [premiumPerformance, setPremiumPerformance] = useState<any>(null);
-  const [premiumTelegramConfig, setPremiumTelegramConfig] = useState<any>(null);
-  const [premiumUpcomingMatches, setPremiumUpcomingMatches] = useState<any[]>([]);
-
-  const [adminStats, setAdminStats] = useState<any>(null);
-  const [adminActivity, setAdminActivity] = useState<any[]>([]);
   const [dashboardStats, setDashboardStats] = useState<any>({
     total_predictions: "0",
     active_value_bets: "0",
@@ -122,6 +139,22 @@ export default function App() {
   const flashMessage = (setter: (msg: string | null) => void, message: string | null) => {
     setter(message);
     setTimeout(() => setter(null), 4000);
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) {
+      flashMessage(setError, "Auth service not configured");
+      return;
+    }
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) flashMessage(setError, error.message);
+      else flashMessage(setSuccess, "Check your email!");
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) flashMessage(setError, error.message);
+    }
   };
 
   useEffect(() => {
@@ -137,6 +170,13 @@ export default function App() {
           setIsAdmin(adminStatus);
           setIsPremium(data.is_premium || adminStatus);
         } else if (user.email === 'sophiemabel69@gmail.com') {
+          setIsAdmin(true);
+          setIsPremium(true);
+        }
+      })
+      .catch(err => {
+        console.error("Profile fetch failed:", err);
+        if (user.email === 'sophiemabel69@gmail.com') {
           setIsAdmin(true);
           setIsPremium(true);
         }
@@ -301,10 +341,17 @@ export default function App() {
       setLoading(false);
       return;
     }
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null);
+      })
+      .catch((err) => {
+        console.error("Session check failed:", err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
@@ -335,14 +382,29 @@ export default function App() {
   }, [fetchTeams]);
 
   const handleSeedDatabase = useCallback(async () => {
+    setSeedingData(true);
     try {
       await safeFetchJson('/api/admin/seed-database', { method: 'POST' });
-      flashMessage(setSuccess, "Database seeded.");
+      flashMessage(setSuccess, "Database seeded successfully.");
       fetchTeams();
     } catch (err: any) {
-      flashMessage(setError, err.message);
+      flashMessage(setError, "Seeding failed: " + err.message);
+    } finally {
+      setSeedingData(false);
     }
   }, [fetchTeams]);
+
+  const handleSyncPlayers = useCallback(async () => {
+    setSyncingPlayers(true);
+    try {
+      const data = await safeFetchJson('/api/admin/sync-players', { method: 'POST' });
+      flashMessage(setSuccess, `Successfully synced ${data.synced_count} players.`);
+    } catch (err: any) {
+      flashMessage(setError, "Player sync failed: " + err.message);
+    } finally {
+      setSyncingPlayers(false);
+    }
+  }, []);
 
   const handlePredict = useCallback(async () => {
     if (!selectedHome || !selectedAway) return;
@@ -426,13 +488,58 @@ export default function App() {
     return (
         <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
             <div className="max-w-md w-full bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-8 shadow-2xl">
-                <div className="text-center space-y-2"><h1 className="text-3xl font-bold">FootyEdge AI</h1><p className="text-zinc-500">Login to access the AI betting suite.</p></div>
+                <div className="text-center space-y-2">
+                    <h1 className="text-3xl font-bold">FootyEdge AI</h1>
+                    <p className="text-zinc-500">Login to access the AI betting suite.</p>
+                </div>
+
+                {error && (
+                    <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex items-center gap-3 text-red-500 text-sm">
+                        <AlertTriangle className="w-4 h-4" />
+                        {error}
+                    </div>
+                )}
+
+                {success && (
+                    <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-2xl flex items-center gap-3 text-green-500 text-sm">
+                        <CheckCircle className="w-4 h-4" />
+                        {success}
+                    </div>
+                )}
+
                 <form onSubmit={handleEmailAuth} className="space-y-6">
-                    <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4" />
-                    <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4" />
-                    <button type="submit" className="w-full bg-orange-500 text-black font-bold py-4 rounded-2xl">{isSignUp ? "Sign Up" : "Log In"}</button>
+                    <div className="space-y-4">
+                        <div className="relative">
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                            <input 
+                                type="email" 
+                                placeholder="Email" 
+                                value={email} 
+                                onChange={e => setEmail(e.target.value)} 
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 pl-12 focus:border-orange-500 transition-colors" 
+                            />
+                        </div>
+                        <div className="relative">
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                            <input 
+                                type="password" 
+                                placeholder="Password" 
+                                value={password} 
+                                onChange={e => setPassword(e.target.value)} 
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 pl-12 focus:border-orange-500 transition-colors" 
+                            />
+                        </div>
+                    </div>
+                    <button type="submit" className="w-full bg-orange-500 text-black font-bold py-4 rounded-2xl hover:bg-orange-400 transition-all flex items-center justify-center gap-2">
+                        {isSignUp ? "Create Account" : "Log In"}
+                        <ChevronRight className="w-4 h-4" />
+                    </button>
                 </form>
-                <div className="text-center"><button onClick={() => setIsSignUp(!isSignUp)} className="text-sm text-zinc-500">{isSignUp ? "Already have an account? Log In" : "Don't have an account? Sign Up"}</button></div>
+                <div className="text-center">
+                    <button onClick={() => setIsSignUp(!isSignUp)} className="text-sm text-zinc-500 hover:text-white transition-colors">
+                        {isSignUp ? "Already have an account? Log In" : "Don't have an account? Sign Up"}
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -440,129 +547,250 @@ export default function App() {
 
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
-      <div className="fixed left-0 top-0 h-full w-20 md:w-64 bg-[#111] border-r border-zinc-800 flex flex-col z-50">
-        <div className="h-20 flex items-center px-6 border-b border-zinc-800"><h1 className="text-lg font-bold hidden md:block">FootyEdge AI</h1></div>
-        <nav className="flex-1 px-4 space-y-2 mt-8">
-            <NavItem icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
-            <NavItem icon={<History />} label="Predictions" active={activeTab === 'predictions'} onClick={() => setActiveTab('predictions')} />
-            <NavItem icon={<TrendingUp />} label="Value Bets" active={activeTab === 'value'} onClick={() => setActiveTab('value')} />
-            <NavItem icon={<Layers />} label="Acca Builder" active={activeTab === 'acca'} onClick={() => setActiveTab('acca')} />
-            <NavItem icon={<Zap />} label="AI Strategy" active={activeTab === 'strategy'} onClick={() => setActiveTab('strategy')} />
-            <NavItem icon={<Wallet />} label="Portfolio" active={activeTab === 'portfolio'} onClick={() => setActiveTab('portfolio')} />
-            <NavItem icon={<User />} label="Players" active={activeTab === 'players'} onClick={() => setActiveTab('players')} />
-            <NavItem icon={<HelpCircle />} label="How To Use" active={activeTab === 'how-to-use'} onClick={() => setActiveTab('how-to-use')} />
-            {isAdmin && <NavItem icon={<ShieldCheck />} label="Admin Panel" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
+    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans overflow-x-hidden">
+      {/* Sidebar Backdrop (Mobile) */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      <div className={cn(
+        "fixed left-0 top-0 h-full w-72 bg-[#111] border-r border-zinc-800 flex flex-col z-[70] transition-transform duration-300 lg:translate-x-0",
+        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="h-24 flex items-center justify-between px-8 border-b border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-500 rounded-2xl flex items-center justify-center shadow-[0_0_20px_-5px_rgba(249,115,22,0.5)]">
+              <ShieldCheck className="text-black w-6 h-6" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight">FootyEdge AI</h1>
+          </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-zinc-500">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto scrollbar-hide">
+            <NavItem icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<Target />} label="Match Intel" active={activeTab === 'predictions'} onClick={() => { setActiveTab('predictions'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<TrendingUp />} label="Value Scanner" active={activeTab === 'value'} onClick={() => { setActiveTab('value'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<Layers />} label="Acca Builder" active={activeTab === 'acca'} onClick={() => { setActiveTab('acca'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<Zap />} label="AI Analysis" active={activeTab === 'strategy'} onClick={() => { setActiveTab('strategy'); setIsSidebarOpen(false); }} />
+            <div className="h-px bg-zinc-800/50 my-6 mx-4" />
+            <NavItem icon={<Shield />} label="Teams DB" active={activeTab === 'teams'} onClick={() => { setActiveTab('teams'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<User />} label="Players DB" active={activeTab === 'players'} onClick={() => { setActiveTab('players'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<Wallet />} label="Portfolio" active={activeTab === 'portfolio'} onClick={() => { setActiveTab('portfolio'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<CreditCard />} label="Pricing" active={activeTab === 'pricing'} onClick={() => { setActiveTab('pricing'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<BookOpen />} label="Guide" active={activeTab === 'how-to-use'} onClick={() => { setActiveTab('how-to-use'); setIsSidebarOpen(false); }} />
+            {isAdmin && <NavItem icon={<ShieldCheck />} label="Admin" active={activeTab === 'admin'} onClick={() => { setActiveTab('admin'); setIsSidebarOpen(false); }} />}
         </nav>
-        <button onClick={() => supabase.auth.signOut()} className="p-8 text-zinc-500 hover:text-red-500 flex items-center gap-3"><LogOut className="w-5 h-5" /><span className="hidden md:block">Logout</span></button>
+
+        <div className="p-6 border-t border-zinc-800 space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-zinc-900/50 rounded-2xl border border-white/5">
+             <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                <Crown className="w-5 h-5 text-orange-500" />
+             </div>
+             <div>
+                <p className="text-xs font-bold">{isPremium ? 'Premium Plan' : 'Basic Plan'}</p>
+                <p className="text-[10px] text-zinc-500">{user.email.split('@')[0]}</p>
+             </div>
+          </div>
+          <button onClick={() => supabase.auth.signOut()} className="w-full flex items-center justify-center gap-3 p-4 text-zinc-500 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all">
+            <LogOut className="w-5 h-5" />
+            <span className="font-bold text-sm">Sign Out</span>
+          </button>
+        </div>
       </div>
 
-      <main className="pl-20 md:pl-64 min-h-screen">
-        <header className="h-20 border-b border-zinc-800 flex items-center justify-between px-8 sticky top-0 bg-[#0a0a0a]/80 backdrop-blur-md z-40">
-          <div className="flex items-center gap-4"><ShieldCheck className="text-orange-500" /><div><h1 className="text-sm font-mono text-zinc-500 uppercase tracking-widest">FootyEdge engine</h1><p className="text-sm font-bold text-green-500 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />Agents Online</p></div></div>
-          <div className="flex items-center gap-4 text-right hidden sm:block"><p className="text-sm font-bold">{user.email}</p></div>
+      <main className="lg:pl-72 min-h-screen flex flex-col">
+        <header className="h-20 border-b border-zinc-800 flex items-center justify-between px-6 md:px-12 sticky top-0 bg-[#0a0a0a]/80 backdrop-blur-xl z-40">
+          <div className="flex items-center gap-6">
+            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden text-white">
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="hidden sm:flex items-center gap-4">
+              <div className="flex flex-col">
+                <h1 className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em]">FootyEdge Engine</h1>
+                <p className="text-sm font-bold text-green-500 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
+                  AI Models Operational
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button className="relative w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center hover:bg-zinc-800 transition-colors">
+              <Bell className="w-5 h-5 text-zinc-400" />
+              <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-orange-500 border-2 border-[#0a0a0a] rounded-full" />
+            </button>
+            <div className="hidden md:block w-px h-6 bg-zinc-800" />
+            <div className="hidden md:flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-xs font-bold text-white">{user.email}</p>
+                <p className="text-[10px] font-mono text-zinc-500">ID: {user.id.substring(0, 8)}</p>
+              </div>
+            </div>
+          </div>
         </header>
 
-        <div className="p-8 max-w-7xl mx-auto space-y-8">
-          {activeTab === 'dashboard' && (
-            <div className="space-y-12">
-              <div className="bg-green-500/5 border border-green-500/20 rounded-[2rem] p-8 space-y-6 relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Zap className="text-green-500" />
-                    <h2 className="text-2xl font-bold">Live Value Alerts</h2>
+        <div className="p-6 md:p-12 max-w-7xl mx-auto w-full flex-1">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {activeTab === 'dashboard' && (
+              <div className="space-y-12">
+                <div className="relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-yellow-500 rounded-[2.5rem] blur opacity-10 group-hover:opacity-20 transition duration-1000 group-hover:duration-200"></div>
+                  <div className="relative bg-zinc-900/40 border border-white/5 rounded-[2.5rem] p-8 md:p-12 overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-10">
+                      <Zap className="w-48 h-48 text-orange-500" />
+                    </div>
+                    <div className="relative z-10 space-y-6">
+                      <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-full text-orange-500 text-[10px] font-bold uppercase tracking-wider">
+                        <Zap className="w-3 h-3" /> Live Intelligence
+                      </div>
+                      <h2 className="text-4xl md:text-5xl font-bold max-w-2xl leading-tight">Master the market with AI-driven <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-yellow-500">precision.</span></h2>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl pt-4">
+                        <StatItem icon={<History className="text-blue-500" />} label="Total Predictions" value={dashboardStats.total_predictions} />
+                        <StatItem icon={<TrendingUp className="text-green-500" />} label="Value Bets Found" value={dashboardStats.active_value_bets} />
+                        <StatItem icon={<ShieldCheck className="text-orange-500" />} label="AI Precision" value={dashboardStats.ai_accuracy} />
+                      </div>
+                    </div>
                   </div>
-                  <button 
-                    onClick={handleScanValueBets} 
-                    disabled={scanning} 
-                    className="bg-zinc-900 p-3 rounded-full hover:bg-zinc-800 transition-colors disabled:opacity-50"
-                  >
-                    {scanning ? <Loader2 className="animate-spin w-4 h-4 text-orange-500"/> : <RefreshCw className="w-4 h-4 text-zinc-400"/>}
-                  </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {scanning ? (
-                      [1,2,3].map(i => <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl animate-pulse"><p className="text-sm text-zinc-500">Analyzing markets...</p></div>)
-                    ) : liveValueBets.length > 0 ? (
-                      liveValueBets.slice(0, 3).map((alert, i) => (
-                        <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-2xl border-l-4 border-l-green-500">
-                          <p className="font-bold text-sm mb-1">{alert.match || `${alert.home_team} vs ${alert.away_team}`}</p>
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-zinc-400">{alert.selection}</span>
-                            <span className="text-sm font-bold text-green-500">@{alert.odds.toFixed(2)}</span>
-                          </div>
+
+                <section className="space-y-8">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="space-y-1">
+                      <h2 className="text-3xl font-bold flex items-center gap-3">Upcoming Matches</h2>
+                      <p className="text-sm text-zinc-500">AI analysis for the next 24-48 hours across global leagues.</p>
+                    </div>
+                    <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 p-2 rounded-2xl">
+                      <div className="flex items-center gap-2 px-4 border-r border-zinc-800">
+                        <Calendar className="w-4 h-4 text-orange-500" />
+                        <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent text-xs font-bold focus:outline-none" />
+                      </div>
+                      <span className="text-[10px] font-mono text-zinc-600 px-2 uppercase tracking-widest">{todayMatches.length} Fixtures</span>
+                    </div>
+                  </div>
+                  
+                  {todayMatches.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {todayMatches.slice(0, 6).map(match => (
+                        <MatchCard 
+                          key={match.id} 
+                          match={match} 
+                          onPlaceBet={handlePlaceBet} 
+                          onAddToAcca={handleAddToAcca} 
+                          selectedBookmaker={selectedBookmaker} 
+                          isAdded={(id) => accaSelections.some(s => s.id === id)} 
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-20 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
+                      <Clock className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
+                      <p className="text-zinc-500 font-bold">Waiting for new fixtures from API...</p>
+                    </div>
+                  )}
+                </section>
+
+                <section className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-8 md:p-12 space-y-12">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="space-y-1">
+                      <h2 className="text-3xl font-bold">Neural Intelligence Engine</h2>
+                      <p className="text-sm text-zinc-500">Select any two teams to generate a deep-dive match intelligence report.</p>
+                    </div>
+                    <RefreshCw className="w-6 h-6 text-zinc-700 hidden md:block" />
+                  </div>
+
+                  {teams.length === 0 ? (
+                    <div className="bg-orange-500/5 border border-orange-500/10 p-12 rounded-[2rem] text-center space-y-6">
+                      <Database className="w-16 h-16 text-orange-500 mx-auto" />
+                      <div className="space-y-2">
+                        <p className="text-xl font-bold">Team Database Not Initialized</p>
+                        <p className="text-sm text-zinc-500 max-w-md mx-auto">Please seed or sync the database from the admin panel to enable the intelligence engine.</p>
+                      </div>
+                      {isAdmin && (
+                        <div className="flex justify-center gap-4">
+                          <button onClick={handleSyncTeams} className="bg-zinc-900 border border-zinc-800 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-800 transition-all">Sync Teams</button>
+                          <a href="/api/health" target="_blank" className="bg-zinc-900 border border-zinc-800 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-800 transition-all flex items-center gap-2">
+                            <Server className="w-4 h-4" /> System Health
+                          </a>
                         </div>
-                      ))
-                    ) : (
-                      <div className="col-span-full py-4 text-center text-zinc-600 text-sm italic">
-                        No live value bets detected. Try refreshing or check back later.
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-10">
+                      <div className="grid grid-cols-1 md:grid-cols-7 gap-6 items-center">
+                          <div className="md:col-span-3 space-y-2">
+                            <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest ml-4">Home Side</label>
+                            <select value={selectedHome} onChange={(e) => setSelectedHome(e.target.value)} className="w-full bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 focus:border-orange-500 transition-colors appearance-none cursor-pointer">
+                              <option value="">Select Home Team</option>
+                              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                          </div>
+                          <div className="md:col-span-1 text-center">
+                            <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mx-auto border-4 border-[#111] font-black text-zinc-500 italic">VS</div>
+                          </div>
+                          <div className="md:col-span-3 space-y-2">
+                            <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest ml-4">Away Side</label>
+                            <select value={selectedAway} onChange={(e) => setSelectedAway(e.target.value)} className="w-full bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 focus:border-orange-500 transition-colors appearance-none cursor-pointer">
+                              <option value="">Select Away Team</option>
+                              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                          </div>
                       </div>
-                    )}
-                </div>
+                      <button onClick={handlePredict} disabled={predicting || !selectedHome || !selectedAway} className="w-full bg-orange-500 text-black font-black py-6 rounded-[2rem] flex items-center justify-center gap-4 hover:scale-[1.01] transition-all shadow-[0_20px_40px_-10px_rgba(249,115,22,0.3)] disabled:opacity-50 disabled:scale-100 uppercase tracking-widest">
+                        {predicting ? <Loader2 className="animate-spin w-6 h-6" /> : <PlusCircle className="w-6 h-6" />}
+                        Generate Match Analysis
+                      </button>
+                    </div>
+                  )}
+                </section>
               </div>
+            )}
 
-              <section className="space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <h2 className="text-2xl font-bold flex items-center gap-3"><Calendar className="text-orange-500" />Upcoming Matches</h2>
-                  <div className="flex items-center gap-2 bg-zinc-900/50 p-2 rounded-2xl border border-zinc-800">
-                    <div className="flex items-center gap-2 px-3">
-                      <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">From</span>
-                      <input 
-                        type="date" 
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        className="bg-transparent text-xs font-bold focus:outline-none"
-                      />
-                    </div>
-                    <div className="w-px h-4 bg-zinc-800" />
-                    <div className="flex items-center gap-2 px-3">
-                      <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">To</span>
-                      <input 
-                        type="date" 
-                        value={toDate}
-                        onChange={(e) => setToDate(e.target.value)}
-                        className="bg-transparent text-xs font-bold focus:outline-none"
-                      />
-                    </div>
+            {activeTab === 'predictions' && (
+              <div className="space-y-12">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-1">
+                    <h2 className="text-3xl font-bold">Match Intelligence</h2>
+                    <p className="text-zinc-500 text-sm">AI-generated daily picks and score predictions across global leagues.</p>
                   </div>
-                  <span className="text-xs font-mono text-zinc-500">{todayMatches.length} Matches Found</span>
+                  <div className="flex p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl">
+                    <DateToggle label="Today" active={picksDate === 'today'} onClick={() => setPicksDate('today')} />
+                    <DateToggle label="Tomorrow" active={picksDate === 'tomorrow'} onClick={() => setPicksDate('tomorrow')} />
+                    <DateToggle label="Next 7 Days" active={picksDate === 'week'} onClick={() => setPicksDate('week')} />
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {todayMatches.map(match => (
-                    <MatchCard 
-                      key={match.id} 
-                      match={match} 
-                      onPlaceBet={handlePlaceBet} 
-                      onAddToAcca={handleAddToAcca} 
-                      selectedBookmaker={selectedBookmaker} 
-                      isAdded={(id) => accaSelections.some(s => s.id === id)} 
-                    />
-                  ))}
-                </div>
-              </section>
 
-              <section className="bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-8">
-                <h2 className="text-3xl font-bold">Intelligence Engine</h2>
-                {teams.length === 0 ? (
-                  <div className="bg-orange-500/10 border border-orange-500/20 p-6 rounded-2xl text-center space-y-4">
-                    <Database className="w-12 h-12 text-orange-500 mx-auto" />
-                    <p className="text-orange-500 font-bold">No teams found in database. Please seed or sync data.</p>
-                    {isAdmin && (
-                      <div className="flex justify-center gap-4 pt-2">
-                        <button onClick={handleSyncTeams} className="bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-xl text-xs hover:bg-zinc-800 transition-colors">Sync Teams</button>
-                        <button onClick={handleSeedDatabase} className="bg-orange-500 text-black px-4 py-2 rounded-xl text-xs font-bold hover:bg-orange-400 transition-colors">Seed Defaults</button>
-                      </div>
-                    )}
+                {fetchingPicks ? (
+                  <div className="py-32 flex flex-col items-center justify-center space-y-6 bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
+                    <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
+                    <p className="text-zinc-500 font-bold animate-pulse">Oracle is analyzing upcoming fixtures...</p>
+                  </div>
+                ) : dailyPicks.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {dailyPicks.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
                   </div>
                 ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-7 gap-4 items-center">
-                        <div className="md:col-span-3"><select value={selectedHome} onChange={(e) => setSelectedHome(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4"><option value="">Select Home</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-                        <div className="md:col-span-1 text-center font-bold text-zinc-500">VS</div>
-                        <div className="md:col-span-3"><select value={selectedAway} onChange={(e) => setSelectedAway(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4"><option value="">Select Away</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-                    </div>
-                    <button onClick={handlePredict} disabled={predicting || !selectedHome || !selectedAway} className="w-full bg-orange-500 text-black font-bold py-5 rounded-2xl flex items-center justify-center gap-3">{predicting ? <Loader2 className="animate-spin" /> : <PlusCircle />} Generate Match Intelligence</button>
-                  </>
+                  <div className="col-span-full py-32 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
+                    <Target className="w-16 h-16 text-zinc-800 mx-auto mb-4" />
+                    <p className="text-zinc-500 text-xl font-bold">No fixtures found for this period.</p>
+                    <p className="text-sm text-zinc-600 mt-2">Try checking another date or wait for API refresh.</p>
+                  </div>
                 )}
               </section>
 
@@ -571,21 +799,53 @@ export default function App() {
                 <StatCard title="Active Value Bets" value={dashboardStats.active_value_bets.toString()} icon={<TrendingUp className="text-green-500" />} />
                 <StatCard title="AI Accuracy" value={dashboardStats.ai_accuracy} icon={<ShieldCheck className="text-orange-500" />} />
               </div>
-            </div>
-          )}
-
-          {activeTab === 'predictions' && <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{predictions.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={setShowPremiumModal} />)}</div>}
-          {activeTab === 'value' && <ValueBets />}
-          {activeTab === 'acca' && <AccaBuilder selections={accaSelections} onRemove={handleRemoveFromAcca} onGenerateCode={handleGenerateCode} bankroll={bankroll} />}
-          {activeTab === 'strategy' && <StrategyView />}
-          {activeTab === 'portfolio' && <Portfolio bankroll={bankroll} userBets={userBets} />}
-          {activeTab === 'players' && <div className="text-center p-8 text-zinc-500">Player search functionality coming soon.</div>}
-          {activeTab === 'how-to-use' && <HowToUse />}
-          {activeTab === 'admin' && isAdmin && (
-            <div className="space-y-8">
-                <div className="flex gap-4"><button onClick={handleSyncTeams} className="bg-zinc-900 border border-zinc-800 px-6 py-3 rounded-2xl">Sync Teams</button><button onClick={handleSeedDatabase} className="bg-orange-500 text-black px-6 py-3 rounded-2xl">Seed Defaults</button></div>
-            </div>
-          )}
+                
+                <div className="pt-12 border-t border-zinc-800/50">
+                  <h3 className="text-xl font-bold mb-8">Generated History</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all">
+                    {predictions.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {activeTab === 'value' && <ValueBets />}
+            {activeTab === 'teams' && <TeamsList />}
+            {activeTab === 'players' && <PlayersList />}
+            {activeTab === 'pricing' && <Pricing />}
+            {activeTab === 'acca' && <AccaBuilder selections={accaSelections} onRemove={handleRemoveFromAcca} onGenerateCode={handleGenerateCode} bankroll={bankroll} />}
+            {activeTab === 'strategy' && <StrategyView />}
+            {activeTab === 'portfolio' && <Portfolio bankroll={bankroll} userBets={userBets} />}
+            {activeTab === 'how-to-use' && <HowToUse />}
+            
+            {activeTab === 'admin' && isAdmin && (
+              <div className="space-y-12">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <AdminActionCard 
+                      title="Sync Teams" 
+                      description="Fetch and update club details from API."
+                      onClick={handleSyncTeams}
+                      loading={syncingTeams}
+                      icon={<Shield className="text-blue-500" />}
+                    />
+                    <AdminActionCard 
+                      title="Sync Players" 
+                      description="Fetch and update player squads for all teams."
+                      onClick={handleSyncPlayers}
+                      loading={syncingPlayers}
+                      icon={<User className="text-green-500" />}
+                    />
+                    <AdminActionCard 
+                      title="Seed Data" 
+                      description="Populate DB with high-quality base stats."
+                      onClick={handleSeedDatabase}
+                      loading={seedingData}
+                      icon={<Database className="text-orange-500" />}
+                    />
+                  </div>
+              </div>
+            )}
+          </motion.div>
         </div>
       </main>
 
@@ -593,49 +853,87 @@ export default function App() {
   );
 }
 
+function StatItem({ icon, label, value }: { icon: any, label: string, value: string | number }) {
+  return (
+    <div className="bg-black/40 border border-white/5 p-6 rounded-3xl space-y-2">
+      <div className="flex items-center gap-3">
+        {icon}
+        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{label}</p>
+      </div>
+      <p className="text-2xl font-bold">{value || '0'}</p>
+    </div>
+  );
+}
+
+function AdminActionCard({ title, description, onClick, loading, icon }: any) {
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={loading} 
+      className="w-full text-left bg-[#111] border border-zinc-800 p-8 rounded-[2rem] space-y-4 hover:border-orange-500/40 hover:scale-[1.02] transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+    >
+      <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-white/5 group-hover:bg-zinc-800 transition-colors">
+        {loading ? <Loader2 className="animate-spin text-orange-500" /> : icon}
+      </div>
+      <div className="space-y-1">
+        <h3 className="text-xl font-bold group-hover:text-orange-500 transition-colors">{title}</h3>
+        <p className="text-sm text-zinc-500">{description}</p>
+      </div>
+    </button>
+  );
+}
+
+function DateToggle({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={cn(
+        "px-6 py-2 rounded-xl text-xs font-bold transition-all",
+        active ? "bg-orange-500 text-black shadow-lg" : "text-zinc-500 hover:text-white"
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) {
-  return <button onClick={onClick} className={cn("w-full flex items-center gap-3 p-3 rounded-xl transition-all", active ? "bg-orange-500 text-black font-bold" : "text-zinc-500 hover:text-white")}><span>{icon}</span><span className="hidden md:block">{label}</span></button>;
+  return <button onClick={onClick} className={cn("w-full flex items-center gap-3 p-4 rounded-2xl transition-all", active ? "bg-orange-500 text-black font-bold shadow-[0_10px_20px_-5px_rgba(249,115,22,0.4)]" : "text-zinc-500 hover:text-white hover:bg-white/5")}><span>{icon}</span><span className="">{label}</span></button>;
 }
 
 function MatchCard({ match, onPlaceBet, onAddToAcca, isAdded }: { match: any, onPlaceBet: any, onAddToAcca: any, selectedBookmaker: string, isAdded: (id: string) => boolean }) {
   return (
-    <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-4">
+    <div className="bg-[#111] border border-zinc-800 rounded-[2rem] p-6 space-y-6 hover:border-zinc-700 transition-all group">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            {match.homeTeam.logo && <img src={match.homeTeam.logo} alt="" className="w-5 h-5 object-contain" />}
+            {match.homeTeam.logo ? <img src={match.homeTeam.logo} alt="" className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-zinc-800 rounded-full" />}
             <span className="font-bold text-sm">{match.homeTeam.name}</span>
           </div>
-          <span className="text-zinc-600 font-mono text-xs">VS</span>
+          <span className="text-zinc-700 font-mono text-[10px]">VS</span>
           <div className="flex items-center gap-2">
-            {match.awayTeam.logo && <img src={match.awayTeam.logo} alt="" className="w-5 h-5 object-contain" />}
+            {match.awayTeam.logo ? <img src={match.awayTeam.logo} alt="" className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-zinc-800 rounded-full" />}
             <span className="font-bold text-sm">{match.awayTeam.name}</span>
           </div>
         </div>
-        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{match.league}</span>
       </div>
       
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-4 border-t border-zinc-800/50">
+        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{match.league}</span>
         <div className="flex gap-2">
           <button 
-            onClick={() => onPlaceBet(match, 'home_win', 1.95, 1000)}
-            className="bg-zinc-900 border border-zinc-800 hover:border-green-500/50 px-4 py-2 rounded-xl text-[10px] font-bold transition-all"
+            onClick={() => onAddToAcca(match, 'home_win', 1.95)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold transition-all",
+              isAdded(`${match.id}-home_win`) 
+                ? "bg-orange-500 text-black" 
+                : "bg-zinc-800 text-white hover:bg-zinc-700"
+            )}
           >
-            Track Win
+            {isAdded(`${match.id}-home_win`) ? <CheckCircle className="w-3 h-3" /> : <PlusCircle className="w-3 h-3" />}
+            {isAdded(`${match.id}-home_win`) ? "Added" : "Add to Acca"}
           </button>
         </div>
-        <button 
-          onClick={() => onAddToAcca(match, 'home_win', 1.95)}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold transition-all",
-            isAdded(`${match.id}-home_win`) 
-              ? "bg-orange-500 text-black" 
-              : "bg-white text-black hover:bg-orange-500"
-          )}
-        >
-          {isAdded(`${match.id}-home_win`) ? <CheckCircle className="w-3 h-3" /> : <PlusCircle className="w-3 h-3" />}
-          {isAdded(`${match.id}-home_win`) ? "Added" : "Add to Acca"}
-        </button>
       </div>
     </div>
   );
@@ -652,71 +950,70 @@ interface PredictionCardProps {
 
 function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, onBroadcast, setShowPremiumModal }: PredictionCardProps) {
   return (
-    <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-6">
-      <div className="flex justify-between items-start">
-        <h3 className="text-xl font-bold">{prediction.home_team} vs {prediction.away_team}</h3>
-        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{new Date(prediction.created_at).toLocaleDateString()}</span>
+    <div className="bg-[#111] border border-zinc-800 rounded-[2rem] p-8 space-y-8 relative overflow-hidden group">
+      <div className="flex justify-between items-start relative z-10">
+        <div className="space-y-1">
+          <h3 className="text-2xl font-bold">{prediction.home_team} <span className="text-zinc-700 mx-2">vs</span> {prediction.away_team}</h3>
+          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em]">{new Date(prediction.created_at).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+          <Target className="w-6 h-6 text-orange-500" />
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800/50">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-1">Expected Goals (xG)</p>
-          <div className="flex justify-between items-center">
-            <span className="font-bold">{prediction.home_xg.toFixed(2)}</span>
-            <span className="text-zinc-600">vs</span>
-            <span className="font-bold">{prediction.away_xg.toFixed(2)}</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 relative z-10">
+        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-white/5 space-y-4">
+          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Expected Goals (xG)</p>
+          <div className="flex justify-between items-end">
+            <div className="text-center">
+              <p className="text-2xl font-bold">{prediction.home_xg.toFixed(2)}</p>
+              <p className="text-[10px] text-zinc-600 uppercase">Home</p>
+            </div>
+            <div className="h-8 w-px bg-zinc-800 mb-2" />
+            <div className="text-center">
+              <p className="text-2xl font-bold">{prediction.away_xg.toFixed(2)}</p>
+              <p className="text-[10px] text-zinc-600 uppercase">Away</p>
+            </div>
           </div>
         </div>
-        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800/50">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-1">AI Confidence</p>
-          <p className="text-xl font-bold text-orange-500">{(prediction.confidence * 100).toFixed(1)}%</p>
+        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-white/5 space-y-4">
+          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">AI Confidence</p>
+          <div className="flex items-center gap-4">
+             <div className="relative w-16 h-16 flex items-center justify-center">
+                <svg className="w-full h-full -rotate-90">
+                  <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-zinc-800" />
+                  <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" strokeDasharray={175.9} strokeDashoffset={175.9 * (1 - prediction.confidence)} className="text-orange-500" />
+                </svg>
+                <p className="absolute text-xs font-bold">{(prediction.confidence * 100).toFixed(0)}%</p>
+             </div>
+             <p className="text-sm text-zinc-400 leading-tight">High probability matchup detected by Neural Net.</p>
+          </div>
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4 relative z-10">
         <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Match Outcome Probabilities</p>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="bg-zinc-900 p-2 rounded-xl">
-            <p className="text-[10px] text-zinc-500">Home</p>
-            <p className="font-bold">{(prediction.home_prob * 100).toFixed(0)}%</p>
-          </div>
-          <div className="bg-zinc-900 p-2 rounded-xl">
-            <p className="text-[10px] text-zinc-500">Draw</p>
-            <p className="font-bold">{(prediction.draw_prob * 100).toFixed(0)}%</p>
-          </div>
-          <div className="bg-zinc-900 p-2 rounded-xl">
-            <p className="text-[10px] text-zinc-500">Away</p>
-            <p className="font-bold">{(prediction.away_prob * 100).toFixed(0)}%</p>
-          </div>
+        <div className="grid grid-cols-3 gap-3">
+          <ProbStat label="Home" value={prediction.home_prob} color="bg-orange-500" />
+          <ProbStat label="Draw" value={prediction.draw_prob} color="bg-zinc-700" />
+          <ProbStat label="Away" value={prediction.away_prob} color="bg-blue-500" />
         </div>
       </div>
 
       {prediction.home_id && prediction.away_id && (
-        <H2HVisualizer team1Id={prediction.home_id} team2Id={prediction.away_id} />
-      )}
-
-      {prediction.correct_scores && (
-        <div className="space-y-3">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Top 5 Correct Scores</p>
-          <div className="flex flex-wrap gap-2">
-            {prediction.correct_scores.map((cs, i) => (
-              <div key={i} className="bg-black/40 border border-white/5 px-3 py-2 rounded-lg flex gap-2 items-center">
-                <span className="font-bold text-xs">{cs.score}</span>
-                <span className="text-[10px] text-zinc-500">{(cs.prob * 100).toFixed(1)}%</span>
-              </div>
-            ))}
-          </div>
+        <div className="relative z-10">
+          <H2HVisualizer team1Id={prediction.home_id} team2Id={prediction.away_id} />
         </div>
       )}
 
-      <div className="pt-4 border-t border-zinc-800 flex justify-between items-center">
-        <div>
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Best Bet Market</p>
-          <p className="text-sm font-bold">{prediction.best_bet_market}: {prediction.best_bet_selection}</p>
+      <div className="pt-6 border-t border-zinc-800 flex justify-between items-center relative z-10">
+        <div className="space-y-1">
+          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Oracle Selection</p>
+          <p className="text-sm font-bold text-white">{prediction.best_bet_market}: <span className="text-orange-500">{prediction.best_bet_selection}</span></p>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Odds</p>
-          <p className="text-sm font-bold text-green-500">@{prediction.best_bet_odds}</p>
+        <div className="text-right space-y-1">
+          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Market Odds</p>
+          <p className="text-xl font-black text-green-500">@{prediction.best_bet_odds.toFixed(2)}</p>
         </div>
       </div>
     </div>
@@ -724,7 +1021,17 @@ function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, on
 }
 
 function ProbStat({ label, value, color }: { label: string, value: number, color: string }) {
-  return <div className="space-y-1"><div className="flex justify-between text-[10px] font-mono text-zinc-500"><span>{label}</span><span>{(value * 100).toFixed(0)}%</span></div><div className="h-1 bg-zinc-900 rounded-full overflow-hidden"><div className={cn("h-full", color)} style={{ width: `${value * 100}%` }} /></div></div>;
+  return (
+    <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-2">
+      <div className="flex justify-between items-center">
+        <span className="text-[10px] font-mono text-zinc-500 uppercase">{label}</span>
+        <span className="text-xs font-bold">{(value * 100).toFixed(0)}%</span>
+      </div>
+      <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+        <div className={cn("h-full transition-all duration-1000", color)} style={{ width: `${value * 100}%` }} />
+      </div>
+    </div>
+  );
 }
 
 function StrategyView() {
@@ -751,25 +1058,30 @@ function StrategyView() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      <div className="bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-6">
-        <div className="flex items-center gap-3">
-          <Zap className="text-orange-500" />
-          <h2 className="text-2xl font-bold">AI Strategy Analyzer</h2>
+      <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-8 md:p-12 space-y-8">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center border border-orange-500/20">
+            <Zap className="text-orange-500" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-3xl font-bold">AI Strategy Analyzer</h2>
+            <p className="text-zinc-500 text-sm">Describe your betting plan in natural language. Use commas to separate selections.</p>
+          </div>
         </div>
-        <p className="text-zinc-500 text-sm">Describe your betting plan in natural language. Use commas to separate selections.</p>
-        <div className="space-y-4">
+
+        <div className="space-y-6">
           <textarea 
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="e.g., Man City win, Chelsea vs Arsenal draw, Over 2.5 in Liverpool match"
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 h-32 focus:outline-none focus:border-orange-500 transition-colors"
+            className="w-full bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-8 h-48 focus:outline-none focus:border-orange-500 transition-colors resize-none leading-relaxed"
           />
           <button 
             onClick={handleAnalyze}
             disabled={loading || !text}
-            className="w-full bg-orange-500 text-black font-bold py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-400 transition-all disabled:opacity-50"
+            className="w-full bg-orange-500 text-black font-black py-6 rounded-[2rem] flex items-center justify-center gap-4 hover:scale-[1.01] transition-all shadow-[0_20px_40px_-10px_rgba(249,115,22,0.3)] disabled:opacity-50 disabled:scale-100 uppercase tracking-widest"
           >
-            {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
+            {loading ? <Loader2 className="animate-spin w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
             Analyze Strategy Risk & EV
           </button>
         </div>
@@ -780,40 +1092,42 @@ function StrategyView() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 gap-8"
           >
-            <div className="bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-6">
-              <h3 className="text-lg font-bold flex items-center gap-2"><Activity className="w-4 h-4 text-orange-500" /> Risk Assessment</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
+            <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-10 space-y-8">
+              <h3 className="text-xl font-bold flex items-center gap-3"><Activity className="w-5 h-5 text-orange-500" /> Risk Assessment</h3>
+              <div className="space-y-6">
+                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
                   <span className="text-zinc-500 text-sm">Risk Level</span>
                   <span className={cn(
-                    "px-3 py-1 rounded-full text-xs font-bold",
-                    analysis.metrics.risk_score === 'Low' ? 'bg-green-500/10 text-green-500' : 
-                    analysis.metrics.risk_score === 'Medium' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-red-500/10 text-red-500'
+                    "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest",
+                    analysis.metrics.risk_score === 'Low' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
+                    analysis.metrics.risk_score === 'Medium' ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'
                   )}>{analysis.metrics.risk_score}</span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
                   <span className="text-zinc-500 text-sm">Expected Value (EV)</span>
-                  <span className="text-green-500 font-bold">{analysis.metrics.expected_value}</span>
+                  <span className="text-green-500 font-black text-lg">{analysis.metrics.expected_value}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-500 text-sm">Estimated Combined Odds</span>
-                  <span className="font-bold">@{analysis.metrics.combined_odds_est}</span>
+                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
+                  <span className="text-zinc-500 text-sm">Combined Odds</span>
+                  <span className="font-black text-lg">@{analysis.metrics.combined_odds_est}</span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
                   <span className="text-zinc-500 text-sm">Win Probability</span>
-                  <span className="font-bold">{analysis.metrics.win_probability}</span>
+                  <span className="font-black text-lg text-orange-500">{analysis.metrics.win_probability}</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-6">
-              <h3 className="text-lg font-bold flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-500" /> AI Recommendation</h3>
-              <p className="text-zinc-400 text-sm leading-relaxed">{analysis.recommendation}</p>
-              <div className="pt-4 border-t border-zinc-800">
-                <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Internal Agent Summary</p>
-                <p className="text-xs text-zinc-500">{analysis.summary}</p>
+            <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-10 space-y-8">
+              <h3 className="text-xl font-bold flex items-center gap-3"><CheckCircle className="w-5 h-5 text-green-500" /> AI Recommendation</h3>
+              <div className="bg-zinc-900/50 p-6 rounded-2xl border-l-4 border-l-orange-500">
+                <p className="text-white text-sm leading-relaxed font-medium italic">"{analysis.recommendation}"</p>
+              </div>
+              <div className="pt-6 border-t border-zinc-800">
+                <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-4">Internal Agent Summary</p>
+                <p className="text-xs text-zinc-400 leading-relaxed">{analysis.summary}</p>
               </div>
             </div>
           </motion.div>

@@ -130,11 +130,12 @@ async def team(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             # Search for the team first
             search_response = await client.get(f"{API_URL}/search/teams", params={'q': team_name})
-            if search_response.status_code != 200 or not search_response.json().get('results'):
+            search_data = search_response.json()
+            if search_response.status_code != 200 or not search_data.get('response'):
                 await update.message.reply_text(f"Could not find team: {team_name}")
                 return
 
-            team_id = search_response.json()['results'][0]['id']
+            team_id = search_data['response'][0]['team']['id']
 
             # Get team details
             detail_response = await client.get(f"{API_URL}/teams/{team_id}/detail")
@@ -171,11 +172,12 @@ async def standings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             # Search for league
             search_response = await client.get(f"{API_URL}/search/leagues", params={'q': league_name})
-            if search_response.status_code != 200 or not search_response.json().get('results'):
+            search_data = search_response.json()
+            if search_response.status_code != 200 or not search_data.get('response'):
                 await update.message.reply_text(f"Could not find league: {league_name}")
                 return
 
-            league_id = search_response.json()['results'][0]['id']
+            league_id = search_data['response'][0]['league']['id']
 
             # Get standings
             standings_response = await client.get(f"{API_URL}/standings/{league_id}")
@@ -184,15 +186,21 @@ async def standings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             data = standings_response.json()
+            # The API returns the direct response from Fotmob-style provider
+            standing_list = data.get('response', {}).get('standing', [])
             
-            message = f"*Standings for {data.get('name', league_name)}*\n\n"
+            if not standing_list:
+                await update.message.reply_text(f"No standings data available for {league_name}")
+                return
+
+            message = f"*Standings for {league_name}*\n\n"
             message += "```\n"
             message += "P | Team              | P | W | D | L | GD | Pts\n"
             message += "--------------------------------------------------\n"
-            for team in data.get('standings', [])[:10]: # Top 10
-                message += (f"{team['position']:<2} | {team['team']['name']:<17} | "
-                            f"{team['playedGames']:<2} | {team['won']:<2} | {team['draw']:<2} | {team['lost']:<2} | "
-                            f"{team['goalDifference']:<3} | {team['points']}\n")
+            for team in standing_list[:10]: # Top 10
+                message += (f"{team.get('idx', '?'):<2} | {team.get('name', 'Unknown'):<17} | "
+                            f"{team.get('played', 0):<2} | {team.get('wins', 0):<2} | {team.get('draws', 0):<2} | {team.get('losses', 0):<2} | "
+                            f"{team.get('goalConDiff', 0):<3} | {team.get('pts', 0)}\n")
             message += "```"
 
             await update.message.reply_text(message, parse_mode='Markdown')

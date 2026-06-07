@@ -1,7 +1,7 @@
 import os
 import httpx
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Dict, List, Any, Optional
 
@@ -204,7 +204,7 @@ class TheStatsAPIProvider(BaseFootballProvider):
         }
 
     async def get_match_deep_stats(self, match_id: str) -> Dict[str, Any]:
-        url = f"{self.base_url}/matches/{match_id}/statistics"
+        url = f"{self.base_url}/football/matches/{match_id}/stats"
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.get(url, headers=self.headers)
@@ -231,10 +231,34 @@ class TheStatsAPIProvider(BaseFootballProvider):
             logger.error(f"TheStatsAPI connection error: {e}")
             return {"error": str(e)}
 
+    async def get_match_player_stats(self, match_id: str) -> Dict[str, Any]:
+        url = f"{self.base_url}/football/matches/{match_id}/player-stats"
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.get(url, headers=self.headers)
+                return res.json() if res.status_code == 200 else {}
+        except: return {}
+
+    async def get_match_shotmap(self, match_id: str) -> Dict[str, Any]:
+        url = f"{self.base_url}/football/matches/{match_id}/shotmap"
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.get(url, headers=self.headers)
+                return res.json() if res.status_code == 200 else {}
+        except: return {}
+
+    async def get_match_player_odds(self, match_id: str) -> Dict[str, Any]:
+        url = f"{self.base_url}/football/matches/{match_id}/odds/players"
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.get(url, headers=self.headers)
+                return res.json() if res.status_code == 200 else {}
+        except: return {}
+
     # Implement abstract methods to satisfy BaseFootballProvider
     async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
         return [] # Deep stats provider, not for schedule
-    
+
     def normalize_match(self, match: Dict) -> Dict:
         return {}
 
@@ -247,7 +271,11 @@ class FootballAPIClient:
         self.providers = []
         self.stats_provider = None
         self.circuit_breaker = {} # {provider_name: {"status": "healthy", "last_failure": None}}
-        
+        self.POPULAR_LEAGUES = {
+            47: "Premier League", 87: "La Liga", 54: "Bundesliga", 55: "Serie A", 
+            53: "Ligue 1", 42: "Champions League", 73: "Europa League"
+        }
+
         # Load keys strictly from environment
         rapid_key = os.environ.get('RAPIDAPI_KEY')
         fd_key = os.environ.get('FOOTBALL_DATA_API_KEY')
@@ -257,7 +285,7 @@ class FootballAPIClient:
         if fd_key:
             self.providers.append(FootballDataOrgProvider(fd_key))
             self.circuit_breaker["FootballDataOrgProvider"] = {"status": "healthy", "last_failure": None}
-        if rapid_key: 
+        if rapid_key:
             self.providers.append(RapidAPIProvider(rapid_key))
             self.providers.append(ThreeSixFiveScoresProvider(rapid_key))
             self.circuit_breaker["RapidAPIProvider"] = {"status": "healthy", "last_failure": None}
@@ -267,22 +295,16 @@ class FootballAPIClient:
             self.circuit_breaker["SportradarProvider"] = {"status": "healthy", "last_failure": None}
         if stats_key:
             self.stats_provider = TheStatsAPIProvider(stats_key)
-        
+
         if not self.providers:
             logger.warning("No football providers configured via environment variables.")
-
-    async def get_match_deep_stats(self, match_id: str) -> Dict[str, Any]:
-        if self.stats_provider:
-            return await self.stats_provider.get_match_deep_stats(match_id)
-        return {"error": "Stats provider not configured"}
 
     def _is_provider_healthy(self, provider_name: str) -> bool:
         if self.circuit_breaker.get(provider_name, {}).get("status") == "healthy":
             return True
-        
+
         last_failure = self.circuit_breaker.get(provider_name, {}).get("last_failure")
         if last_failure:
-            # Cooldown of 60 seconds
             if (datetime.now() - last_failure).total_seconds() > 60:
                 self.circuit_breaker[provider_name]["status"] = "healthy"
                 return True
@@ -296,7 +318,7 @@ class FootballAPIClient:
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue
-            
+
             if isinstance(provider, (RapidAPIProvider, ThreeSixFiveScoresProvider)):
                 url = f"https://{provider.host}/{endpoint}"
                 try:
@@ -307,11 +329,31 @@ class FootballAPIClient:
                 except: self._mark_provider_failure(provider_name)
         return {}
 
+    async def get_match_deep_stats(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_deep_stats(match_id)
+        return {"error": "Stats provider not configured"}
+
+    async def get_match_player_stats(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_player_stats(match_id)
+        return {"error": "Stats provider not configured"}
+
+    async def get_match_shotmap(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_shotmap(match_id)
+        return {"error": "Stats provider not configured"}
+
+    async def get_match_player_odds(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_player_odds(match_id)
+        return {"error": "Stats provider not configured"}
+
     async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue
-            
+
             fixtures = await provider.get_fixtures(league_id, season, from_date, to_date)
             if fixtures: return fixtures
             else: self._mark_provider_failure(provider_name)
@@ -330,10 +372,10 @@ class FootballAPIClient:
             if matches:
                 logger.info(f"Successfully fetched {len(matches)} matches from {provider_name}")
                 return {"response": matches}
-            
+
             self._mark_provider_failure(provider_name)
             logger.warning(f"Provider {provider_name} failed or returned no data. Falling back...")
-        
+
         return {"response": []}
 
     async def search_teams(self, query: str) -> Dict:
@@ -341,7 +383,7 @@ class FootballAPIClient:
             if isinstance(provider, RapidAPIProvider):
                 provider_name = provider.__class__.__name__
                 if not self._is_provider_healthy(provider_name): continue
-                
+
                 url = f"https://{provider.host}/football-teams-search"
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -362,7 +404,7 @@ class FootballAPIClient:
             if isinstance(provider, RapidAPIProvider):
                 provider_name = provider.__class__.__name__
                 if not self._is_provider_healthy(provider_name): continue
-                
+
                 url = f"https://{provider.host}/football-get-odds-poll-match-events"
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -377,7 +419,7 @@ class FootballAPIClient:
             if isinstance(provider, RapidAPIProvider):
                 provider_name = provider.__class__.__name__
                 if not self._is_provider_healthy(provider_name): continue
-                
+
                 url = f"https://{provider.host}/football-get-standing-all"
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -397,7 +439,7 @@ class FootballAPIClient:
             if isinstance(provider, RapidAPIProvider):
                 provider_name = provider.__class__.__name__
                 if not self._is_provider_healthy(provider_name): continue
-                
+
                 url = f"https://{provider.host}/football-popular-leagues"
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -415,9 +457,19 @@ class FootballAPIClient:
     async def get_teams_by_league(self, league_id: int):
         res = await self.get_standings(str(league_id))
         teams = []
+        league_name = self.POPULAR_LEAGUES.get(league_id, f"League {league_id}")
+
         if res and 'response' in res and 'standing' in res['response']:
              for t in res['response']['standing']:
-                 teams.append({"team": {"id": t.get('id'), "name": t.get('name'), "logo": f"https://images.fotmob.com/image_resources/logo/teamlogo/{t.get('id')}.png", "country": "Unknown"}, "league": {"name": "League " + str(league_id)}})
+                 teams.append({
+                     "team": {
+                         "id": t.get('id'),
+                         "name": t.get('name'),
+                         "logo": f"https://images.fotmob.com/image_resources/logo/teamlogo/{t.get('id')}.png",
+                         "country": "Unknown"
+                     },
+                     "league": {"name": league_name}
+                 })
         return {"response": teams}
 
     async def get_team_fixtures(self, team_id: int, last: int = 40):
