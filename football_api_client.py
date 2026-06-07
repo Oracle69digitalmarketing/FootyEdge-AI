@@ -191,7 +191,8 @@ class TheStatsAPIProvider(BaseFootballProvider):
 class FootballAPIClient:
     def __init__(self):
         self.providers = []
-        self.circuit_breaker = {}
+        self.stats_provider = None
+        self.circuit_breaker = {} # {provider_name: {"status": "healthy", "last_failure": None}}
         
         # 1. Local CSV Provider (Highest Priority)
         csv_path = "data/club-data/matches.csv"
@@ -203,6 +204,7 @@ class FootballAPIClient:
         fd_key = os.environ.get('FOOTBALL_DATA_API_KEY')
         sr_key = os.environ.get('SPORTRADAR_API_KEY')
         rapid_key = os.environ.get('RAPIDAPI_KEY')
+        stats_key = os.environ.get('THESTATSAPI_KEY')
         
         if fd_key:
             self.providers.append(FootballDataOrgProvider(fd_key))
@@ -215,6 +217,8 @@ class FootballAPIClient:
             self.providers.append(RapidAPIProvider(rapid_key))
             self.circuit_breaker["ThreeSixFiveScoresProvider"] = {"status": "healthy", "last_failure": None}
             self.circuit_breaker["RapidAPIProvider"] = {"status": "healthy", "last_failure": None}
+        if stats_key:
+            self.stats_provider = TheStatsAPIProvider(stats_key)
 
     def _is_provider_healthy(self, provider_name: str) -> bool:
         if self.circuit_breaker.get(provider_name, {}).get("status") == "healthy": return True
