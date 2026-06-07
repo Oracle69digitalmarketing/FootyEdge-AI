@@ -10,7 +10,7 @@ interface AccaBuilderProps {
 }
 
 const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGenerateCode, bankroll }) => {
-  const totalOdds = selections.reduce((acc, s) => acc * s.odds, 1).toFixed(2);
+  const totalOdds = (selections.reduce((acc, s) => acc * (s.odds || 1), 1) || 0).toFixed(2);
   const [stake, setStake] = useState(1000);
   const [copied, setCopied] = useState(false);
 

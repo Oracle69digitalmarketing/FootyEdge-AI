@@ -452,12 +452,12 @@ export default function App() {
             away_team: data.away_team,
             home_id: data.home_id,
             away_id: data.away_id,
-            home_prob: data.probabilities.home_win,
-            draw_prob: data.probabilities.draw,
-            away_prob: data.probabilities.away_win,
-            home_xg: data.home_xg,
-            away_xg: data.away_xg,
-            confidence: (data.probabilities.home_win + data.probabilities.away_win) / 1.5,
+            home_prob: data.home_prob || data.probabilities?.home_win || 0.33,
+            draw_prob: data.draw_prob || data.probabilities?.draw || 0.34,
+            away_prob: data.away_prob || data.probabilities?.away_win || 0.33,
+            home_xg: data.home_xg || 0,
+            away_xg: data.away_xg || 0,
+            confidence: data.confidence || (( (data.home_prob || data.probabilities?.home_win || 0) + (data.away_prob || data.probabilities?.away_win || 0) ) / 1.5),
             best_bet_market: data.value_bets?.[0]?.market_name || 'Match Odds',
             best_bet_selection: data.value_bets?.[0]?.selection || 'Home',
             best_bet_odds: data.value_bets?.[0]?.odds || 1.9,
@@ -965,12 +965,12 @@ function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, on
           <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Expected Goals (xG)</p>
           <div className="flex justify-between items-end">
             <div className="text-center">
-              <p className="text-2xl font-bold">{prediction.home_xg.toFixed(2)}</p>
+              <p className="text-2xl font-bold">{(prediction.home_xg || 0).toFixed(2)}</p>
               <p className="text-[10px] text-zinc-600 uppercase">Home</p>
             </div>
             <div className="h-8 w-px bg-zinc-800 mb-2" />
             <div className="text-center">
-              <p className="text-2xl font-bold">{prediction.away_xg.toFixed(2)}</p>
+              <p className="text-2xl font-bold">{(prediction.away_xg || 0).toFixed(2)}</p>
               <p className="text-[10px] text-zinc-600 uppercase">Away</p>
             </div>
           </div>
@@ -981,9 +981,9 @@ function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, on
              <div className="relative w-16 h-16 flex items-center justify-center">
                 <svg className="w-full h-full -rotate-90">
                   <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-zinc-800" />
-                  <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" strokeDasharray={175.9} strokeDashoffset={175.9 * (1 - prediction.confidence)} className="text-orange-500" />
+                  <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" strokeDasharray={175.9} strokeDashoffset={175.9 * (1 - (prediction.confidence || 0))} className="text-orange-500" />
                 </svg>
-                <p className="absolute text-xs font-bold">{(prediction.confidence * 100).toFixed(0)}%</p>
+                <p className="absolute text-xs font-bold">{((prediction.confidence || 0) * 100).toFixed(0)}%</p>
              </div>
              <p className="text-sm text-zinc-400 leading-tight">High probability matchup detected by Neural Net.</p>
           </div>
@@ -1012,7 +1012,7 @@ function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, on
         </div>
         <div className="text-right space-y-1">
           <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Market Odds</p>
-          <p className="text-xl font-black text-green-500">@{prediction.best_bet_odds.toFixed(2)}</p>
+          <p className="text-xl font-black text-green-500">@{(prediction.best_bet_odds || 0).toFixed(2)}</p>
         </div>
       </div>
     </div>
@@ -1024,10 +1024,10 @@ function ProbStat({ label, value, color }: { label: string, value: number, color
     <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-2">
       <div className="flex justify-between items-center">
         <span className="text-[10px] font-mono text-zinc-500 uppercase">{label}</span>
-        <span className="text-xs font-bold">{(value * 100).toFixed(0)}%</span>
+        <span className="text-xs font-bold">{((value || 0) * 100).toFixed(0)}%</span>
       </div>
       <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
-        <div className={cn("h-full transition-all duration-1000", color)} style={{ width: `${value * 100}%` }} />
+        <div className={cn("h-full transition-all duration-1000", color)} style={{ width: `${(value || 0) * 100}%` }} />
       </div>
     </div>
   );
