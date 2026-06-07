@@ -598,6 +598,7 @@ async def get_dashboard_stats():
             # Calculate accuracy from settled predictions
             # actual_result should match best_bet_selection for a 'win'
             try:
+                # Use a safer select, or handle if the column doesn't exist
                 settled_res = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute()
                 if settled_res.data:
                     correct = sum(1 for p in settled_res.data if p.get('best_bet_selection') == p.get('actual_result'))
@@ -605,7 +606,11 @@ async def get_dashboard_stats():
                 else:
                     accuracy = 0.0
             except Exception as schema_err:
-                logger.warning(f"Accuracy calc failed (likely missing column): {schema_err}")
+                # If the column doesn't exist, we just skip accuracy calculation instead of erroring
+                if "actual_result" in str(schema_err) or "column" in str(schema_err):
+                    logger.info("Accuracy calculation skipped: column actual_result missing.")
+                else:
+                    logger.warning(f"Accuracy calc failed: {schema_err}")
                 accuracy = 0.0
         except Exception as e:
             logger.error(f"Error fetching dashboard stats: {e}")

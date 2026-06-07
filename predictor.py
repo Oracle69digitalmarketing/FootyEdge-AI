@@ -156,6 +156,9 @@ class FootyEdgePredictor:
         return all_matches
 
     async def find_all_value_bets(self, league_ids: List[Any] = None) -> List[Dict]:
+        if league_ids is None:
+            # Default to some standard league IDs if none provided
+            league_ids = [47, 87, 54, 55, 53, 42, 73]
         all_value_bets = []
         for league_id in league_ids:
             fixtures = await self._fetch_upcoming_fixtures(league_id)
