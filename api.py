@@ -413,25 +413,20 @@ async def subscribe(request: SubscribeRequest):
 @router.post("/admin/sync-teams", summary="Sync teams from external API to Supabase")
 async def sync_teams():
     if not football_client or not supabase:
-        raise HTTPException(status_code=503, detail="Clients not configured. Check environment variables.")
+        raise HTTPException(status_code=503, detail="Clients not configured.")
     
-    # Predefined major league IDs (using RapidAPI IDs as default)
-    major_league_ids = [47, 87, 54, 55, 53, 42, 73, 342] # PL, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL, NPFL
+    major_league_ids = [47, 87, 54, 55, 53, 42, 73, 342]
     
     try:
         leagues_data = await football_client.list_leagues()
-        # Safety check: if leagues_data is None or malformed
-        if not leagues_data or 'response' not in leagues_data:
-            logger.warning("list_leagues returned empty/invalid data. Using major_league_ids only.")
-            leagues_to_sync = major_league_ids
-        else:
-            league_items = leagues_data.get('response', [])
-            found_league_ids = [item.get('league', {}).get('id') for item in league_items if item.get('league', {}).get('id')]
-            leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20]
+        leagues_to_sync = major_league_ids
+        if leagues_data and 'response' in leagues_data:
+            found_ids = [item.get('league', {}).get('id') for item in leagues_data.get('response', []) if item.get('league', {}).get('id')]
+            leagues_to_sync = list(set(found_ids + major_league_ids))[:20]
         
         all_teams = []
         for league_id in leagues_to_sync:
-            logger.info(f"Fetching teams for league ID: {league_id}")
+            logger.info(f"Syncing teams for league: {league_id}")
             try:
                 teams_data = await football_client.get_teams_by_league(league_id)
                 if teams_data and 'response' in teams_data:
@@ -446,20 +441,21 @@ async def sync_teams():
                                 "logo_url": team_info.get('crest', team_info.get('logo'))
                             })
             except Exception as e:
-                logger.error(f"Failed to fetch teams for league {league_id}: {e}")
-                continue # Proceed to next league
-            await asyncio.sleep(0.5) 
+                logger.error(f"Failed to fetch league {league_id}: {e}")
+            await asyncio.sleep(0.5)
         
         if not all_teams:
-            return JSONResponse(status_code=500, content={"status": "error", "detail": "No teams found from external API."})
+            return {"status": "warning", "message": "No teams fetched from external providers."}
         
         unique_teams = {t['name']: t for t in all_teams}.values()
         
-        upsert_response = supabase.table("teams").upsert(list(unique_teams), on_conflict="name").execute()
-        return {"status": "success", "synced_count": len(upsert_response.data) if upsert_response.data else 0}
+        # Upsert
+        response = supabase.table("teams").upsert(list(unique_teams), on_conflict="name").execute()
+        return {"status": "success", "synced_count": len(all_teams), "unique_synced": len(unique_teams)}
+
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Sync failed: {str(e)}"})
+        return {"status": "error", "message": str(e)}
 
 
 @router.post("/admin/sync-players", summary="Sync players for existing teams in database")
