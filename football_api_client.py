@@ -213,6 +213,8 @@ class FootballAPIClient:
         sr_key = os.environ.get('SPORTRADAR_API_KEY')
         stats_key = os.environ.get('THESTATSAPI_KEY')
         
+        # We prefer Football-Data.org (fd_key) or Sportradar (sr_key) over RapidAPI (rapid_key)
+        # because RapidAPI quota is often exceeded.
         if fd_key:
             self.providers.append(FootballDataOrgProvider(fd_key))
             self.circuit_breaker["FootballDataOrgProvider"] = {"status": "healthy", "last_failure": None}
@@ -220,6 +222,7 @@ class FootballAPIClient:
             self.providers.append(SportradarProvider(sr_key))
             self.circuit_breaker["SportradarProvider"] = {"status": "healthy", "last_failure": None}
         if rapid_key:
+            # RapidAPI providers are last resort
             self.providers.append(ThreeSixFiveScoresProvider(rapid_key))
             self.providers.append(RapidAPIProvider(rapid_key))
             self.circuit_breaker["ThreeSixFiveScoresProvider"] = {"status": "healthy", "last_failure": None}
@@ -249,6 +252,9 @@ class FootballAPIClient:
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
         if not date_to: date_to = date_from
+        all_matches = []
+        found_matches = False
+
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue

@@ -184,10 +184,8 @@ export default function App() {
   }, [user]);
 
   const fetchTeams = useCallback(async () => {
-    if (!supabase) return;
     try {
-      const { data, error } = await supabase.from('teams').select('*').order('league_name').order('name');
-      if (error) throw error;
+      const data = await safeFetchJson('/api/teams');
       setTeams(data || []);
     } catch (error: any) {
       flashMessage(setError, `Failed to fetch teams: ${error.message}`);
