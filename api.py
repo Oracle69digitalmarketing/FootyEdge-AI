@@ -169,28 +169,7 @@ class BetRecordRequest(BaseModel):
     selection: str
     odds: float
     stake: float
-
-
-# --- Root Endpoints ---
-@app.get("/")
-@app.head("/")
-def root():
-    return {"message": "FootyEdge AI API is running."}
-
-
 # --- Health Check ---
-@router.get("/health", summary="Health check for service and environment variables")
-async def health_check():
-    """Provides a health check for Render and verifies environment variable setup."""
-    return {
-        "status": "healthy",
-        "supabase": "configured" if supabase else "missing",
-        "rapidapi": "configured" if rapidapi_key else "missing (using fallback)",
-        "football_data_org": "configured" if fd_org_key else "missing",
-        "sportradar": "configured" if sportradar_key else "missing",
-        "external_resources": ["365scores", "sofascore"],
-        "router_active": "yes" if isinstance(football_client, FootballRouter) else "no"
-    }
 
 
 @app.get("/health", summary="Root health check")
@@ -201,10 +180,31 @@ async def root_health():
 @router.post("/predict", summary="Generate predictions using live odds")
 async def predict(request: PredictRequest):
     try:
-        return await predictor.predict_match(request.home_team, request.away_team, request.odds)
+        res = await predictor.predict_match(request.home_team, request.away_team, request.odds)
+        if supabase:
+            try:
+                # Log prediction to DB
+                pred_data = {
+                    "home_team": res['home_team'],
+                    "away_team": res['away_team'],
+                    "home_prob": res['home_prob'],
+                    "draw_prob": res['draw_prob'],
+                    "away_prob": res['away_prob'],
+                    "home_xg": res['home_xg'],
+                    "away_xg": res['away_xg'],
+                    "confidence": (res['home_prob'] + res['away_prob']) / 1.5,
+                    "best_bet_market": res['value_bets'][0]['market_name'] if res['value_bets'] else "Match Odds",
+                    "best_bet_selection": res['value_bets'][0]['selection'] if res['value_bets'] else "Draw",
+                    "best_bet_odds": res['value_bets'][0]['odds'] if res['value_bets'] else 1.0,
+                }
+                supabase.table("predictions").insert(pred_data).execute()
+            except Exception as db_err:
+                logger.warning(f"Failed to log prediction to DB: {db_err}")
+        return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.error(f"Prediction error: {e}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
@@ -236,39 +236,6 @@ async def scan_value_bets():
 
 
 # --- Database Endpoints ---
-@router.get("/dashboard/stats", summary="Get overall platform statistics")
-async def get_dashboard_stats():
-    total_preds = 0
-    active_value = 0
-    accuracy = 0.0
-
-    if supabase:
-        try:
-            preds_res = supabase.table("predictions").select("id", count="exact").execute()
-            total_preds = preds_res.count or 0
-
-            value_res = supabase.table("value_bets").select("id", count="exact").eq("status", "active").execute()
-            active_value = value_res.count or 0
-
-            try:
-                settled_res = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute()
-                if settled_res.data:
-                    correct = sum(1 for p in settled_res.data if p.get('best_bet_selection') == p.get('actual_result'))
-                    accuracy = (correct / len(settled_res.data)) * 100
-                else:
-                    accuracy = 0.0
-            except Exception as schema_err:
-                logger.warning(f"Accuracy calc failed: {schema_err}")
-                accuracy = 0.0
-        except Exception as e:
-            logger.error(f"Error fetching dashboard stats: {e}")
-
-    return {
-        "total_predictions": total_preds,
-        "active_value_bets": active_value,
-        "ai_accuracy": f"{round(accuracy, 1)}%" if accuracy > 0 else "N/A"
-    }
-
 @router.get("/teams", summary="Get all teams from database")
 async def get_teams(league: Optional[str] = None):
     if not supabase:
@@ -450,8 +417,19 @@ async def sync_teams():
         unique_teams = {t['name']: t for t in all_teams}.values()
         
         # Upsert
-        response = supabase.table("teams").upsert(list(unique_teams), on_conflict="name").execute()
-        return {"status": "success", "synced_count": len(all_teams), "unique_synced": len(unique_teams)}
+        try:
+            response = supabase.table("teams").upsert(list(unique_teams)).execute()
+            return {"status": "success", "synced_count": len(all_teams), "unique_synced": len(unique_teams)}
+        except Exception as upsert_err:
+            logger.error(f"Upsert teams failed: {upsert_err}")
+            # Try one by one as fallback
+            success_count = 0
+            for ut in unique_teams:
+                try:
+                    supabase.table("teams").upsert(ut).execute()
+                    success_count += 1
+                except: pass
+            return {"status": "partial_success", "synced_count": success_count}
 
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
@@ -495,7 +473,7 @@ async def sync_players():
                         })
                     
                     if db_players:
-                        supabase.table("players").upsert(db_players, on_conflict="name, team_id").execute()
+                        supabase.table("players").upsert(db_players).execute()
                         total_synced += len(db_players)
             except Exception as e:
                 logger.error(f"Failed to sync players for team {team['id']}: {e}")
@@ -514,18 +492,49 @@ async def seed_database():
         raise HTTPException(status_code=503, detail="Database not configured.")
     
     initial_teams = [
-        {"id": 10260, "name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
-        {"id": 10261, "name": "Newcastle", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10261.png"},
-        {"id": 8650, "name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
-        {"id": 9825, "name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
-        {"id": 8456, "name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
-        {"id": 8634, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"},
-        {"id": 8633, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
+        {'id': 1, 'name': 'Argentina', 'country': 'Argentina', 'league_name': 'Friendly International'},
+        {'id': 2, 'name': 'Honduras', 'country': 'Honduras', 'league_name': 'Friendly International'},
+        {'id': 3, 'name': 'Curacao', 'country': 'Curacao', 'league_name': 'Friendly International'},
+        {'id': 4, 'name': 'Aruba', 'country': 'Aruba', 'league_name': 'Friendly International'},
+        {'id': 5, 'name': 'Afghanistan', 'country': 'Afghanistan', 'league_name': 'Friendly International'},
+        {'id': 6, 'name': 'Pakistan', 'country': 'Pakistan', 'league_name': 'Friendly International'},
+        {'id': 7, 'name': 'Liechtenstein', 'country': 'Liechtenstein', 'league_name': 'Friendly International'},
+        {'id': 8, 'name': 'Cyprus', 'country': 'Cyprus', 'league_name': 'Friendly International'},
+        {'id': 9, 'name': 'Oman', 'country': 'Oman', 'league_name': 'Friendly International'},
+        {'id': 10, 'name': 'Mozambique', 'country': 'Mozambique', 'league_name': 'Friendly International'},
+        {'id': 11, 'name': 'Kenya', 'country': 'Kenya', 'league_name': 'Friendly International'},
+        {'id': 12, 'name': 'Lesotho', 'country': 'Lesotho', 'league_name': 'Friendly International'},
+        {'id': 13, 'name': 'Denmark', 'country': 'Denmark', 'league_name': 'Friendly International'},
+        {'id': 14, 'name': 'Ukraine', 'country': 'Ukraine', 'league_name': 'Friendly International'},
+        {'id': 15, 'name': 'Croatia', 'country': 'Croatia', 'league_name': 'Friendly International'},
+        {'id': 16, 'name': 'Slovenia', 'country': 'Slovenia', 'league_name': 'Friendly International'},
+        {'id': 17, 'name': 'Morocco', 'country': 'Morocco', 'league_name': 'Friendly International'},
+        {'id': 18, 'name': 'Norway', 'country': 'Norway', 'league_name': 'Friendly International'},
+        {'id': 19, 'name': 'Greece', 'country': 'Greece', 'league_name': 'Friendly International'},
+        {'id': 20, 'name': 'Italy', 'country': 'Italy', 'league_name': 'Friendly International'},
+        {'id': 21, 'name': 'Ecuador', 'country': 'Ecuador', 'league_name': 'Friendly International'},
+        {'id': 22, 'name': 'Guatemala', 'country': 'Guatemala', 'league_name': 'Friendly International'},
+        {'id': 23, 'name': 'Colombia', 'country': 'Colombia', 'league_name': 'Friendly International'},
+        {'id': 24, 'name': 'Jordan', 'country': 'Jordan', 'league_name': 'Friendly International'},
+        {'id': 25, 'name': 'Peru', 'country': 'Peru', 'league_name': 'Friendly International'},
+        {'id': 26, 'name': 'Spain', 'country': 'Spain', 'league_name': 'Friendly International'},
+        {'id': 27, 'name': 'Saudi Arabia', 'country': 'Saudi Arabia', 'league_name': 'Friendly International'},
+        {'id': 28, 'name': 'Senegal', 'country': 'Senegal', 'league_name': 'Friendly International'},
+        {'id': 10260, 'name': 'Manchester United', 'country': 'England', 'league_name': 'Premier League'},
+        {'id': 8650, 'name': 'Liverpool', 'country': 'England', 'league_name': 'Premier League'},
+        {'id': 8456, 'name': 'Manchester City', 'country': 'England', 'league_name': 'Premier League'},
+        {'id': 9825, 'name': 'Arsenal', 'country': 'England', 'league_name': 'Premier League'},
     ]
     
     try:
-        response = supabase.table("teams").upsert(initial_teams, on_conflict="name").execute()
-        return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
+        success_count = 0
+        for team in initial_teams:
+            try:
+                supabase.table("teams").upsert(team).execute()
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to seed team {team['name']}: {e}")
+        return {"status": "success", "message": "Database seeded.", "count": success_count}
     except Exception as e:
         logger.error(f"Seeding failed: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "detail": f"Seeding failed: {str(e)}"})
