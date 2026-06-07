@@ -283,15 +283,13 @@ class FootyEdgePredictor:
             if odd_key in odds and odds[odd_key] > 0:
                 prob = probs.get(odd_key if odd_key in probs else selection)
                 if prob and prob * odds[odd_key] > 1.05:
-                    ev = (prob * odds[odd_key]) - 1
                     value_bets.append({
                         "market_name": market,
                         "selection": selection,
                         "odds": odds[odd_key],
                         "our_probability": prob,
-                        "ev": ev,
-                        "tier": "Hot 🔥" if ev > 0.2 else "Solid",
-                        "recommended_stake_percentage": max(1.0, min(10.0, ev * 10)) # Simple stake logic
+                        "ev": (prob * odds[odd_key]) - 1,
+                        "tier": "Hot 🔥" if (prob * odds[odd_key]) > 1.2 else "Solid"
                     })
 
         return {
@@ -299,9 +297,6 @@ class FootyEdgePredictor:
             "away_team": away_team,
             "home_xg": home_xG,
             "away_xg": away_xG,
-            "home_prob": probs.get("home_win", 0.33),
-            "draw_prob": probs.get("draw", 0.34),
-            "away_prob": probs.get("away_win", 0.33),
             "probabilities": probs,
             "value_bets": value_bets,
             "correct_scores": [
