@@ -1,6 +1,7 @@
 import os
 import httpx
 import asyncio
+import json
 import pandas as pd
 from datetime import datetime
 import logging
@@ -64,13 +65,21 @@ class RapidAPIProvider(BaseFootballProvider):
 
     async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
         try:
+            logger.info(f"RapidAPIProvider: Fetching matches for date {date_from}")
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.get(f"https://{self.host}/football-get-matches-by-date", headers=self.headers, params={"date": date_from.replace("-", "")})
+                logger.info(f"RapidAPIProvider: Response status {res.status_code}")
                 if res.status_code == 200:
                     data = res.json()
-                    return [self.normalize_match(self._raw_to_internal(m)) for m in data.get('response', {}).get('matches', [])]
+                    matches = data.get('response', {}).get('matches', [])
+                    logger.info(f"RapidAPIProvider: Found {len(matches)} matches")
+                    return [self.normalize_match(self._raw_to_internal(m)) for m in matches]
+                else:
+                    logger.error(f"RapidAPIProvider error: {res.status_code} - {res.text}")
                 return []
-        except: return []
+        except Exception as e:
+            logger.error(f"RapidAPIProvider exception: {e}")
+            return []
 
     def _raw_to_internal(self, m: Dict) -> Dict:
         home = m.get('home', {})
@@ -204,6 +213,8 @@ class FootballAPIClient:
         sr_key = os.environ.get('SPORTRADAR_API_KEY')
         stats_key = os.environ.get('THESTATSAPI_KEY')
         
+        # We prefer Football-Data.org (fd_key) or Sportradar (sr_key) over RapidAPI (rapid_key)
+        # because RapidAPI quota is often exceeded.
         if fd_key:
             self.providers.append(FootballDataOrgProvider(fd_key))
             self.circuit_breaker["FootballDataOrgProvider"] = {"status": "healthy", "last_failure": None}
@@ -211,6 +222,7 @@ class FootballAPIClient:
             self.providers.append(SportradarProvider(sr_key))
             self.circuit_breaker["SportradarProvider"] = {"status": "healthy", "last_failure": None}
         if rapid_key:
+            # RapidAPI providers are last resort
             self.providers.append(ThreeSixFiveScoresProvider(rapid_key))
             self.providers.append(RapidAPIProvider(rapid_key))
             self.circuit_breaker["ThreeSixFiveScoresProvider"] = {"status": "healthy", "last_failure": None}
@@ -240,13 +252,59 @@ class FootballAPIClient:
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
         if not date_to: date_to = date_from
+        all_matches = []
+        found_matches = False
+
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue
-            matches = await provider.get_matches(date_from, date_to)
-            if matches: return {"response": matches}
-            self._mark_provider_failure(provider_name)
-        return {"response": []}
+
+            try:
+                matches = await provider.get_matches(date_from, date_to)
+                if matches is not None:
+                    # We only mark failure if it literally errors or returns None
+                    # An empty list might just mean no games in that league for that provider
+                    if matches:
+                        all_matches.extend(matches)
+                    found_matches = True
+            except Exception as e:
+                logger.error(f"Provider {provider_name} failed: {e}")
+                self._mark_provider_failure(provider_name)
+
+        if found_matches:
+            # Deduplicate by fixture ID
+            unique_matches = {}
+            for m in all_matches:
+                fid = m.get('fixture', {}).get('id')
+                if fid and fid not in unique_matches:
+                    unique_matches[fid] = m
+            return {"response": list(unique_matches.values())}
+
+        # Fallback to local data if all providers fail
+        logger.info(f"Falling back to local data for {date_from}")
+        local_matches = []
+        local_path = "data/football.json"
+        if os.path.exists(local_path):
+            try:
+                with open(local_path, 'r') as f:
+                    data = json.load(f)
+                    matches = data.get('matches', [])
+                    for m in matches:
+                        if m.get('date') == date_from:
+                            local_matches.append({
+                                "fixture": {"id": f"local-{m['team1']}-{m['team2']}", "date": m['date']},
+                                "teams": {
+                                    "home": {"name": m['team1'], "logo": None},
+                                    "away": {"name": m['team2'], "logo": None}
+                                },
+                                "league": {"name": "Local League", "id": 0},
+                                "goals": {"home": None, "away": None},
+                                "status": {"long": "Scheduled"}
+                            })
+            except Exception as e:
+                logger.error(f"Error reading local data: {e}")
+
+        return {"response": local_matches}
 
     async def _make_request(self, endpoint: str, params: Dict = None) -> Dict:
         for provider in self.providers:
