@@ -569,7 +569,7 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard title="Total Predictions" value={dashboardStats.total_predictions.toString()} icon={<History className="text-blue-500" />} />
                 <StatCard title="Active Value Bets" value={dashboardStats.active_value_bets.toString()} icon={<TrendingUp className="text-green-500" />} />
-                <StatCard title="AI Accuracy" value={predictions.length > 0 ? "88.4%" : "92.1%"} icon={<ShieldCheck className="text-orange-500" />} />
+                <StatCard title="AI Accuracy" value={dashboardStats.ai_accuracy} icon={<ShieldCheck className="text-orange-500" />} />
               </div>
             </div>
           )}
@@ -588,6 +588,7 @@ export default function App() {
           )}
         </div>
       </main>
+
     </div>
   );
 }

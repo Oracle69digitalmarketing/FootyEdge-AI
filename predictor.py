@@ -126,16 +126,8 @@ class FootyEdgePredictor:
                  logger.error(f"API fallback search/fixtures failed for team {team_name}: {e}")
 
         if not all_matches:
-            logger.warning(f"No historical match data for {team_name}. Using baseline stats.")
-            # Provide baseline data so the app doesn't crash/fail for the user
-            all_matches = [{
-                'date': datetime.now().strftime("%Y-%m-%d"),
-                'is_home': True,
-                'goals_scored': 1,
-                'goals_conceded': 1,
-                'result': 'draw',
-                'opponent_name': 'Average Opponent'
-            }]
+            logger.warning(f"No historical match data for {team_name}. Proceeding with empty dataset.")
+            return []
 
         merged_matches = sorted(all_matches, key=lambda x: x['date'], reverse=True)
         # Deduplicate by date
@@ -258,14 +250,13 @@ class FootyEdgePredictor:
             from_date = datetime.now().strftime("%Y-%m-%d")
             to_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
-            res = await self.football_client._make_request("fixtures", params={
-                "league": league_id,
-                "season": season,
-                "from": from_date,
-                "to": to_date
-            })
+            fixtures = await self.football_client.get_fixtures(
+                league_id=league_id,
+                season=season,
+                from_date=from_date,
+                to_date=to_date
+            )
 
-            fixtures = res.get('response', [])
             return fixtures
             
         except Exception as e:

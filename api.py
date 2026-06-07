@@ -567,19 +567,19 @@ async def get_odds_by_event_id_ext(event_id: int):
         raise HTTPException(status_code=503, detail="Football API not configured.")
     res = await football_client.get_odds_by_event_id(event_id)
 
-    # Initialize with sensible default/fallback odds structure (market average approx)
+    # Initialize with empty structure - no hardcoded fallbacks
     processed_odds = {
-        "bet9ja": {"home_win": 1.95, "draw": 3.40, "away_win": 4.10, "booking_prefix": "B9"},
-        "sportybet": {"home_win": 1.98, "draw": 3.45, "away_win": 4.05, "booking_prefix": "SB"},
-        "1xbet": {"home_win": 2.01, "draw": 3.50, "away_win": 3.95, "booking_prefix": "1X"},
-        "default": {"home_win": 1.90, "draw": 3.30, "away_win": 4.20, "booking_prefix": "FE"}
+        "bet9ja": None,
+        "sportybet": None,
+        "1xbet": None,
+        "default": None
     }
 
+    found_odds = False
     if res.get('response'):
         try:
             # We try to find a reliable bookmaker like Bet365 or 1xBet
             bookmakers = res['response'][0].get('bookmakers', [])
-            found_odds = False
             for bm in bookmakers:
                 if bm['name'] in ('Bet365', '1xBet', 'Marathonbet', 'William Hill', '888Sport', 'Unibet'):
                     bets = bm.get('bets', [])
@@ -587,9 +587,9 @@ async def get_odds_by_event_id_ext(event_id: int):
                         if bet['name'] == 'Match Winner':
                             vals = {v['value']: v['odd'] for v in bet['values']}
                             current_odds = {
-                                "home_win": float(vals.get('Home', 1.90)),
-                                "draw": float(vals.get('Draw', 3.30)),
-                                "away_win": float(vals.get('Away', 4.20)),
+                                "home_win": float(vals.get('Home', 1.0)),
+                                "draw": float(vals.get('Draw', 1.0)),
+                                "away_win": float(vals.get('Away', 1.0)),
                                 "booking_prefix": "FE"
                             }
                             processed_odds["default"] = current_odds
@@ -603,8 +603,8 @@ async def get_odds_by_event_id_ext(event_id: int):
         except Exception as e:
             logger.error(f"Error processing odds for event {event_id}: {e}")
 
-    if not res.get('response') or not found_odds:
-         logger.warning(f"No live odds found for event {event_id}. Returning sensible average defaults.")
+    if not found_odds:
+         logger.warning(f"No live odds found for event {event_id}. Real-time data unavailable.")
 
     return processed_odds
 
