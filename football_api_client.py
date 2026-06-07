@@ -193,17 +193,15 @@ class FootballAPIClient:
         self.providers = []
         self.stats_provider = None
         self.circuit_breaker = {} # {provider_name: {"status": "healthy", "last_failure": None}}
+        self.POPULAR_LEAGUES = {
+            47: "Premier League", 87: "La Liga", 54: "Bundesliga", 55: "Serie A", 
+            53: "Ligue 1", 42: "Champions League", 73: "Europa League"
+        }
         
-        # 1. Local CSV Provider (Highest Priority)
-        csv_path = "data/club-data/matches.csv"
-        if os.path.exists(csv_path):
-            self.providers.append(LocalCSVProvider(csv_path))
-            self.circuit_breaker["LocalCSVProvider"] = {"status": "healthy", "last_failure": None}
-        
-        # 2. API Providers (Failover Chain)
+        # Load keys strictly from environment
+        rapid_key = os.environ.get('RAPIDAPI_KEY')
         fd_key = os.environ.get('FOOTBALL_DATA_API_KEY')
         sr_key = os.environ.get('SPORTRADAR_API_KEY')
-        rapid_key = os.environ.get('RAPIDAPI_KEY')
         stats_key = os.environ.get('THESTATSAPI_KEY')
         
         if fd_key:
@@ -230,6 +228,16 @@ class FootballAPIClient:
     def _mark_provider_failure(self, provider_name: str):
         self.circuit_breaker[provider_name] = {"status": "unhealthy", "last_failure": datetime.now()}
 
+    async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
+        for provider in self.providers:
+            provider_name = provider.__class__.__name__
+            if not self._is_provider_healthy(provider_name): continue
+            
+            fixtures = await provider.get_fixtures(league_id, season, from_date, to_date)
+            if fixtures: return fixtures
+            else: self._mark_provider_failure(provider_name)
+        return []
+
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
         if not date_to: date_to = date_from
         for provider in self.providers:
@@ -239,3 +247,168 @@ class FootballAPIClient:
             if matches: return {"response": matches}
             self._mark_provider_failure(provider_name)
         return {"response": []}
+
+    async def _make_request(self, endpoint: str, params: Dict = None) -> Dict:
+        for provider in self.providers:
+            provider_name = provider.__class__.__name__
+            if not self._is_provider_healthy(provider_name): continue
+            
+            if isinstance(provider, (RapidAPIProvider, ThreeSixFiveScoresProvider)):
+                url = f"https://{provider.host}/{endpoint}"
+                try:
+                    async with httpx.AsyncClient(timeout=25.0) as client:
+                        res = await client.get(url, headers=provider.headers, params=params)
+                        if res.status_code == 200: return res.json()
+                        else: self._mark_provider_failure(provider_name)
+                except: self._mark_provider_failure(provider_name)
+        return {}
+
+    async def get_match_deep_stats(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_deep_stats(match_id)
+        return {"error": "Stats provider not configured"}
+
+    async def get_match_player_stats(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_player_stats(match_id)
+        return {"error": "Stats provider not configured"}
+
+    async def get_match_shotmap(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_shotmap(match_id)
+        return {"error": "Stats provider not configured"}
+
+    async def get_match_player_odds(self, match_id: str) -> Dict[str, Any]:
+        if self.stats_provider:
+            return await self.stats_provider.get_match_player_odds(match_id)
+        return {"error": "Stats provider not configured"}
+
+    async def search_teams(self, query: str) -> Dict:
+        for provider in self.providers:
+            if isinstance(provider, RapidAPIProvider):
+                provider_name = provider.__class__.__name__
+                if not self._is_provider_healthy(provider_name): continue
+                
+                url = f"https://{provider.host}/football-teams-search"
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        res = await client.get(url, headers=provider.headers, params={"search": query})
+                        if res.status_code == 200:
+                            data = res.json()
+                            teams = []
+                            for item in data.get('response', {}).get('suggestions', []):
+                                if item.get('type') == 'team':
+                                    teams.append({"team": {"id": item.get('id'), "name": item.get('name'), "logo": f"https://images.fotmob.com/image_resources/logo/teamlogo/{item.get('id')}.png"}})
+                            return {"response": teams}
+                        else: self._mark_provider_failure(provider_name)
+                except: self._mark_provider_failure(provider_name)
+        return {"response": []}
+
+    async def get_odds_by_event_id(self, event_id: str):
+        for provider in self.providers:
+            if isinstance(provider, RapidAPIProvider):
+                provider_name = provider.__class__.__name__
+                if not self._is_provider_healthy(provider_name): continue
+                
+                url = f"https://{provider.host}/football-get-odds-poll-match-events"
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        res = await client.get(url, headers=provider.headers, params={"eventid": event_id})
+                        if res.status_code == 200: return res.json()
+                        else: self._mark_provider_failure(provider_name)
+                except: self._mark_provider_failure(provider_name)
+        return {"response": []}
+
+    async def get_standings(self, league_id: str):
+        for provider in self.providers:
+            if isinstance(provider, RapidAPIProvider):
+                provider_name = provider.__class__.__name__
+                if not self._is_provider_healthy(provider_name): continue
+                
+                url = f"https://{provider.host}/football-get-standing-all"
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        res = await client.get(url, headers=provider.headers, params={"leagueid": league_id})
+                        if res.status_code == 200: return res.json()
+                        else: self._mark_provider_failure(provider_name)
+                except: self._mark_provider_failure(provider_name)
+        return {"response": []}
+
+    def get_365scores_match_url(self, home_team: str, away_team: str) -> str:
+        query = f"{home_team} vs {away_team}"
+        encoded_query = query.replace(" ", "%20")
+        return f"https://www.365scores.com/football/search?query={encoded_query}"
+
+    async def list_leagues(self):
+        for provider in self.providers:
+            if isinstance(provider, RapidAPIProvider):
+                provider_name = provider.__class__.__name__
+                if not self._is_provider_healthy(provider_name): continue
+                
+                url = f"https://{provider.host}/football-popular-leagues"
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        res = await client.get(url, headers=provider.headers)
+                        if res.status_code == 200:
+                            data = res.json()
+                            leagues = []
+                            for l in data.get('response', {}).get('popular', []):
+                                leagues.append({"league": {"id": l.get('id'), "name": l.get('name'), "logo": l.get('logo')}})
+                            return {"response": leagues}
+                        else: self._mark_provider_failure(provider_name)
+                except: self._mark_provider_failure(provider_name)
+        return {"response": []}
+
+    async def get_teams_by_league(self, league_id: int):
+        res = await self.get_standings(str(league_id))
+        teams = []
+        league_name = self.POPULAR_LEAGUES.get(league_id, f"League {league_id}")
+        
+        if res and 'response' in res and 'standing' in res['response']:
+             for t in res['response']['standing']:
+                 teams.append({
+                     "team": {
+                         "id": t.get('id'),
+                         "name": t.get('name'),
+                         "logo": f"https://images.fotmob.com/image_resources/logo/teamlogo/{t.get('id')}.png",
+                         "country": "Unknown"
+                     },
+                     "league": {"name": league_name}
+                 })
+        return {"response": teams}
+
+    async def get_team_fixtures(self, team_id: int, last: int = 40):
+        res = await self._make_request("football-get-team-fixtures", {"teamid": team_id, "last": last})
+        return res if res else {"response": []}
+
+    async def search_players(self, query: str):
+        res = await self._make_request("football-players-search", {"search": query})
+        return res if res else {"response": []}
+
+    async def get_team_detail(self, team_id: int):
+        res = await self._make_request("football-get-team-detail", {"teamid": team_id})
+        return res if res else {"response": {}}
+
+    async def get_league_detail(self, league_id: int):
+        res = await self._make_request("football-get-league-detail", {"leagueid": league_id})
+        return res if res else {"response": {}}
+
+    async def search_leagues(self, query: str):
+        res = await self._make_request("football-leagues-search", {"search": query})
+        return res if res else {"response": []}
+
+    async def get_stats_by_event_id(self, event_id: int):
+        res = await self._make_request("football-get-stats", {"eventid": event_id})
+        return res if res else {"response": []}
+
+    async def get_h2h(self, team1_id: int, team2_id: int):
+        res = await self._make_request("football-get-head-to-head", {"team1id": team1_id, "team2id": team2_id})
+        return res if res else {"response": []}
+
+    async def list_players_by_team(self, team_id: int):
+        res = await self._make_request("football-get-team-players", {"teamid": team_id})
+        return res if res else {"response": []}
+
+    async def get_player_detail(self, player_id: int):
+        res = await self._make_request("football-get-player-detail", {"playerid": player_id})
+        return res if res else {"response": {}}
