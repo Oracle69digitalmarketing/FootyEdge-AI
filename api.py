@@ -174,10 +174,31 @@ async def root_health():
 @router.post("/predict", summary="Generate predictions using live odds")
 async def predict(request: PredictRequest):
     try:
-        return await predictor.predict_match(request.home_team, request.away_team, request.odds)
+        res = await predictor.predict_match(request.home_team, request.away_team, request.odds)
+        if supabase:
+            try:
+                # Log prediction to DB
+                pred_data = {
+                    "home_team": res['home_team'],
+                    "away_team": res['away_team'],
+                    "home_prob": res['home_prob'],
+                    "draw_prob": res['draw_prob'],
+                    "away_prob": res['away_prob'],
+                    "home_xg": res['home_xg'],
+                    "away_xg": res['away_xg'],
+                    "confidence": (res['home_prob'] + res['away_prob']) / 1.5,
+                    "best_bet_market": res['value_bets'][0]['market_name'] if res['value_bets'] else "Match Odds",
+                    "best_bet_selection": res['value_bets'][0]['selection'] if res['value_bets'] else "Draw",
+                    "best_bet_odds": res['value_bets'][0]['odds'] if res['value_bets'] else 1.0,
+                }
+                supabase.table("predictions").insert(pred_data).execute()
+            except Exception as db_err:
+                logger.warning(f"Failed to log prediction to DB: {db_err}")
+        return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.error(f"Prediction error: {e}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
@@ -390,8 +411,19 @@ async def sync_teams():
         unique_teams = {t['name']: t for t in all_teams}.values()
         
         # Upsert
-        response = supabase.table("teams").upsert(list(unique_teams), on_conflict="name").execute()
-        return {"status": "success", "synced_count": len(all_teams), "unique_synced": len(unique_teams)}
+        try:
+            response = supabase.table("teams").upsert(list(unique_teams)).execute()
+            return {"status": "success", "synced_count": len(all_teams), "unique_synced": len(unique_teams)}
+        except Exception as upsert_err:
+            logger.error(f"Upsert teams failed: {upsert_err}")
+            # Try one by one as fallback
+            success_count = 0
+            for ut in unique_teams:
+                try:
+                    supabase.table("teams").upsert(ut).execute()
+                    success_count += 1
+                except: pass
+            return {"status": "partial_success", "synced_count": success_count}
 
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
@@ -435,7 +467,7 @@ async def sync_players():
                         })
                     
                     if db_players:
-                        supabase.table("players").upsert(db_players, on_conflict="name, team_id").execute()
+                        supabase.table("players").upsert(db_players).execute()
                         total_synced += len(db_players)
             except Exception as e:
                 logger.error(f"Failed to sync players for team {team['id']}: {e}")
@@ -464,8 +496,14 @@ async def seed_database():
     ]
     
     try:
-        response = supabase.table("teams").upsert(initial_teams, on_conflict="name").execute()
-        return {"status": "success", "message": "Database seeded.", "count": len(response.data or [])}
+        success_count = 0
+        for team in initial_teams:
+            try:
+                supabase.table("teams").upsert(team).execute()
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to seed team {team['name']}: {e}")
+        return {"status": "success", "message": "Database seeded.", "count": success_count}
     except Exception as e:
         logger.error(f"Seeding failed: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "detail": f"Seeding failed: {str(e)}"})

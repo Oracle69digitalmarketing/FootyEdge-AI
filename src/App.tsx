@@ -953,7 +953,9 @@ function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, on
       <div className="flex justify-between items-start relative z-10">
         <div className="space-y-1">
           <h3 className="text-2xl font-bold">{prediction.home_team} <span className="text-zinc-700 mx-2">vs</span> {prediction.away_team}</h3>
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em]">{new Date(prediction.created_at).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em]">
+            {prediction.created_at ? new Date(prediction.created_at).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date Pending'}
+          </p>
         </div>
         <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
           <Target className="w-6 h-6 text-orange-500" />
