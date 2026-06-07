@@ -420,17 +420,14 @@ async def sync_teams():
     
     try:
         leagues_data = await football_client.list_leagues()
-        league_items = leagues_data.get('response', [])
-        
-        found_league_ids = []
-        for item in league_items:
-            l_info = item.get('league', {})
-            l_id = l_info.get('id')
-            if l_id:
-                found_league_ids.append(l_id)
-        
-        # Combine found leagues with our major list, ensuring major leagues are always included
-        leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20]
+        # Safety check: if leagues_data is None or malformed
+        if not leagues_data or 'response' not in leagues_data:
+            logger.warning("list_leagues returned empty/invalid data. Using major_league_ids only.")
+            leagues_to_sync = major_league_ids
+        else:
+            league_items = leagues_data.get('response', [])
+            found_league_ids = [item.get('league', {}).get('id') for item in league_items if item.get('league', {}).get('id')]
+            leagues_to_sync = list(set(found_league_ids + major_league_ids))[:20]
         
         all_teams = []
         for league_id in leagues_to_sync:
@@ -450,19 +447,16 @@ async def sync_teams():
                             })
             except Exception as e:
                 logger.error(f"Failed to fetch teams for league {league_id}: {e}")
-            await asyncio.sleep(0.5) # Slight delay
+                continue # Proceed to next league
+            await asyncio.sleep(0.5) 
         
         if not all_teams:
-            return JSONResponse(status_code=500, content={"status": "error", "detail": "No teams found from external API. Check your API keys and quota."})
+            return JSONResponse(status_code=500, content={"status": "error", "detail": "No teams found from external API."})
         
-        # Filter duplicates by name since ID types might clash
         unique_teams = {t['name']: t for t in all_teams}.values()
         
         upsert_response = supabase.table("teams").upsert(list(unique_teams), on_conflict="name").execute()
-        if upsert_response.data:
-            return {"status": "success", "synced_count": len(upsert_response.data)}
-        else:
-            return JSONResponse(status_code=500, content={"status": "error", "detail": "Failed to upsert teams to Supabase. Check database permissions."})
+        return {"status": "success", "synced_count": len(upsert_response.data) if upsert_response.data else 0}
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "detail": f"Sync failed: {str(e)}"})
@@ -833,6 +827,14 @@ async def get_matches_by_date_ext(from_date: Optional[str] = None, to_date: Opti
     # Support legacy 'date' param or new from_date/to_date
     f_date = from_date or date or datetime.now().strftime("%Y-%m-%d")
     t_date = to_date or f_date
+    
+    # Validation: Ensure date range is valid
+    try:
+        if datetime.strptime(f_date, "%Y-%m-%d") > datetime.strptime(t_date, "%Y-%m-%d"):
+            # Swap if wrong order
+            f_date, t_date = t_date, f_date
+    except ValueError:
+        logger.warning(f"Invalid date format received: {f_date} or {t_date}")
     
     return await football_client.get_matches_by_date(f_date, t_date)
 
