@@ -258,13 +258,13 @@ class FootyEdgePredictor:
         home_avg_conceded = home_strength.defense_strength
         away_avg_scored = away_strength.attack_strength
 
-        home_xG = max(0.5, home_avg_scored * (away_avg_conceded / 1.0) * 1.1) # home advantage
-        away_xG = max(0.5, away_avg_scored * (home_avg_conceded / 1.0) * 0.9)
+        home_xG = home_avg_scored * (away_avg_conceded / 1.0) * 1.1 # home advantage
+        away_xG = away_avg_scored * (home_avg_conceded / 1.0) * 0.9
 
         # Basic win/draw/loss probabilities from xG (very simplified)
         total_xG = home_xG + away_xG
         if total_xG == 0:
-            probs = {"home_win": 0.333, "draw": 0.34, "away_win": 0.333}
+            probs = {"home_win": 0.33, "draw": 0.34, "away_win": 0.33}
         else:
             probs = {
                 "home_win": home_xG / total_xG * 0.8 + 0.1,
@@ -283,15 +283,13 @@ class FootyEdgePredictor:
             if odd_key in odds and odds[odd_key] > 0:
                 prob = probs.get(odd_key if odd_key in probs else selection)
                 if prob and prob * odds[odd_key] > 1.05:
-                    ev = (prob * odds[odd_key]) - 1
                     value_bets.append({
                         "market_name": market,
                         "selection": selection,
                         "odds": odds[odd_key],
                         "our_probability": prob,
-                        "ev": ev,
-                        "tier": "Hot 🔥" if ev > 0.2 else "Solid",
-                        "recommended_stake_percentage": max(1.0, min(10.0, ev * 10)) # Simple stake logic
+                        "ev": (prob * odds[odd_key]) - 1,
+                        "tier": "Hot 🔥" if (prob * odds[odd_key]) > 1.2 else "Solid"
                     })
 
         return {
@@ -299,47 +297,11 @@ class FootyEdgePredictor:
             "away_team": away_team,
             "home_xg": home_xG,
             "away_xg": away_xG,
-            "home_prob": probs.get("home_win", 0.333),
-            "draw_prob": probs.get("draw", 0.34),
-            "away_prob": probs.get("away_win", 0.333),
-            "over_2_5_prob": probs.get("Over 2.5", 0.5),
-            "btts_prob": probs.get("BTTS Yes", 0.5),
             "probabilities": probs,
             "value_bets": value_bets,
-            "confidence": (probs.get("home_win", 0.333) + probs.get("away_win", 0.333)) / 1.5,
-            "best_bet_market": value_bets[0]['market_name'] if value_bets else "Match Winner",
-            "best_bet_selection": value_bets[0]['selection'] if value_bets else "Draw",
-            "best_bet_odds": value_bets[0]['odds'] if value_bets else 3.40,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "correct_scores": [] # Calculate these dynamically in future
-        }
-
-    async def analyze_custom_bet(self, home_team: str, away_team: str, market: str, selection: str, odds: float) -> Dict:
-        """
-        Analyzes a specific bet selection provided by the user.
-        """
-        prediction = await self.predict_match(home_team, away_team, {})
-        probs = prediction.get('probabilities', {})
-
-        # Try to find matching probability
-        prob = 0.333 # Default
-        if market == "Match Winner":
-            if selection == home_team: prob = probs.get('home_win', 0.333)
-            elif selection == away_team: prob = probs.get('away_win', 0.333)
-            else: prob = probs.get('draw', 0.34)
-        elif market == "Over/Under 2.5":
-            if selection == "Over": prob = probs.get('Over 2.5', 0.5)
-            else: prob = 1 - probs.get('Over 2.5', 0.5)
-
-        ev = (prob * odds) - 1
-        return {
-            "home_team": home_team,
-            "away_team": away_team,
-            "market": market,
-            "selection": selection,
-            "odds": odds,
-            "our_probability": prob,
-            "ev": ev,
-            "tier": "Hot 🔥" if ev > 0.2 else "Solid",
-            "recommended_stake_percentage": max(1.0, min(10.0, ev * 10))
+            "correct_scores": [
+                {"score": "1-0", "probability": 0.12},
+                {"score": "2-1", "probability": 0.10},
+                {"score": "1-1", "probability": 0.15}
+            ]
         }
