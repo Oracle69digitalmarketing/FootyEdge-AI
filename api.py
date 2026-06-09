@@ -175,18 +175,23 @@ async def predict(request: PredictRequest):
         if supabase:
             try:
                 # Log prediction to DB
+                probs = res.get('probabilities', {})
+                home_p = probs.get('home_win', 0)
+                draw_p = probs.get('draw', 0)
+                away_p = probs.get('away_win', 0)
+                
                 pred_data = {
                     "home_team": res['home_team'],
                     "away_team": res['away_team'],
-                    "home_prob": res['home_prob'],
-                    "draw_prob": res['draw_prob'],
-                    "away_prob": res['away_prob'],
-                    "home_xg": res['home_xg'],
-                    "away_xg": res['away_xg'],
-                    "confidence": (res['home_prob'] + res['away_prob']) / 1.5,
-                    "best_bet_market": res['value_bets'][0]['market_name'] if res['value_bets'] else "Match Odds",
-                    "best_bet_selection": res['value_bets'][0]['selection'] if res['value_bets'] else "Draw",
-                    "best_bet_odds": res['value_bets'][0]['odds'] if res['value_bets'] else 1.0,
+                    "home_prob": home_p,
+                    "draw_prob": draw_p,
+                    "away_prob": away_p,
+                    "home_xg": res.get('home_xg', 0),
+                    "away_xg": res.get('away_xg', 0),
+                    "confidence": (home_p + away_p) / 1.5,
+                    "best_bet_market": res['value_bets'][0]['market_name'] if res.get('value_bets') else "Match Odds",
+                    "best_bet_selection": res['value_bets'][0]['selection'] if res.get('value_bets') else "Draw",
+                    "best_bet_odds": res['value_bets'][0]['odds'] if res.get('value_bets') else 1.0,
                 }
                 supabase.table("predictions").insert(pred_data).execute()
             except Exception as db_err:
@@ -612,7 +617,6 @@ async def get_dashboard_stats():
         "ai_accuracy": f"{round(accuracy, 1)}%",
         "win_rate": f"{round(accuracy, 1)}%",
         "portfolio_roi": f"{round(roi, 1)}%"
-    }%" if accuracy > 0 else "N/A"
     }
 
 

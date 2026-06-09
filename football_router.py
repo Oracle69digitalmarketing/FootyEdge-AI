@@ -17,26 +17,6 @@ class FootballRouter:
         self.sofascore = SofascoreClient()
         self.three_six_five = ThreeSixFiveScoresClient()
 
-    async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
-        """Aggregates matches from all healthy providers."""
-        all_matches = []
-        
-        # 1. Try Football-Data.org (Highest Priority for Majors)
-        try:
-            res = await self.fd_client.get_matches_by_date(date_from, date_to)
-            if res and res.get('response'):
-                all_matches.extend(res['response'])
-        except Exception as e:
-            logger.error(f"Router: FD Client failed: {e}")
-
-        # 2. Try the RapidAPI Aggregator (which includes 365Scores and Rapid providers)
-        try:
-            res = await self.rapid_client.get_matches_by_date(date_from, date_to)
-            if res and res.get('response'):
-                all_matches.extend(res['response'])
-        except Exception as e:
-            logger.error(f"Router: Rapid Aggregator failed: {e}")
-
     async def get_matches_by_date(self, date_from: str, date_to: str = None, league_id: Any = None) -> Dict:
         """Fetches matches, aggregating from all available clients."""
         all_matches = []

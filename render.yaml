@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: footyedge-ai
+    runtime: docker
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+    dockerBuildArgs:
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}

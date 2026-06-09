@@ -297,11 +297,18 @@ class FootyEdgePredictor:
             "away_team": away_team,
             "home_xg": home_xG,
             "away_xg": away_xG,
+            "home_prob": probs.get('home_win', 0),
+            "draw_prob": probs.get('draw', 0),
+            "away_prob": probs.get('away_win', 0),
+            "over_2_5_prob": probs.get('Over 2.5', 0),
+            "btts_prob": probs.get('BTTS Yes', 0),
             "probabilities": probs,
             "value_bets": value_bets,
+            "confidence": (probs.get('home_win', 0) + probs.get('away_win', 0)) / 1.5,
             "correct_scores": [
                 {"score": "1-0", "probability": 0.12},
                 {"score": "2-1", "probability": 0.10},
                 {"score": "1-1", "probability": 0.15}
-            ]
+            ],
+            "created_at": datetime.now().isoformat()
         }
