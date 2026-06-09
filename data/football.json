@@ -1,1 +1,14 @@
-{"matches": []}
+{
+  "matches": [
+    {"date": "2026-06-07", "team1": "Argentina", "team2": "Honduras", "score": {"ft": [2, 0]}},
+    {"date": "2026-06-07", "team1": "Curacao", "team2": "Aruba", "score": {"ft": [4, 0]}},
+    {"date": "2026-06-07", "team1": "Denmark", "team2": "Ukraine", "score": {"ft": [1, 0]}},
+    {"date": "2026-06-07", "team1": "Croatia", "team2": "Slovenia", "score": {"ft": [0, 0]}},
+    {"date": "2026-06-07", "team1": "Morocco", "team2": "Norway", "score": {"ft": [0, 0]}},
+    {"date": "2026-06-07", "team1": "Greece", "team2": "Italy", "score": {"ft": [0, 0]}},
+    {"date": "2026-06-07", "team1": "Ecuador", "team2": "Guatemala", "score": {"ft": [0, 0]}},
+    {"date": "2026-06-09", "team1": "Colombia", "team2": "Jordan", "score": {"ft": [0, 0]}},
+    {"date": "2026-06-09", "team1": "Peru", "team2": "Spain", "score": {"ft": [0, 0]}},
+    {"date": "2026-06-09", "team1": "Saudi Arabia", "team2": "Senegal", "score": {"ft": [0, 0]}}
+  ]
+}
