@@ -1,55 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
-import StatCard from './components/StatCard';
-import { supabase } from './supabase';
-import { Team, Prediction, ValueBet } from './types';
-import TeamSearch from './components/TeamSearch';
-import Portfolio from './components/Portfolio';
-import AccaBuilder from './components/AccaBuilder';
-import ValueBets from './components/ValueBets';
-import HowToUse from './components/HowToUse';
-import H2HVisualizer from './components/H2HVisualizer';
-import TeamsList from './components/TeamsList';
-import PlayersList from './components/PlayersList';
-import Pricing from './components/Pricing';
-import { 
-  Activity,
-  LayoutDashboard, 
-  TrendingUp, 
-  History, 
-  ShieldCheck, 
-  LogOut, 
-  LogIn,
-  PlusCircle,
-  AlertTriangle,
-  Loader2,
-  ChevronRight,
-  Database,
-  Search,
-  User,
-  CheckCircle,
-  XCircle,
-  Mail,
-  Lock,
-  Calendar,
-  Wallet,
-  Clock,
-  DollarSign,
-  Zap,
-  Layers,
-  Send,
-  ExternalLink,
-  Crown,
-  Bell,
-  HelpCircle,
-  RefreshCw,
-  Server,
-  Menu,
-  X,
-  CreditCard,
-  BookOpen,
-  Target,
-  Shield
-} from 'lucide-react';
+import { Activity, Terminal, TrendingUp, History, ShieldCheck, LogOut, LogIn, PlusCircle, AlertTriangle, Loader2, ChevronRight, Database, Search, User, CheckCircle, XCircle, Mail, Lock, Calendar, Wallet, Clock, DollarSign, Zap, Layers, Send, ExternalLink, Crown, Bell, HelpCircle, RefreshCw, Server, Menu, X, CreditCard, BookOpen, BrainCircuit, Shield, Cpu, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
 
@@ -130,7 +79,7 @@ export default function App() {
   const [syncingPlayers, setSyncingPlayers] = useState(false);
   const [seedingData, setSeedingData] = useState(false);
 
-  const [dashboardStats, setDashboardStats] = useState<any>({
+  const [dashboardStats, setTerminalStats] = useState<any>({
     total_predictions: "0",
     active_value_bets: "0",
     ai_accuracy: "78.5%"
@@ -213,10 +162,10 @@ export default function App() {
     }
   }, []);
 
-  const fetchDashboardStats = useCallback(async () => {
+  const fetchTerminalStats = useCallback(async () => {
     try {
       const data = await safeFetchJson('/api/dashboard/stats');
-      setDashboardStats(data);
+      setTerminalStats(data);
     } catch (err) {
       console.error("Failed to fetch dashboard stats:", err);
     }
@@ -226,11 +175,11 @@ export default function App() {
     try {
       const data = await safeFetchJson(`/api/value-bets?status=${betStatusFilter}`);
       setValueBets(data);
-      fetchDashboardStats();
+      fetchTerminalStats();
     } catch (error: any) {
       console.error("Failed to fetch value bets:", error);
     }
-  }, [betStatusFilter, fetchDashboardStats]);
+  }, [betStatusFilter, fetchTerminalStats]);
   
   const fetchMatches = useCallback(async (from: string, to: string) => {
     try {
@@ -361,10 +310,10 @@ export default function App() {
     fetchTeams();
     fetchPredictions();
     fetchValueBets();
-    fetchDashboardStats();
+    fetchTerminalStats();
     fetchUserBets();
     handleScanValueBets();
-  }, [user, fetchTeams, fetchPredictions, fetchValueBets, fetchDashboardStats, fetchUserBets, handleScanValueBets]);
+  }, [user, fetchTeams, fetchPredictions, fetchValueBets, fetchTerminalStats, fetchUserBets, handleScanValueBets]);
 
   const handleSyncTeams = useCallback(async () => {
     setSyncingTeams(true);
@@ -576,8 +525,8 @@ export default function App() {
         </div>
 
         <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto scrollbar-hide">
-            <NavItem icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
-            <NavItem icon={<Target />} label="Match Intel" active={activeTab === 'predictions'} onClick={() => { setActiveTab('predictions'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<Terminal className="w-5 h-5" />} label="Terminal" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
+            <NavItem icon={<BrainCircuit className="w-5 h-5" />} label="Intelligence" active={activeTab === 'predictions'} onClick={() => { setActiveTab('predictions'); setIsSidebarOpen(false); }} />
             <NavItem icon={<TrendingUp />} label="Value Scanner" active={activeTab === 'value'} onClick={() => { setActiveTab('value'); setIsSidebarOpen(false); }} />
             <NavItem icon={<Layers />} label="Acca Builder" active={activeTab === 'acca'} onClick={() => { setActiveTab('acca'); setIsSidebarOpen(false); }} />
             <NavItem icon={<Zap />} label="AI Analysis" active={activeTab === 'strategy'} onClick={() => { setActiveTab('strategy'); setIsSidebarOpen(false); }} />
@@ -615,7 +564,7 @@ export default function App() {
             </button>
             <div className="hidden sm:flex items-center gap-4">
               <div className="flex flex-col">
-                <h1 className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em]">FootyEdge Engine</h1>
+                <h1 className="text-[10px] font-mono text-green-500 uppercase tracking-[0.2em]">SYSTEM: ONLINE</h1>
                 <p className="text-sm font-bold text-green-500 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
                   AI Models Operational
@@ -648,66 +597,74 @@ export default function App() {
           >
             {activeTab === 'dashboard' && (
               <div className="space-y-12">
-                <div className="relative group">
+                                <div className="relative group">
                   <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-yellow-500 rounded-[2.5rem] blur opacity-10 group-hover:opacity-20 transition duration-1000 group-hover:duration-200"></div>
                   <div className="relative bg-zinc-900/40 border border-white/5 rounded-[2.5rem] p-8 md:p-12 overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10">
-                      <Zap className="w-48 h-48 text-orange-500" />
+                      <Terminal className="w-48 h-48 text-orange-500" />
                     </div>
                     <div className="relative z-10 space-y-6">
                       <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-full text-orange-500 text-[10px] font-bold uppercase tracking-wider">
-                        <Zap className="w-3 h-3" /> Live Intelligence
+                        <Cpu className="w-3 h-3" /> Terminal Overview
                       </div>
-                      <h2 className="text-4xl md:text-5xl font-bold max-w-2xl leading-tight">Master the market with AI-driven <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-yellow-500">precision.</span></h2>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl pt-4">
-                        <StatItem icon={<History className="text-blue-500" />} label="Total Predictions" value={dashboardStats.total_predictions} />
-                        <StatItem icon={<TrendingUp className="text-green-500" />} label="Value Bets Found" value={dashboardStats.active_value_bets} />
-                        <StatItem icon={<ShieldCheck className="text-orange-500" />} label="AI Precision" value={dashboardStats.ai_accuracy} />
+                      <h2 className="text-4xl md:text-5xl font-bold max-w-2xl leading-tight">Real-time edge detection and <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-yellow-500">portfolio metrics.</span></h2>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
+                        <StatItem icon={<History className="text-blue-500" />} label="Total Predictions" value={`${dashboardStats.total_predictions || 0} matches`} />
+                        <StatItem icon={<Activity className="text-purple-500" />} label="Platform Win Rate" value={dashboardStats.win_rate || "0%"} />
+                        <StatItem icon={<TrendingUp className="text-green-500" />} label="Active Value Bets" value={dashboardStats.active_value_bets || 0} />
+                        <StatItem icon={<Zap className="text-yellow-500" />} label="Portfolio ROI" value={dashboardStats.portfolio_roi || "0%"} />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <section className="space-y-8">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="space-y-1">
-                      <h2 className="text-3xl font-bold flex items-center gap-3">Upcoming Matches</h2>
-                      <p className="text-sm text-zinc-500">AI analysis for the next 24-48 hours across global leagues.</p>
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-8 space-y-6">
+                    <div className="flex items-center justify-between">
+                       <h3 className="text-xl font-bold flex items-center gap-3"><Activity className="text-orange-500" /> Live Feed</h3>
+                       <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest">Real-time Stream</span>
                     </div>
-                    <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 p-2 rounded-2xl">
-                      <div className="flex items-center gap-2 px-4 border-r border-zinc-800">
-                        <Calendar className="w-4 h-4 text-orange-500" />
-                        <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent text-xs font-bold focus:outline-none" />
-                      </div>
-                      <span className="text-[10px] font-mono text-zinc-600 px-2 uppercase tracking-widest">{todayMatches.length} Fixtures</span>
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide">
+                      {liveValueBets.length > 0 && <FeedItem title="Value Bet Scan Complete" time="Just Now" detail={`${liveValueBets.length} EV+ opportunities identified using real-market calibration data.`} />}
+                      {predictions.slice(0, 10).map((p, i) => (
+                        <FeedItem key={i} title={`AI Prediction: ${p.home_team} vs ${p.away_team}`} time="Recently" detail={`${p.best_bet_selection} @ ${p.best_bet_odds} - ${(p.confidence * 100).toFixed(1)}% confidence`} />
+                      ))}
+                      {predictions.length === 0 && <div className="py-20 text-center text-zinc-700 text-xs italic">Waiting for incoming signal stream...</div>}
                     </div>
                   </div>
-                  
-                  {todayMatches.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {todayMatches.slice(0, 6).map(match => (
-                        <MatchCard 
-                          key={match.id} 
-                          match={match} 
-                          onPlaceBet={handlePlaceBet} 
-                          onAddToAcca={handleAddToAcca} 
-                          selectedBookmaker={selectedBookmaker} 
-                          isAdded={(id) => accaSelections.some(s => s.id === id)} 
-                        />
-                      ))}
+                  <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-8 space-y-6">
+                    <div className="flex items-center justify-between">
+                       <h3 className="text-xl font-bold flex items-center gap-3"><TrendingUp className="text-green-500" /> Edge Alerts</h3>
+                       <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest">High EV Only</span>
                     </div>
-                  ) : (
-                    <div className="py-20 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
-                      <Clock className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
-                      <p className="text-zinc-500 font-bold">Waiting for new fixtures from API...</p>
+                    <div className="space-y-4">
+                      {liveValueBets.length > 0 ? liveValueBets.slice(0, 4).map((bet, i) => (
+                        <div key={i} className="p-5 bg-zinc-900/50 border border-white/5 rounded-3xl space-y-3 hover:border-orange-500/30 transition-all group">
+                           <div className="flex justify-between items-start">
+                              <div className="space-y-1">
+                                 <p className="text-[10px] font-bold text-orange-500 uppercase tracking-tighter">Value Bet Detected</p>
+                                 <p className="text-sm font-bold">{bet.home_team} vs {bet.away_team}</p>
+                              </div>
+                              <span className="text-[10px] font-black bg-green-500/10 text-green-500 px-3 py-1 rounded-full uppercase">EV+ {((bet.ev || 0) * 100).toFixed(1)}%</span>
+                           </div>
+                           <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                              <p className="text-[10px] text-zinc-500 uppercase font-mono">{bet.market}: <span className="text-white font-bold">{bet.selection}</span></p>
+                              <p className="text-sm font-black text-green-400">@{bet.odds}</p>
+                           </div>
+                        </div>
+                      )) : (
+                        <div className="py-20 text-center bg-zinc-900/20 border border-dashed border-zinc-800 rounded-3xl">
+                           <Loader2 className="w-6 h-6 text-zinc-800 animate-spin mx-auto mb-2" />
+                           <p className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest">Scanning Markets...</p>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </section>
-
                 <section className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-8 md:p-12 space-y-12">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="space-y-1">
-                      <h2 className="text-3xl font-bold">Neural Intelligence Engine</h2>
+                      <h2 className="text-3xl font-bold">Terminal Overview</h2>
                       <p className="text-sm text-zinc-500">Select any two teams to generate a deep-dive match intelligence report.</p>
                     </div>
                     <RefreshCw className="w-6 h-6 text-zinc-700 hidden md:block" />
@@ -764,8 +721,8 @@ export default function App() {
               <div className="space-y-12">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                   <div className="space-y-1">
-                    <h2 className="text-3xl font-bold">Match Intelligence</h2>
-                    <p className="text-zinc-500 text-sm">AI-generated daily picks and score predictions across global leagues.</p>
+                    <h2 className="text-3xl font-bold">AI Predictions</h2>
+                    <p className="text-zinc-500 text-sm">Deep learning match outcomes and probability models.</p>
                   </div>
                   <div className="flex p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl">
                     <DateToggle label="Today" active={picksDate === 'today'} onClick={() => setPicksDate('today')} />
@@ -785,7 +742,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="col-span-full py-32 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
-                    <Target className="w-16 h-16 text-zinc-800 mx-auto mb-4" />
+                    <BrainCircuit className="w-16 h-16 text-zinc-800 mx-auto mb-4" />
                     <p className="text-zinc-500 text-xl font-bold">No fixtures found for this period.</p>
                     <p className="text-sm text-zinc-600 mt-2">Try checking another date or wait for API refresh.</p>
                   </div>
@@ -956,7 +913,7 @@ function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, on
           </p>
         </div>
         <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-          <Target className="w-6 h-6 text-orange-500" />
+          <BrainCircuit className="w-6 h-6 text-orange-500" />
         </div>
       </div>
 
@@ -1132,6 +1089,19 @@ function StrategyView() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+
+function FeedItem({ title, time, detail }: { title: string, time: string, detail: string }) {
+  return (
+    <div className="p-4 bg-zinc-900/30 border border-white/5 rounded-2xl space-y-1">
+      <div className="flex justify-between items-center">
+        <p className="text-xs font-bold text-zinc-300">{title}</p>
+        <p className="text-[10px] font-mono text-zinc-600">{time}</p>
+      </div>
+      <p className="text-[10px] text-zinc-500 leading-relaxed">{detail}</p>
     </div>
   );
 }

@@ -75,13 +75,10 @@ else:
         logger.error(f"Failed to initialize Supabase client: {e}")
         supabase = None
 
-# Initialize clients even if keys are missing from env, as they might have internal fallbacks or handles
-fd_client = FootballDataOrgClient() if fd_org_key else None
-rapid_client = FootballAPIClient() # This one has an internal fallback
-
-# football_client remains for legacy compatibility, now using the router
-football_client = FootballRouter(fd_client, rapid_client)
-
+# --- API Clients ---
+# Initialize the router which will handle internal failovers and aggregations
+football_client = FootballRouter()
+# predictor and strategy agent use the client internally if needed
 predictor = FootyEdgePredictor()
 strategy_agent = StrategyAgent()
 
@@ -579,6 +576,7 @@ async def get_dashboard_stats():
     total_preds = 0
     active_value = 0
     accuracy = 0.0
+    roi = 0.0
 
     if supabase:
         try:
@@ -588,30 +586,33 @@ async def get_dashboard_stats():
             value_res = supabase.table("value_bets").select("id", count="exact").eq("status", "active").execute()
             active_value = value_res.count or 0
 
-            # Calculate accuracy from settled predictions
-            # actual_result should match best_bet_selection for a 'win'
+            # Calculate accuracy
             try:
-                # Use a safer select, or handle if the column doesn't exist
                 settled_res = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute()
                 if settled_res.data:
                     correct = sum(1 for p in settled_res.data if p.get('best_bet_selection') == p.get('actual_result'))
                     accuracy = (correct / len(settled_res.data)) * 100
-                else:
-                    accuracy = 0.0
-            except Exception as schema_err:
-                # If the column doesn't exist, we just skip accuracy calculation instead of erroring
-                if "actual_result" in str(schema_err) or "column" in str(schema_err):
-                    logger.info("Accuracy calculation skipped: column actual_result missing.")
-                else:
-                    logger.warning(f"Accuracy calc failed: {schema_err}")
-                accuracy = 0.0
+            except: pass
+
+            # Calculate ROI from user bets
+            try:
+                bets_res = supabase.table("user_bets").select("stake, profit_loss").not_.is_("profit_loss", "null").execute()
+                if bets_res.data:
+                    total_staked = sum(b.get('stake', 0) for b in bets_res.data)
+                    total_profit = sum(b.get('profit_loss', 0) for b in bets_res.data)
+                    if total_staked > 0:
+                        roi = (total_profit / total_staked) * 100
+            except: pass
         except Exception as e:
             logger.error(f"Error fetching dashboard stats: {e}")
 
     return {
         "total_predictions": total_preds,
         "active_value_bets": active_value,
-        "ai_accuracy": f"{round(accuracy, 1)}%" if accuracy > 0 else "N/A"
+        "ai_accuracy": f"{round(accuracy, 1)}%",
+        "win_rate": f"{round(accuracy, 1)}%",
+        "portfolio_roi": f"{round(roi, 1)}%"
+    }%" if accuracy > 0 else "N/A"
     }
 
 
@@ -927,13 +928,17 @@ app.include_router(router)
 
 
 # --- Static File Serving (Production) ---
-if os.path.exists("dist"):
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+dist_path = os.path.join(BASE_DIR, "dist")
+
+if os.path.exists(dist_path):
     @app.exception_handler(404)
     async def not_found_exception_handler(request, exc):
         if not request.url.path.startswith("/api"):
-            return FileResponse("dist/index.html")
+            return FileResponse(os.path.join(dist_path, "index.html"))
         return JSONResponse(status_code=404, content={"message": "Not found"})
 
-    app.mount("/", StaticFiles(directory="dist", html=True), name="static")
+    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
+    logger.info(f"Frontend served from: {dist_path}")
 else:
-    logger.info("Frontend 'dist' directory not found. Static file serving is disabled.")
+    logger.warning(f"Frontend 'dist' directory not found at {dist_path}. Static file serving is disabled.")
