@@ -37,18 +37,42 @@ class FootballRouter:
         return self.rapid_client
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None, league_id: Any = None) -> Dict:
-        """Fetches matches, routing to FD for major leagues if specified."""
-        if league_id:
-            client = self._get_client(league_id)
-            return await client.get_matches_by_date(date_from, date_to)
+        """Fetches matches, aggregating from all available clients."""
+        all_matches = []
         
-        # If no specific league, we might want to combine or prefer one.
-        # Usually, FD gives a better 'global' feed for majors, 
-        # but RapidAPI has MORE leagues.
-        if self.rapid_client:
-            return await self.rapid_client.get_matches_by_date(date_from, date_to)
-        return await self.fd_client.get_matches_by_date(date_from, date_to)
+        # Try standalone FD client first for speed and reliability for majors
+        if self.fd_client:
+            try:
+                res = await self.fd_client.get_matches_by_date(date_from, date_to)
+                if res and res.get('response'):
+                    all_matches.extend(res['response'])
+            except Exception as e:
+                logger.error(f"Router: FD client failed: {e}")
 
+        # Try RapidAPI aggregator
+        if self.rapid_client:
+            try:
+                res = await self.rapid_client.get_matches_by_date(date_from, date_to)
+                if res and res.get('response'):
+                    all_matches.extend(res['response'])
+            except Exception as e:
+                logger.error(f"Router: Rapid client failed: {e}")
+
+        # Deduplicate
+        unique_matches = {}
+        for m in all_matches:
+            # Create a unique key based on team names and date if ID is not reliable
+            fid = m.get('fixture', {}).get('id')
+            if not fid:
+                h = m.get('teams', {}).get('home', {}).get('name')
+                a = m.get('teams', {}).get('away', {}).get('name')
+                d = m.get('fixture', {}).get('date')
+                fid = f"{h}-{a}-{d}"
+
+            if fid not in unique_matches:
+                unique_matches[fid] = m
+
+        return {"response": list(unique_matches.values())}
     async def get_standings(self, league_id: Any):
         client = self._get_client(league_id)
         return await client.get_standings(str(league_id))
@@ -58,11 +82,28 @@ class FootballRouter:
         return await client.get_teams_by_league(league_id)
 
     async def list_leagues(self):
-        # We might want to merge lists, but for now, RapidAPI has the most comprehensive list
+        """Aggregates leagues from all clients."""
+        all_leagues = []
+        if self.fd_client:
+            try:
+                res = await self.fd_client.list_leagues()
+                if res and res.get('response'):
+                    all_leagues.extend(res['response'])
+            except: pass
         if self.rapid_client:
-            return await self.rapid_client.list_leagues()
-        return await self.fd_client.list_leagues()
+            try:
+                res = await self.rapid_client.list_leagues()
+                if res and res.get('response'):
+                    all_leagues.extend(res['response'])
+            except: pass
 
+        # Deduplicate by ID
+        unique = {}
+        for l in all_leagues:
+            lid = l.get('league', {}).get('id')
+            if lid and lid not in unique:
+                unique[lid] = l
+        return {"response": list(unique.values())}
     async def search_leagues(self, query: str):
         if self.rapid_client:
             return await self.rapid_client.search_leagues(query)

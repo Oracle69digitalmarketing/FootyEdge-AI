@@ -835,7 +835,8 @@ async def get_matches_by_date_ext(from_date: Optional[str] = None, to_date: Opti
     except ValueError:
         logger.warning(f"Invalid date format received: {f_date} or {t_date}")
     
-    return await football_client.get_matches_by_date(f_date, t_date)
+    res = await football_client.get_matches_by_date(f_date, t_date)
+    return res
 
 
 @router.get("/odds/{event_id}", summary="Get odds by event ID from external API")
