@@ -1,6 +1,7 @@
 import os
 import httpx
 import asyncio
+import json
 import pandas as pd
 from datetime import datetime
 import logging
@@ -32,28 +33,7 @@ class BaseFootballProvider:
             "status": match.get("status", {"long": "Unknown"})
         }
 
-class LocalCSVProvider(BaseFootballProvider):
-    def __init__(self, file_path: str):
-        super().__init__()
-        self.file_path = file_path
-        self.df = pd.read_csv(file_path)
 
-    async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
-        mask = (self.df['MatchDate'] >= date_from) & (self.df['MatchDate'] <= date_to)
-        subset = self.df.loc[mask]
-        matches = []
-        for _, row in subset.iterrows():
-            matches.append({
-                "fixture": {"id": f"{row['HomeTeam']}-{row['AwayTeam']}-{row['MatchDate']}", "date": row['MatchDate']},
-                "teams": {
-                    "home": {"name": row['HomeTeam'], "id": None, "logo": None},
-                    "away": {"name": row['AwayTeam'], "id": None, "logo": None}
-                },
-                "league": {"name": row['Division'], "id": None},
-                "goals": {"home": row['FTHome'], "away": row['FTAway']},
-                "status": {"long": "Finished"}
-            })
-        return [self.normalize_match(m) for m in matches]
 
 # --- Existing Providers Updated to inherit BaseFootballProvider and use normalize_match ---
 class RapidAPIProvider(BaseFootballProvider):
@@ -64,13 +44,21 @@ class RapidAPIProvider(BaseFootballProvider):
 
     async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
         try:
+            logger.info(f"RapidAPIProvider: Fetching matches for date {date_from}")
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.get(f"https://{self.host}/football-get-matches-by-date", headers=self.headers, params={"date": date_from.replace("-", "")})
+                logger.info(f"RapidAPIProvider: Response status {res.status_code}")
                 if res.status_code == 200:
                     data = res.json()
-                    return [self.normalize_match(self._raw_to_internal(m)) for m in data.get('response', {}).get('matches', [])]
+                    matches = data.get('response', {}).get('matches', [])
+                    logger.info(f"RapidAPIProvider: Found {len(matches)} matches")
+                    return [self.normalize_match(self._raw_to_internal(m)) for m in matches]
+                else:
+                    logger.error(f"RapidAPIProvider error: {res.status_code} - {res.text}")
                 return []
-        except: return []
+        except Exception as e:
+            logger.error(f"RapidAPIProvider exception: {e}")
+            return []
 
     def _raw_to_internal(self, m: Dict) -> Dict:
         home = m.get('home', {})
@@ -204,6 +192,8 @@ class FootballAPIClient:
         sr_key = os.environ.get('SPORTRADAR_API_KEY')
         stats_key = os.environ.get('THESTATSAPI_KEY')
         
+        # We prefer Football-Data.org (fd_key) or Sportradar (sr_key) over RapidAPI (rapid_key)
+        # because RapidAPI quota is often exceeded.
         if fd_key:
             self.providers.append(FootballDataOrgProvider(fd_key))
             self.circuit_breaker["FootballDataOrgProvider"] = {"status": "healthy", "last_failure": None}
@@ -211,6 +201,7 @@ class FootballAPIClient:
             self.providers.append(SportradarProvider(sr_key))
             self.circuit_breaker["SportradarProvider"] = {"status": "healthy", "last_failure": None}
         if rapid_key:
+            # RapidAPI providers are last resort
             self.providers.append(ThreeSixFiveScoresProvider(rapid_key))
             self.providers.append(RapidAPIProvider(rapid_key))
             self.circuit_breaker["ThreeSixFiveScoresProvider"] = {"status": "healthy", "last_failure": None}
@@ -240,12 +231,30 @@ class FootballAPIClient:
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
         if not date_to: date_to = date_from
+        all_matches = []
+
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue
-            matches = await provider.get_matches(date_from, date_to)
-            if matches: return {"response": matches}
-            self._mark_provider_failure(provider_name)
+
+            try:
+                matches = await provider.get_matches(date_from, date_to)
+                if matches is not None:
+                    if matches:
+                        all_matches.extend(matches)
+            except Exception as e:
+                logger.error(f"Provider {provider_name} failed: {e}")
+                self._mark_provider_failure(provider_name)
+
+        if all_matches:
+            # Deduplicate by fixture ID
+            unique_matches = {}
+            for m in all_matches:
+                fid = m.get('fixture', {}).get('id')
+                if fid and fid not in unique_matches:
+                    unique_matches[fid] = m
+            return {"response": list(unique_matches.values())}
+
         return {"response": []}
 
     async def _make_request(self, endpoint: str, params: Dict = None) -> Dict:

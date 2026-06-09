@@ -11,7 +11,7 @@ class ThreeSixFiveScoresClient:
     Provides advanced stats like xG and shot maps not available in standard free APIs.
     """
     def __init__(self):
-        self.base_url = "https://webapi.365scores.com"
+        self.base_url = "https://365scores.p.rapidapi.com"
         self.headers = {
             "Referer": "https://www.365scores.com/",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -19,6 +19,12 @@ class ThreeSixFiveScoresClient:
         }
 
     async def _make_request(self, path: str, params: Dict = None):
+        rapid_key = os.environ.get("RAPIDAPI_KEY")
+        headers = self.headers.copy()
+        if "rapidapi.com" in self.base_url:
+            headers["x-rapidapi-key"] = rapid_key
+            headers["x-rapidapi-host"] = "365scores.p.rapidapi.com"
+
         url = f"{self.base_url}{path}"
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
