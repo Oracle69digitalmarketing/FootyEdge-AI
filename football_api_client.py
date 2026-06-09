@@ -253,30 +253,16 @@ class FootballAPIClient:
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
         if not date_to: date_to = date_from
         all_matches = []
+        found_matches = False
 
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue
+            matches = await provider.get_matches(date_from, date_to)
+            if matches: return {"response": matches}
+            self._mark_provider_failure(provider_name)
 
-            try:
-                matches = await provider.get_matches(date_from, date_to)
-                if matches is not None:
-                    if matches:
-                        all_matches.extend(matches)
-            except Exception as e:
-                logger.error(f"Provider {provider_name} failed: {e}")
-                self._mark_provider_failure(provider_name)
-
-        if all_matches:
-            # Deduplicate by fixture ID
-            unique_matches = {}
-            for m in all_matches:
-                fid = m.get('fixture', {}).get('id')
-                if fid and fid not in unique_matches:
-                    unique_matches[fid] = m
-            return {"response": list(unique_matches.values())}
-
-        # Fallback to local data if all providers fail or return nothing
+        # Fallback to local data if all providers fail
         logger.info(f"Falling back to local data for {date_from}")
         local_matches = []
         local_path = "data/football.json"

@@ -37,19 +37,43 @@ class FootballRouter:
         except Exception as e:
             logger.error(f"Router: Rapid Aggregator failed: {e}")
 
-        # 3. Deduplicate
+    async def get_matches_by_date(self, date_from: str, date_to: str = None, league_id: Any = None) -> Dict:
+        """Fetches matches, aggregating from all available clients."""
+        all_matches = []
+        
+        # Try standalone FD client first for speed and reliability for majors
+        if self.fd_client:
+            try:
+                res = await self.fd_client.get_matches_by_date(date_from, date_to)
+                if res and res.get('response'):
+                    all_matches.extend(res['response'])
+            except Exception as e:
+                logger.error(f"Router: FD client failed: {e}")
+
+        # Try RapidAPI aggregator
+        if self.rapid_client:
+            try:
+                res = await self.rapid_client.get_matches_by_date(date_from, date_to)
+                if res and res.get('response'):
+                    all_matches.extend(res['response'])
+            except Exception as e:
+                logger.error(f"Router: Rapid client failed: {e}")
+
+        # Deduplicate
         unique_matches = {}
         for m in all_matches:
-            # Identifier: home-away-date
-            home = m.get('teams', {}).get('home', {}).get('name', 'Unknown')
-            away = m.get('teams', {}).get('away', {}).get('name', 'Unknown')
-            date = m.get('fixture', {}).get('date', 'Unknown')
-            key = f"{home}-{away}-{date}"
-            if key not in unique_matches:
-                unique_matches[key] = m
-        
-        return {"response": list(unique_matches.values())}
+            # Create a unique key based on team names and date if ID is not reliable
+            fid = m.get('fixture', {}).get('id')
+            if not fid:
+                h = m.get('teams', {}).get('home', {}).get('name')
+                a = m.get('teams', {}).get('away', {}).get('name')
+                d = m.get('fixture', {}).get('date')
+                fid = f"{h}-{a}-{d}"
 
+            if fid not in unique_matches:
+                unique_matches[fid] = m
+
+        return {"response": list(unique_matches.values())}
     async def get_standings(self, league_id: Any):
         # Prefer FD for major standings
         try:
@@ -66,18 +90,32 @@ class FootballRouter:
         return await self.rapid_client.get_teams_by_league(league_id)
 
     async def list_leagues(self):
+        """Aggregates leagues from all clients."""
         all_leagues = []
-        try:
-            res = await self.fd_client.list_leagues()
-            if res and res.get('response'): all_leagues.extend(res['response'])
-        except: pass
-        try:
-            res = await self.rapid_client.list_leagues()
-            if res and res.get('response'): all_leagues.extend(res['response'])
-        except: pass
+        if self.fd_client:
+            try:
+                res = await self.fd_client.list_leagues()
+                if res and res.get('response'):
+                    all_leagues.extend(res['response'])
+            except: pass
+        if self.rapid_client:
+            try:
+                res = await self.rapid_client.list_leagues()
+                if res and res.get('response'):
+                    all_leagues.extend(res['response'])
+            except: pass
 
-        unique = {l.get('league', {}).get('id'): l for l in all_leagues if l.get('league', {}).get('id')}.values()
-        return {"response": list(unique)}
+        # Deduplicate by ID
+        unique = {}
+        for l in all_leagues:
+            lid = l.get('league', {}).get('id')
+            if lid and lid not in unique:
+                unique[lid] = l
+        return {"response": list(unique.values())}
+    async def search_leagues(self, query: str):
+        if self.rapid_client:
+            return await self.rapid_client.search_leagues(query)
+        return await self.fd_client.search_leagues(query)
 
     async def search_teams(self, query: str):
         return await self.rapid_client.search_teams(query)

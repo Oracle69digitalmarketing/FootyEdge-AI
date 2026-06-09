@@ -153,12 +153,6 @@ class StrategyAnalyzeRequest(BaseModel):
     text: str
     stake: float = 1000
 
-@router.post("/analyze-strategy", summary="Analyze a natural language betting strategy")
-async def analyze_strategy_endpoint(req: StrategyAnalyzeRequest):
-    selections = strategy_agent.parse_strategy(req.text)
-    analysis = strategy_agent.analyze(selections, req.stake)
-    return analysis
-
 class BetRecordRequest(BaseModel):
     user_id: str
     match_id: int
