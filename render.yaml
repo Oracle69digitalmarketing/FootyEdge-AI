@@ -32,6 +32,3 @@ services:
         value: "@footyedge_premium"
       - key: API_URL
         value: "https://footyedge-ai.onrender.com/api"
-    dockerBuildArgs:
-      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
-      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
