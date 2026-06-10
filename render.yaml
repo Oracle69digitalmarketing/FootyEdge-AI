@@ -10,14 +10,28 @@ services:
         sync: false
       - key: FOOTBALL_DATA_API_KEY
         sync: false
+      - key: SPORTRADAR_API_KEY
+        sync: false
+      - key: THESTATSAPI_KEY
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
         sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        value: "@footyedge_signals"
+      - key: TELEGRAM_PREMIUM_CHAT_ID
+        value: "@footyedge_premium"
+      - key: API_URL
+        value: "https://footyedge-ai.onrender.com"
     dockerBuildArgs:
       VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
       VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}

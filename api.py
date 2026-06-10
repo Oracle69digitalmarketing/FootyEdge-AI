@@ -148,6 +148,7 @@ class AccaRecordRequest(BaseModel):
 
 class SubscribeRequest(BaseModel):
     userId: str
+    plan: str = "Premium"
 
 class StrategyAnalyzeRequest(BaseModel):
     text: str
