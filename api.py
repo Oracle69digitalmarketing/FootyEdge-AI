@@ -931,6 +931,19 @@ async def get_player_detail(player_id: int):
 # --- Include Router ---
 app.include_router(router)
 
+@app.on_event("startup")
+async def startup_event():
+    """Starts the Telegram bot in a background thread."""
+    if os.environ.get("TELEGRAM_BOT_TOKEN"):
+        import threading
+        from bot import main as start_bot
+        # We use a thread to avoid blocking the FastAPI event loop
+        bot_thread = threading.Thread(target=start_bot, daemon=True)
+        bot_thread.start()
+        logger.info("Telegram Bot started in background thread.")
+    else:
+        logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not start.")
+
 
 # --- Static File Serving (Production) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
