@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, Terminal, TrendingUp, History, ShieldCheck, LogOut, LogIn, PlusCircle, AlertTriangle, Loader2, ChevronRight, Database, Search, User, CheckCircle, XCircle, Mail, Lock, Calendar, Wallet, Clock, DollarSign, Zap, Layers, Send, ExternalLink, Crown, Bell, HelpCircle, RefreshCw, Server, Menu, X, CreditCard, BookOpen, BrainCircuit, Shield, Cpu, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
