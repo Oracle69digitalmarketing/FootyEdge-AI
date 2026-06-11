@@ -95,6 +95,11 @@ export default function App() {
   const [selectedBookmaker, setSelectedBookmaker] = useState<'bet9ja' | 'sportybet' | '1xbet'>('sportybet');
   const [isPremium, setIsPremium] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([
+    { id: 1, title: 'Neural Model Online', message: 'The AI prediction engine is fully operational.', time: 'Just now', type: 'system' },
+    { id: 2, title: 'Market Opportunity', message: 'High EV detections available in Value Scanner.', time: '2 mins ago', type: 'alert' }
+  ]);
   const [dailyPicks, setDailyPicks] = useState<Prediction[]>([]);
   const [fetchingPicks, setFetchingPicks] = useState(false);
   const [picksDate, setPicksDate] = useState<'today' | 'tomorrow' | 'week'>('today');
@@ -651,10 +656,44 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button className="relative w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center hover:bg-zinc-800 transition-colors">
-              <Bell className="w-5 h-5 text-zinc-400" />
-              <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-orange-500 border-2 border-[#0a0a0a] rounded-full" />
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center hover:bg-zinc-800 transition-colors"
+              >
+                <Bell className="w-5 h-5 text-zinc-400" />
+                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-orange-500 border-2 border-[#0a0a0a] rounded-full" />
+              </button>
+
+              <AnimatePresence>
+                {showNotifications && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 mt-4 w-80 bg-[#111] border border-zinc-800 rounded-2xl shadow-2xl z-[100] overflow-hidden"
+                  >
+                    <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+                      <h3 className="font-bold text-sm">Notifications</h3>
+                      <button onClick={() => setShowNotifications(false)}><X className="w-4 h-4 text-zinc-500" /></button>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length > 0 ? notifications.map(n => (
+                        <div key={n.id} className="p-4 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-default">
+                          <div className="flex justify-between items-start mb-1">
+                            <p className="text-xs font-bold text-zinc-200">{n.title}</p>
+                            <span className="text-[10px] text-zinc-600 font-mono">{n.time}</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 leading-relaxed">{n.message}</p>
+                        </div>
+                      )) : (
+                        <div className="p-8 text-center text-zinc-600 text-xs italic">No new notifications</div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
             <div className="hidden md:block w-px h-6 bg-zinc-800" />
             <div className="hidden md:flex items-center gap-3">
               <div className="text-right">
@@ -803,7 +842,7 @@ export default function App() {
                       <Database className="w-16 h-16 text-orange-500 mx-auto" />
                       <div className="space-y-2">
                         <p className="text-xl font-bold">Team Database Not Initialized</p>
-                        <p className="text-sm text-zinc-500 max-w-md mx-auto">Please seed or sync the database from the admin panel to enable the intelligence engine.</p>
+                        <p className="text-sm text-zinc-500 max-w-md mx-auto">Please go to the **Admin** panel and click **Seed Data** or **Sync Teams** to enable the intelligence engine.</p>
                       </div>
                       {isAdmin && (
                         <div className="flex justify-center gap-4">
@@ -872,7 +911,7 @@ export default function App() {
                   <div className="col-span-full py-32 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
                     <BrainCircuit className="w-16 h-16 text-zinc-800 mx-auto mb-4" />
                     <p className="text-zinc-500 text-xl font-bold">No fixtures found for this period.</p>
-                    <p className="text-sm text-zinc-600 mt-2">Try checking another date or wait for API refresh.</p>
+                    <p className="text-sm text-zinc-600 mt-2">Try checking another date or use the **Admin** tools to sync live fixtures from the cloud.</p>
                   </div>
                 )}
                 

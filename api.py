@@ -931,6 +931,38 @@ async def startup_event():
         logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not start.")
 
 
+# --- Startup Logic ---
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Initializing FootyEdge AI Backend...")
+    if not supabase:
+        logger.warning("🚀 WARNING: Supabase not configured. Application will run in 'Offline Mode' (No DB persistence).")
+        return
+
+    try:
+        # Check if teams exist
+        res = supabase.table("teams").select("id", count="exact").limit(1).execute()
+        if res.count == 0:
+            logger.info("📦 Team database is empty. Running automatic 'Safe Seed'...")
+            initial_teams = [
+                {"id": 33, "name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
+                {"id": 34, "name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
+                {"id": 40, "name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
+                {"id": 42, "name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
+                {"id": 541, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
+                {"id": 529, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"}
+            ]
+            for team in initial_teams:
+                try:
+                    supabase.table("teams").upsert(team).execute()
+                except: pass
+            logger.info(f"✅ Safe Seed complete. {len(initial_teams)} teams added.")
+        else:
+            logger.info(f"✅ Database connected. Found {res.count} teams.")
+    except Exception as e:
+        logger.error(f"❌ Startup Database Check Failed: {e}")
+
+
 # --- Static File Serving (Production) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 dist_path = os.path.join(BASE_DIR, "dist")
