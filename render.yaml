@@ -3,6 +3,13 @@ services:
     name: footyedge-ai
     runtime: docker
     plan: free
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    dockerBuildArgs:
+      - key: VITE_SUPABASE_URL
+        value: ${VITE_SUPABASE_URL}
+      - key: VITE_SUPABASE_ANON_KEY
+        value: ${VITE_SUPABASE_ANON_KEY}
     envVars:
       - key: PORT
         value: 10000
