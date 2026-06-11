@@ -223,13 +223,7 @@ class FootyEdgePredictor:
             return {}
 
     def _get_team_league_file(self, team_name: str) -> Tuple[str, str]:
-        team_map = {
-            'Manchester City': ('en.1', 'Premier League'),
-            'Arsenal': ('en.1', 'Premier League'),
-            'Real Madrid': ('es.1', 'La Liga'),
-        }
-        cleaned_name = team_name.replace(' FC', '').replace('AFC ', '').strip()
-        return team_map.get(cleaned_name, (None, None))
+        return (None, None)
 
     def _parse_local_match(self, match: Dict, team_name: str) -> Dict:
         if 'score' not in match or 'ft' not in match['score']: return None
@@ -261,27 +255,59 @@ class FootyEdgePredictor:
         home_xG = home_avg_scored * (away_avg_conceded / 1.0) * 1.1 # home advantage
         away_xG = away_avg_scored * (home_avg_conceded / 1.0) * 0.9
 
-        # Basic win/draw/loss probabilities from xG (very simplified)
-        total_xG = home_xG + away_xG
-        if total_xG == 0:
-            probs = {"home_win": 0.33, "draw": 0.34, "away_win": 0.33}
-        else:
-            probs = {
-                "home_win": home_xG / total_xG * 0.8 + 0.1,
-                "draw": 0.25,
-                "away_win": away_xG / total_xG * 0.8 + 0.1
-            }
-            # Normalize
-            s = sum(probs.values())
-            probs = {k: v/s for k, v in probs.items()}
+        # Poisson-based win/draw/loss probabilities
+        def poisson_prob(k, lamb):
+            return (lamb**k * math.exp(-lamb)) / math.factorial(k)
 
-        probs['Over 2.5'] = 1 - math.exp(-(home_xG + away_xG)) * (1 + (home_xG + away_xG) + (home_xG + away_xG)**2 / 2)
-        probs['BTTS Yes'] = (1 - math.exp(-home_xG)) * (1 - math.exp(-away_xG))
+        p_home_win = 0
+        p_draw = 0
+        p_away_win = 0
+        
+        # Calculate matrix up to 10 goals for accuracy
+        for h in range(10):
+            for a in range(10):
+                p = poisson_prob(h, home_xG) * poisson_prob(a, away_xG)
+                if h > a: p_home_win += p
+                elif h == a: p_draw += p
+                else: p_away_win += p
+
+        # Goal Markets
+        p_over_1_5 = 1 - (poisson_prob(0, home_xG+away_xG) + poisson_prob(1, home_xG+away_xG))
+        p_over_2_5 = 1 - (poisson_prob(0, home_xG+away_xG) + poisson_prob(1, home_xG+away_xG) + poisson_prob(2, home_xG+away_xG))
+        p_over_3_5 = p_over_2_5 - poisson_prob(3, home_xG+away_xG)
+        
+        # BTTS
+        p_btts_yes = (1 - poisson_prob(0, home_xG)) * (1 - poisson_prob(0, away_xG))
+
+        probs = {
+            "home_win": p_home_win,
+            "draw": p_draw,
+            "away_win": p_away_win,
+            "Over 1.5": p_over_1_5,
+            "Over 2.5": p_over_2_5,
+            "Over 3.5": p_over_3_5,
+            "BTTS Yes": p_btts_yes,
+            "DC Home/Draw": p_home_win + p_draw,
+            "DC Away/Draw": p_away_win + p_draw,
+            "DC Home/Away": p_home_win + p_away_win
+        }
 
         value_bets = []
-        for market, selection, odd_key in [("Match Winner", "Home", "home_win"), ("Match Winner", "Draw", "draw"), ("Match Winner", "Away", "away_win")]:
+        # Markets to scan for value
+        market_map = [
+            ("Match Winner", "Home", "home_win"),
+            ("Match Winner", "Draw", "draw"),
+            ("Match Winner", "Away", "away_win"),
+            ("Goals", "Over 2.5", "Over 2.5"),
+            ("Goals", "Over 1.5", "Over 1.5"),
+            ("BTTS", "Yes", "BTTS Yes"),
+            ("Double Chance", "Home/Draw", "DC Home/Draw"),
+            ("Double Chance", "Away/Draw", "DC Away/Draw")
+        ]
+
+        for market, selection, odd_key in market_map:
             if odd_key in odds and odds[odd_key] > 0:
-                prob = probs.get(odd_key if odd_key in probs else selection)
+                prob = probs.get(odd_key)
                 if prob and prob * odds[odd_key] > 1.05:
                     value_bets.append({
                         "market_name": market,
@@ -289,26 +315,39 @@ class FootyEdgePredictor:
                         "odds": odds[odd_key],
                         "our_probability": prob,
                         "ev": (prob * odds[odd_key]) - 1,
-                        "tier": "Hot 🔥" if (prob * odds[odd_key]) > 1.2 else "Solid"
+                        "tier": "Hot 🔥" if (prob * odds[odd_key]) > 1.25 else "Solid"
                     })
+
+        correct_scores = []
+        for h in range(4):
+            for a in range(4):
+                prob = poisson_prob(h, home_xG) * poisson_prob(a, away_xG)
+                correct_scores.append({"score": f"{h}-{a}", "probability": prob})
+        
+        correct_scores = sorted(correct_scores, key=lambda x: x['probability'], reverse=True)[:5]
+
+        # Improved confidence score
+        best_ev = max([b['ev'] for b in value_bets]) if value_bets else 0
+        confidence = min(0.98, 0.45 + (best_ev * 1.5)) if best_ev > 0 else 0.25
 
         return {
             "home_team": home_team,
             "away_team": away_team,
             "home_xg": home_xG,
             "away_xg": away_xG,
-            "home_prob": probs.get('home_win', 0),
-            "draw_prob": probs.get('draw', 0),
-            "away_prob": probs.get('away_win', 0),
-            "over_2_5_prob": probs.get('Over 2.5', 0),
-            "btts_prob": probs.get('BTTS Yes', 0),
+            "home_prob": p_home_win,
+            "draw_prob": p_draw,
+            "away_prob": p_away_win,
+            "over_1_5_prob": p_over_1_5,
+            "over_2_5_prob": p_over_2_5,
+            "over_3_5_prob": p_over_3_5,
+            "btts_prob": p_btts_yes,
+            "dc_home_draw_prob": probs["DC Home/Draw"],
+            "dc_away_draw_prob": probs["DC Away/Draw"],
+            "dc_home_away_prob": probs["DC Home/Away"],
             "probabilities": probs,
-            "value_bets": value_bets,
-            "confidence": (probs.get('home_win', 0) + probs.get('away_win', 0)) / 1.5,
-            "correct_scores": [
-                {"score": "1-0", "probability": 0.12},
-                {"score": "2-1", "probability": 0.10},
-                {"score": "1-1", "probability": 0.15}
-            ],
+            "value_bets": sorted(value_bets, key=lambda x: x['ev'], reverse=True),
+            "confidence": confidence,
+            "correct_scores": correct_scores,
             "created_at": datetime.now().isoformat()
         }

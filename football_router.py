@@ -39,21 +39,29 @@ class FootballRouter:
             except Exception as e:
                 logger.error(f"Router: Rapid client failed: {e}")
 
-        # Deduplicate
+        # Deduplicate and prioritize major leagues
         unique_matches = {}
+        # Major league IDs across providers
+        MAJOR_LEAGUES = [47, 87, 54, 55, 53, 42, 73, 2021, 2014, 2019, 2015, 2002, 2001]
+        
         for m in all_matches:
             # Create a unique key based on team names and date if ID is not reliable
             fid = m.get('fixture', {}).get('id')
             if not fid:
-                h = m.get('teams', {}).get('home', {}).get('name')
-                a = m.get('teams', {}).get('away', {}).get('name')
-                d = m.get('fixture', {}).get('date')
+                h = m.get('teams', {}).get('home', {}).get('name', 'H')
+                a = m.get('teams', {}).get('away', {}).get('name', 'A')
+                d = m.get('fixture', {}).get('date', 'D')
                 fid = f"{h}-{a}-{d}"
 
             if fid not in unique_matches:
+                # Assign priority: 1 for major, 2 for others
+                lid = m.get('league', {}).get('id')
+                priority = 1 if lid in MAJOR_LEAGUES or any(kw in m.get('league', {}).get('name', '').lower() for kw in ['premier', 'la liga', 'bundesliga', 'serie a', 'champions league']) else 2
+                m['priority'] = priority
                 unique_matches[fid] = m
 
-        return {"response": list(unique_matches.values())}
+        sorted_matches = sorted(unique_matches.values(), key=lambda x: (x.get('priority', 2), x.get('fixture', {}).get('date', '')))
+        return {"response": sorted_matches}
     async def get_standings(self, league_id: Any):
         # Prefer FD for major standings
         try:
@@ -108,6 +116,27 @@ class FootballRouter:
         res = await self.rapid_client.get_team_fixtures(team_id, last)
         if res and res.get('response'): return res
         return await self.fd_client.get_team_fixtures(team_id, last)
+
+    async def get_odds_by_event_id(self, event_id: Any):
+        return await self.rapid_client.get_odds_by_event_id(event_id)
+
+    async def get_stats_by_event_id(self, event_id: Any):
+        return await self.rapid_client.get_stats_by_event_id(event_id)
+
+    async def get_h2h(self, team1_id: Any, team2_id: Any):
+        return await self.rapid_client.get_h2h(team1_id, team2_id)
+
+    async def list_players_by_team(self, team_id: Any):
+        return await self.rapid_client.list_players_by_team(team_id)
+
+    async def get_player_detail(self, player_id: Any):
+        return await self.rapid_client.get_player_detail(player_id)
+
+    async def get_team_detail(self, team_id: Any):
+        return await self.rapid_client.get_team_detail(team_id)
+
+    async def get_league_detail(self, league_id: Any):
+        return await self.rapid_client.get_league_detail(league_id)
 
     def get_365scores_match_url(self, home_team: str, away_team: str) -> str:
         return self.three_six_five.get_365scores_match_url(home_team, away_team)

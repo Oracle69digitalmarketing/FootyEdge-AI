@@ -1,8 +1,62 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabase';
+import StatCard from './components/StatCard';
+import ValueBets from './components/ValueBets';
+import TeamsList from './components/TeamsList';
+import PlayersList from './components/PlayersList';
+import Pricing from './components/Pricing';
+import AccaBuilder from './components/AccaBuilder';
+import Portfolio from './components/Portfolio';
+import HowToUse from './components/HowToUse';
+import H2HVisualizer from './components/H2HVisualizer';
 import { Activity, Terminal, TrendingUp, History, ShieldCheck, LogOut, LogIn, PlusCircle, AlertTriangle, Loader2, ChevronRight, Database, Search, User, CheckCircle, XCircle, Mail, Lock, Calendar, Wallet, Clock, DollarSign, Zap, Layers, Send, ExternalLink, Crown, Bell, HelpCircle, RefreshCw, Server, Menu, X, CreditCard, BookOpen, BrainCircuit, Shield, Cpu, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
+
+// ... (rest of imports/types)
+
+interface Team {
+  id: string;
+  name: string;
+  logo_url?: string;
+}
+
+interface Prediction {
+  id: string;
+  home_team: string;
+  away_team: string;
+  home_id?: number;
+  away_id?: number;
+  home_prob: number;
+  draw_prob: number;
+  away_prob: number;
+  home_xg: number;
+  away_xg: number;
+  confidence: number;
+  best_bet_market: string;
+  best_bet_selection: string;
+  best_bet_odds: number;
+  best_bet_ev: number;
+  is_premium: boolean;
+  created_at: string;
+  over_2_5_prob?: number;
+  btts_prob?: number;
+  dc_home_draw_prob?: number;
+  dc_away_draw_prob?: number;
+  dc_home_away_prob?: number;
+  correct_scores?: any;
+}
+
+interface ValueBet {
+  id: string;
+  home_team: string;
+  away_team: string;
+  market: string;
+  selection: string;
+  odds: number;
+  ev: number;
+  status: 'active' | 'won' | 'lost';
+}
 
 
 export default function App() {
@@ -84,7 +138,7 @@ export default function App() {
   const [dashboardStats, setTerminalStats] = useState<any>({
     total_predictions: "0",
     active_value_bets: "0",
-    ai_accuracy: "78.5%"
+    ai_accuracy: "0%"
   });
 
   const flashMessage = (setter: (msg: string | null) => void, message: string | null) => {
@@ -382,6 +436,27 @@ export default function App() {
     };
 
     try {
+        // Search for this match in upcoming fixtures to get real odds
+        const matchesRes = await safeFetchJson(`/api/matches?from_date=${new Date().toISOString().split('T')[0]}&to_date=${(new Date(Date.now() + 7 * 86400000)).toISOString().split('T')[0]}`);
+        const foundMatch = matchesRes.response?.find((m: any) => 
+            (m.teams.home.name.toLowerCase().includes(homeTeam?.name?.toLowerCase() || '') || homeTeam?.name?.toLowerCase().includes(m.teams.home.name.toLowerCase())) &&
+            (m.teams.away.name.toLowerCase().includes(awayTeam?.name?.toLowerCase() || '') || awayTeam?.name?.toLowerCase().includes(m.teams.away.name.toLowerCase()))
+        );
+
+        let liveOdds = { "home_win": 1.95, "draw": 3.30, "away_win": 4.10, "Over 2.5": 1.90, "Under 2.5": 1.90, "BTTS Yes": 1.75, "BTTS No": 2.05 };
+        
+        if (foundMatch) {
+            try {
+                const oddsRes = await safeFetchJson(`/api/odds/${foundMatch.fixture.id}`);
+                if (oddsRes.default) {
+                    liveOdds = oddsRes.default;
+                    setSimulationLog(prev => [...prev, "Found live market odds for this fixture."]);
+                }
+            } catch (e) {
+                console.warn("Could not fetch live odds, using market estimates.");
+            }
+        }
+
         const [data] = await Promise.all([
             safeFetchJson('/api/predict', {
                 method: 'POST',
@@ -389,7 +464,7 @@ export default function App() {
                 body: JSON.stringify({
                     home_team: homeTeam?.name,
                     away_team: awayTeam?.name,
-                    odds: { "home_win": 1.95, "draw": 3.30, "away_win": 4.10, "Over 2.5": 1.90, "Under 2.5": 1.90, "BTTS Yes": 1.75, "BTTS No": 2.05 }
+                    odds: liveOdds
                 })
             }),
             simulateProgress()
@@ -667,10 +742,61 @@ export default function App() {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="space-y-1">
                       <h2 className="text-3xl font-bold">Terminal Overview</h2>
-                      <p className="text-sm text-zinc-500">Select any two teams to generate a deep-dive match intelligence report.</p>
+                      <p className="text-sm text-zinc-500">Select any two teams or choose a live fixture below to generate a report.</p>
                     </div>
-                    <RefreshCw className="w-6 h-6 text-zinc-700 hidden md:block" />
+                    <div className="flex p-1 bg-zinc-900 border border-zinc-800 rounded-xl">
+                      <button onClick={() => { setFromDate(new Date().toISOString().split('T')[0]); setToDate(new Date().toISOString().split('T')[0]); }} className={cn("px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all", fromDate === new Date().toISOString().split('T')[0] ? "bg-orange-500 text-black" : "text-zinc-500 hover:text-white")}>Today</button>
+                      <button onClick={() => { 
+                        const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+                        setFromDate(tomorrow.toISOString().split('T')[0]); 
+                        setToDate(tomorrow.toISOString().split('T')[0]); 
+                      }} className={cn("px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all", fromDate !== new Date().toISOString().split('T')[0] ? "bg-orange-500 text-black" : "text-zinc-500 hover:text-white")}>Tomorrow</button>
+                    </div>
                   </div>
+
+                  {todayMatches.length > 0 && (
+                    <div className="space-y-4">
+                      <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest ml-4">Quick Select: Upcoming Fixtures</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {todayMatches.slice(0, 6).map((match: any) => (
+                          <button 
+                            key={match.id}
+                            onClick={() => {
+                              // Find if these teams exist in our local DB to get their IDs
+                              const hTeam = teams.find(t => t.name.toLowerCase().includes(match.homeTeam.name.toLowerCase()) || match.homeTeam.name.toLowerCase().includes(t.name.toLowerCase()));
+                              const aTeam = teams.find(t => t.name.toLowerCase().includes(match.awayTeam.name.toLowerCase()) || match.awayTeam.name.toLowerCase().includes(t.name.toLowerCase()));
+                              
+                              if (hTeam) setSelectedHome(hTeam.id);
+                              if (aTeam) setSelectedAway(aTeam.id);
+                              
+                              if (!hTeam || !aTeam) {
+                                flashMessage(setError, "One or both teams not found in Database. Using API data only.");
+                              }
+                            }}
+                            className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-2xl text-left hover:border-orange-500/50 transition-all group"
+                          >
+                            <div className="flex justify-between items-center mb-2">
+                               <span className="text-[9px] font-mono text-zinc-600 uppercase">{match.league}</span>
+                               <span className="text-[9px] text-zinc-500">{new Date(match.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                               <div className="flex-1 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                     <img src={match.homeTeam.logo} alt="" className="w-4 h-4 object-contain opacity-50 group-hover:opacity-100" />
+                                     <p className="text-xs font-bold truncate">{match.homeTeam.name}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                     <img src={match.awayTeam.logo} alt="" className="w-4 h-4 object-contain opacity-50 group-hover:opacity-100" />
+                                     <p className="text-xs font-bold truncate">{match.awayTeam.name}</p>
+                                  </div>
+                               </div>
+                               <PlusCircle className="w-4 h-4 text-zinc-800 group-hover:text-orange-500" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {teams.length === 0 ? (
                     <div className="bg-orange-500/5 border border-orange-500/10 p-12 rounded-[2rem] text-center space-y-6">
@@ -958,6 +1084,24 @@ function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, on
         </div>
       </div>
 
+      <div className="space-y-4 relative z-10">
+        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Market Insights</p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-400">Over 2.5 Goals</span>
+            <span className={cn("font-black", (prediction.over_2_5_prob || 0) > 0.6 ? "text-green-500" : "text-white")}>
+              {((prediction.over_2_5_prob || 0) * 100).toFixed(0)}%
+            </span>
+          </div>
+          <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 flex items-center justify-center gap-2">
+            <span className="text-xs font-bold text-zinc-400">BTTS:</span>
+            <span className={cn("font-black", (prediction.btts_prob || 0) > 0.6 ? "text-green-500" : "text-white")}>
+              {((prediction.btts_prob || 0) * 100).toFixed(0)}%
+            </span>
+          </div>
+        </div>
+      </div>
+
       {prediction.home_id && prediction.away_id && (
         <div className="relative z-10">
           <H2HVisualizer team1Id={prediction.home_id} team2Id={prediction.away_id} />
@@ -1059,21 +1203,21 @@ function StrategyView() {
                   <span className="text-zinc-500 text-sm">Risk Level</span>
                   <span className={cn(
                     "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest",
-                    analysis.metrics.risk_score === 'Low' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
-                    analysis.metrics.risk_score === 'Medium' ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'
-                  )}>{analysis.metrics.risk_score}</span>
+                    analysis.metrics?.risk_score === 'Low' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
+                    analysis.metrics?.risk_score === 'Medium' ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                  )}>{analysis.metrics?.risk_score || 'Calculating...'}</span>
                 </div>
                 <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
                   <span className="text-zinc-500 text-sm">Expected Value (EV)</span>
-                  <span className="text-green-500 font-black text-lg">{analysis.metrics.expected_value}</span>
+                  <span className="text-green-500 font-black text-lg">{analysis.metrics?.expected_value || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
                   <span className="text-zinc-500 text-sm">Combined Odds</span>
-                  <span className="font-black text-lg">@{analysis.metrics.combined_odds_est}</span>
+                  <span className="font-black text-lg">@{analysis.metrics?.combined_odds_est || '0.00'}</span>
                 </div>
                 <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
                   <span className="text-zinc-500 text-sm">Win Probability</span>
-                  <span className="font-black text-lg text-orange-500">{analysis.metrics.win_probability}</span>
+                  <span className="font-black text-lg text-orange-500">{analysis.metrics?.win_probability || '0%'}</span>
                 </div>
               </div>
             </div>
