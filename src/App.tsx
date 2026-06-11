@@ -649,7 +649,7 @@ export default function App() {
                 <h1 className="text-[10px] font-mono text-green-500 uppercase tracking-[0.2em]">SYSTEM: ONLINE</h1>
                 <p className="text-sm font-bold text-green-500 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
-                  AI Models Operational
+                  AI Models Operational ({dashboardStats.system_mode || 'Live'} Mode)
                 </p>
               </div>
             </div>
