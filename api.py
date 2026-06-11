@@ -473,38 +473,6 @@ async def sync_players():
     except Exception as e:
         logger.error(f"Global player sync error: {e}")
         return {"status": "error", "message": str(e)}
-            try:
-                players_data = await football_client.list_players_by_team(team['id'])
-                
-                if players_data and 'response' in players_data:
-                    player_list = players_data.get('response', [])
-                    if isinstance(player_list, dict) and 'players' in player_list: # Some formats
-                        player_list = player_list['players']
-                    
-                    db_players = []
-                    for p in player_list[:25]: # Limit per team
-                        db_players.append({
-                            "external_id": str(p.get('id')),
-                            "team_id": team['id'],
-                            "name": p.get('name'),
-                            "position": p.get('position'),
-                            "nationality": p.get('country') or p.get('nationality'),
-                            "age": p.get('age'),
-                            "photo_url": f"https://images.fotmob.com/image_resources/playerimages/{p.get('id')}.png" if p.get('id') else None
-                        })
-                    
-                    if db_players:
-                        supabase.table("players").upsert(db_players).execute()
-                        total_synced += len(db_players)
-            except Exception as e:
-                logger.error(f"Failed to sync players for team {team['id']}: {e}")
-            
-            await asyncio.sleep(0.4) # Avoid rate limiting
-            
-        return {"status": "success", "synced_count": total_synced}
-    except Exception as e:
-        logger.error(f"Sync players failed: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Sync failed: {str(e)}"})
 
 
 @router.post("/admin/seed-database", summary="Seed the database with initial data")
