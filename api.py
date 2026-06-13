@@ -243,7 +243,8 @@ async def get_dashboard_stats():
                 if settled_res.data:
                     correct = sum(1 for p in settled_res.data if p.get('best_bet_selection') == p.get('actual_result'))
                     accuracy = (correct / len(settled_res.data)) * 100
-            except: pass
+            except Exception:
+                pass
 
             # Calculate ROI from user bets
             try:
