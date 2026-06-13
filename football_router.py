@@ -55,7 +55,8 @@ class FootballRouter:
         try:
             res = await self.fd_client.get_standings(str(league_id))
             if res and res.get('response'): return res
-        except: pass
+        except Exception:
+            pass
         return await self.rapid_client.get_standings(str(league_id))
 
     async def get_teams_by_league(self, league_id: Any):
