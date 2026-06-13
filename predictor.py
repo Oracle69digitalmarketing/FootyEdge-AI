@@ -284,6 +284,14 @@ class FootyEdgePredictor:
         def poisson_prob(k, lamb):
             return (lamb**k * math.exp(-lamb)) / math.factorial(k)
 
+        # PDF Lambda factors: λ_home = home_win_probability × 2.5, λ_away = away_win_probability × 2.0
+        # Re-using the calculated probabilities as inputs for the distribution
+        home_win_prob = p_home_win
+        away_win_prob = p_away_win
+        
+        lambda_home = home_win_prob * 2.5
+        lambda_away = away_win_prob * 2.0
+
         p_home_win = 0
         p_draw = 0
         p_away_win = 0
@@ -291,7 +299,7 @@ class FootyEdgePredictor:
         # Calculate matrix up to 10 goals for accuracy
         for h in range(10):
             for a in range(10):
-                p = poisson_prob(h, home_xG) * poisson_prob(a, away_xG)
+                p = poisson_prob(h, lambda_home) * poisson_prob(a, lambda_away)
                 if h > a: p_home_win += p
                 elif h == a: p_draw += p
                 else: p_away_win += p
