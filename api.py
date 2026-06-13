@@ -95,6 +95,15 @@ if not sportradar_key:
 if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables are not set. Database features will be unavailable.")
 
+@app.get("/")
+@app.head("/")
+async def root():
+    return {"message": "FootyEdge AI API is running.", "status": "operational", "health": "/health", "api_health": "/api/health"}
+
+@router.get("/")
+async def api_root():
+    return {"message": "FootyEdge AI API Router is active.", "docs": "/docs"}
+
 @router.get("/health")
 async def health_check():
     return {
@@ -907,24 +916,24 @@ async def get_player_detail(player_id: int):
 # --- Include Router ---
 app.include_router(router)
 
-@app.on_event("startup")
-async def startup_event():
-    """Starts the Telegram bot in a background thread."""
-    if os.environ.get("TELEGRAM_BOT_TOKEN"):
-        import threading
-        from bot import main as start_bot
-        # We use a thread to avoid blocking the FastAPI event loop
-        bot_thread = threading.Thread(target=start_bot, daemon=True)
-        bot_thread.start()
-        logger.info("Telegram Bot started in background thread.")
-    else:
-        logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not start.")
-
-
 # --- Startup Logic ---
 @app.on_event("startup")
 async def startup_event():
     logger.info("Initializing FootyEdge AI Backend...")
+    
+    # Start the Telegram bot in a background thread if token is available
+    if os.environ.get("TELEGRAM_BOT_TOKEN"):
+        import threading
+        from bot import main as start_bot
+        try:
+            bot_thread = threading.Thread(target=start_bot, daemon=True)
+            bot_thread.start()
+            logger.info("Telegram Bot started in background thread.")
+        except Exception as bot_err:
+            logger.error(f"Failed to start Telegram Bot: {bot_err}")
+    else:
+        logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not start.")
+
     if not supabase:
         logger.warning("🚀 WARNING: Supabase not configured. Application will run in 'Offline Mode' (No DB persistence).")
         return
