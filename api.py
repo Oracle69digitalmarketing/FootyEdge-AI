@@ -500,7 +500,7 @@ async def sync_players():
                         })
                     
                     if db_players:
-                        supabase.table("players").upsert(db_players).execute()
+                        supabase.table("players").upsert(db_players, on_conflict="external_id").execute()
                         total_synced += len(db_players)
             except Exception as e:
                 logger.error(f"Failed to sync players for team {team['id']}: {e}")
