@@ -952,6 +952,9 @@ async def startup_event():
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 dist_path = os.path.join(BASE_DIR, "dist")
 
+logger.info(f"Checking for frontend in: {dist_path}")
+logger.info(f"Contents of {BASE_DIR}: {os.listdir(BASE_DIR)}")
+
 if os.path.exists(dist_path):
     @app.exception_handler(404)
     async def not_found_exception_handler(request, exc):
