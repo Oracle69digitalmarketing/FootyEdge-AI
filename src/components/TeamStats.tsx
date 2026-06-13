@@ -65,7 +65,7 @@ const TeamStats: React.FC<TeamStatsProps> = ({ team, onBack }) => {
         <StatCard title="Elo Rating" value={(team.elo_rating || 1500).toFixed(0)} />
         <StatCard title="Attack Strength" value={(team.attack_strength || 1.0).toFixed(2)} />
         <StatCard title="Defense Strength" value={(team.defense_strength || 1.0).toFixed(2)} />
-        <StatCard title="Form" value={`${((team.form_rating || 0.5) * 100).toFixed(0)}%`} />
+        <StatCard title="Form" value={`${((team.form_rating ?? 0.5) * 100).toFixed(0)}%`} />
       </div>
 
       <div className="bg-[#1a1a1a] p-6 rounded-lg">
