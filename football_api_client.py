@@ -68,17 +68,15 @@ class RapidAPIProvider(BaseFootballProvider):
             logger.info(f"RapidAPIProvider: Fetching matches for date {date_from}")
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.get(f"https://{self.host}/football-get-matches-by-date", headers=self.headers, params={"date": date_from.replace("-", "")})
-                logger.info(f"RapidAPIProvider: Response status {res.status_code}")
                 if res.status_code == 200:
                     data = res.json()
-                    matches = data.get('response', {}).get('matches', [])
-                    logger.info(f"RapidAPIProvider: Found {len(matches)} matches")
-                    return [self.normalize_match(self._raw_to_internal(m)) for m in matches]
+                    logger.info(f"RapidAPIProvider: Success, received {len(data.get('response', {}).get('matches', []))} matches")
+                    return [self.normalize_match(self._raw_to_internal(m)) for m in data.get('response', {}).get('matches', [])]
                 else:
-                    logger.error(f"RapidAPIProvider error: {res.status_code} - {res.text}")
+                    logger.error(f"RapidAPIProvider error: {res.status_code} - {res.text[:200]}")
                 return []
         except Exception as e:
-            logger.error(f"RapidAPIProvider exception: {e}")
+            logger.error(f"RapidAPIProvider exception: {str(e)}")
             return []
 
     def _raw_to_internal(self, m: Dict) -> Dict:

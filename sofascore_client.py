@@ -22,15 +22,17 @@ class SofascoreClient:
 
     async def _make_request(self, endpoint: str, params: Dict = None):
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        logger.info(f"SofascoreClient: Requesting {url} with params: {params}")
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 res = await client.get(url, headers=self.headers, params=params)
                 if res.status_code == 200:
                     return res.json()
-                logger.warning(f"Sofascore API at {url} returned {res.status_code}: {res.text}")
+                
+                logger.error(f"SofascoreClient: Returned status {res.status_code} for {url}. Response: {res.text[:200]}")
                 return None
         except Exception as e:
-            logger.error(f"Sofascore request failed to {url}: {e}")
+            logger.error(f"SofascoreClient: Request failed to {url}: {str(e)}")
             return None
 
     async def get_h2h_events(self, team1_id: int, team2_id: int):

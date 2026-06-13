@@ -43,18 +43,20 @@ class FootballDataOrgClient:
             return None
             
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        logger.info(f"FootballDataOrgProvider: Requesting {url} with params: {params}")
         try:
             async with httpx.AsyncClient(timeout=25.0) as client:
                 res = await client.get(url, headers=self.headers, params=params)
                 if res.status_code == 200:
                     return res.json()
                 elif res.status_code == 429:
-                    logger.warning(f"Rate limit hit for {url}. Seconds to reset: {res.headers.get('X-RequestCounter-Reset')}")
+                    logger.warning(f"FootballDataOrgProvider: Rate limit hit for {url}. Reset: {res.headers.get('X-RequestCounter-Reset')}")
                     return None
-                logger.warning(f"football-data.org at {url} returned {res.status_code}: {res.text}")
+                
+                logger.error(f"FootballDataOrgProvider: Returned status {res.status_code} for {url}. Response: {res.text[:200]}")
                 return None
         except Exception as e:
-            logger.error(f"Request failed to {url}: {e}")
+            logger.error(f"FootballDataOrgProvider: Request failed to {url}: {str(e)}")
             return None
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None, competitions: List[str] = None) -> Dict:
