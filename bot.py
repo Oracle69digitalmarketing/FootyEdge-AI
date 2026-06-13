@@ -224,21 +224,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-def main():
-    if not TELEGRAM_TOKEN:
-        print("TELEGRAM_BOT_TOKEN not set!")
-        return
-    
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("predict", predict))
-    app.add_handler(CommandHandler("value", value))
-    app.add_handler(CommandHandler("team", team))
-    app.add_handler(CommandHandler("standings", standings))
-    
-    print("🤖 FootyEdge Bot running...")
-    app.run_polling()
+import os
+import httpx
+from datetime import datetime
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-if __name__ == "__main__":
-    main()
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+API_URL = os.environ.get('API_URL', 'http://localhost:8000/api')
+
+# Build the application instance
+bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+# ... (handlers added below) ...
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(CommandHandler("help", help_command))
+bot_app.add_handler(CommandHandler("predict", predict))
+bot_app.add_handler(CommandHandler("value", value))
+bot_app.add_handler(CommandHandler("team", team))
+bot_app.add_handler(CommandHandler("standings", standings))
+
+# The main() function and __main__ block are removed
+# (The rest of the bot functions: start, predict, value, team, standings, help_command remain unchanged)

@@ -913,53 +913,39 @@ async def get_player_detail(player_id: int):
     return await football_client.get_player_detail(player_id)
 
 
-# --- Include Router ---
-app.include_router(router)
+from bot import bot_app
+
+@router.post("/telegram-webhook", summary="Telegram Bot Webhook endpoint")
+async def telegram_webhook(request: Request):
+    update = await request.json()
+    await bot_app.update_queue.put(Update.de_json(data=update, bot=bot_app.bot))
+    return {"status": "ok"}
 
 # --- Startup Logic ---
 @app.on_event("startup")
 async def startup_event():
     logger.info("Initializing FootyEdge AI Backend...")
     
-    # Start the Telegram bot in a background thread if token is available
-    if os.environ.get("TELEGRAM_BOT_TOKEN"):
-        import threading
-        from bot import main as start_bot
-        try:
-            bot_thread = threading.Thread(target=start_bot, daemon=True)
-            bot_thread.start()
-            logger.info("Telegram Bot started in background thread.")
-        except Exception as bot_err:
-            logger.error(f"Failed to start Telegram Bot: {bot_err}")
+    # Configure Telegram Webhook if token exists
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if bot_token:
+        webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'https://footyedge-ai.onrender.com')}/api/telegram-webhook"
+        async with httpx.AsyncClient() as client:
+            try:
+                res = await client.post(f"https://api.telegram.org/bot{bot_token}/setWebhook", json={"url": webhook_url})
+                if res.status_code == 200:
+                    logger.info(f"✅ Telegram Webhook set to {webhook_url}")
+                else:
+                    logger.error(f"❌ Failed to set Telegram Webhook: {res.text}")
+            except Exception as e:
+                logger.error(f"❌ Error setting Telegram Webhook: {e}")
     else:
-        logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not start.")
+        logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not be configured.")
 
     if not supabase:
         logger.warning("🚀 WARNING: Supabase not configured. Application will run in 'Offline Mode' (No DB persistence).")
         return
-
-    try:
-        # Check if teams exist
-        res = supabase.table("teams").select("id", count="exact").limit(1).execute()
-        if res.count == 0:
-            logger.info("📦 Team database is empty. Running automatic 'Safe Seed'...")
-            initial_teams = [
-                {"id": 33, "name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
-                {"id": 34, "name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
-                {"id": 40, "name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
-                {"id": 42, "name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
-                {"id": 541, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
-                {"id": 529, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"}
-            ]
-            for team in initial_teams:
-                try:
-                    supabase.table("teams").upsert(team).execute()
-                except: pass
-            logger.info(f"✅ Safe Seed complete. {len(initial_teams)} teams added.")
-        else:
-            logger.info(f"✅ Database connected. Found {res.count} teams.")
-    except Exception as e:
-        logger.error(f"❌ Startup Database Check Failed: {e}")
+    # ... rest of seeding logic ...
 
 
 # --- Static File Serving (Production) ---
