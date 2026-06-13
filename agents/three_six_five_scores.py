@@ -19,11 +19,11 @@ class ThreeSixFiveScoresClient:
         }
 
     async def _make_request(self, path: str, params: Dict = None):
+        import os
         rapid_key = os.environ.get("RAPIDAPI_KEY")
-        headers = self.headers.copy()
-        if "rapidapi.com" in self.base_url:
-            headers["x-rapidapi-key"] = rapid_key
-            headers["x-rapidapi-host"] = "365scores.p.rapidapi.com"
+        if "rapidapi.com" in self.base_url and "x-rapidapi-key" not in self.headers:
+            self.headers["x-rapidapi-key"] = rapid_key
+            self.headers["x-rapidapi-host"] = "365scores.p.rapidapi.com"
 
         url = f"{self.base_url}{path}"
         try:
