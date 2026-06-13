@@ -26,6 +26,7 @@ export default defineConfig(({mode}) => {
       },
     },
     build: {
+      outDir: 'dist', // Ensure it explicitly builds to 'dist' in root
       rollupOptions: {
         output: {
           manualChunks: {
