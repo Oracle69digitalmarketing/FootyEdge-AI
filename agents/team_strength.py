@@ -14,11 +14,12 @@ class TeamStrengthAgent:
     Builds dynamic team ratings using data from a persistent source.
     """
     
-    def __init__(self, supabase_client: Any, k_factor=20, decay_rate=0.95, history_length=20):
+    def __init__(self, supabase_client: Any, k_factor=32, decay_rate=0.95, history_length=20):
         self.supabase = supabase_client
         self.k_factor = k_factor
         self.decay_rate = decay_rate
         self.history_length = history_length
+        self.home_advantage = 50 # Explicit PDF factor
         self._rating_cache = {}
 
     async def assess(self, team_name: str, matches: List[Dict], league_name: str = None, squad_data: Dict = None) -> TeamStrength:
@@ -83,7 +84,7 @@ class TeamStrengthAgent:
             opponent_name = match.get('opponent_name', 'Unknown Opponent')
             opponent_rating = await self._get_rating_from_db(opponent_name)
             
-            home_adv = 50 if match['is_home'] else -50
+            home_adv = self.home_advantage if match['is_home'] else -self.home_advantage
             expected_score = 1 / (1 + 10**((opponent_rating - (current_rating + home_adv)) / 400))
             
             if match['result'] == 'win': actual_score = 1
