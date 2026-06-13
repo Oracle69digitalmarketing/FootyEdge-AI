@@ -187,6 +187,12 @@ class FootballDataOrgClient:
             return {"response": leagues}
         return {"response": []}
 
+    async def get_league_detail(self, league_id_or_code: str):
+        res = await self._make_request(f"competitions/{league_id_or_code}")
+        if res:
+            return {"response": res}
+        return {"response": {}}
+
     async def get_team_detail(self, team_id: int):
         res = await self._make_request(f"teams/{team_id}")
         if res:
