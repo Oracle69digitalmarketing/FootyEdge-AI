@@ -40,7 +40,9 @@ FootyEdge AI is a cutting-edge platform designed to revolutionize your football 
 *   **Supabase:** An open-source Firebase alternative providing PostgreSQL database, Authentication, instant APIs, and Realtime subscriptions.
 
 **Data & APIs:**
-*   **RapidAPI (api-football-v1):** External API for comprehensive football data (fixtures, odds, statistics, players).
+*   **Football-Data.org:** Primary external API for comprehensive football data (fixtures, standings, competitions).
+*   **Sportradar:** Secondary provider for real-time scores and deep statistics.
+*   **TheStatsAPI:** Advanced statistical provider for match-level deep metrics.
 
 ---
 
@@ -53,7 +55,8 @@ Follow these instructions to set up and run the FootyEdge AI project on your loc
 *   Node.js (LTS version recommended)
 *   Python 3.8+
 *   Docker (Optional, for easy PostgreSQL/Supabase setup)
-*   RapidAPI Key (for API-Football v1)
+*   Football-Data.org API Key
+*   Sportradar API Key
 *   Supabase Project (URL and Anon Key)
 
 ### Installation
@@ -76,7 +79,9 @@ Follow these instructions to set up and run the FootyEdge AI project on your loc
         ```
     *   Create a `.env` file in the root directory and add your environment variables:
         ```
-        RAPIDAPI_KEY="YOUR_RAPIDAPI_KEY"
+        FOOTBALL_DATA_API_KEY="YOUR_KEY"
+        SPORTRADAR_API_KEY="YOUR_KEY"
+        THESTATSAPI_KEY="YOUR_KEY"
         SUPABASE_URL="YOUR_SUPABASE_URL"
         SUPABASE_KEY="YOUR_SUPABASE_ANON_KEY"
         ```

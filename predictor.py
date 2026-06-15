@@ -282,13 +282,19 @@ class FootyEdgePredictor:
 
         # Poisson-based win/draw/loss probabilities
         def poisson_prob(k, lamb):
+            if lamb <= 0: return 1.0 if k == 0 else 0.0
             return (lamb**k * math.exp(-lamb)) / math.factorial(k)
 
-        # PDF Lambda factors: λ_home = home_win_probability × 2.5, λ_away = away_win_probability × 2.0
-        # Re-using the calculated probabilities as inputs for the distribution
-        home_win_prob = p_home_win
-        away_win_prob = p_away_win
+        # PDF Refinement: Initial probabilities derived from Bayesian Elo ratings
+        # p_home = 1 / (1 + 10^((Elo_away - (Elo_home + home_adv))/400))
+        h_adv = 50 # Standard PDF factor
+        elo_home = home_strength.overall_rating
+        elo_away = away_strength.overall_rating
         
+        home_win_prob = 1 / (1 + 10**((elo_away - (elo_home + h_adv)) / 400))
+        away_win_prob = 1 / (1 + 10**(((elo_home + h_adv) - elo_away) / 400))
+        
+        # PDF Lambda factors: λ_home = home_win_probability × 2.5, λ_away = away_win_probability × 2.0
         lambda_home = home_win_prob * 2.5
         lambda_away = away_win_prob * 2.0
 

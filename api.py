@@ -74,12 +74,84 @@ else:
         logger.error(f"Failed to initialize Supabase client: {e}")
         supabase = None
 
-# --- API Clients ---
-# Initialize the router which will handle internal failovers and aggregations
-football_client = FootballRouter()
-# predictor and strategy agent use the client internally if needed
-predictor = FootyEdgePredictor()
-strategy_agent = StrategyAgent()
+# --- Imports for Modular Engines ---
+from data.service import DataService
+from probability.hybrid_engine import HybridEngine
+from market.value_engine import ValueEngine
+from risk.kelly import KellyEngine
+from risk.bankroll import BankrollManager
+from backtesting.backtester import Backtester
+
+# --- Global Service Initialization ---
+data_service = DataService()
+hybrid_engine = HybridEngine()
+value_engine = ValueEngine()
+kelly_engine = KellyEngine()
+bankroll_manager = BankrollManager()
+
+# --- Refactored Endpoints ---
+
+@router.get("/predict")
+async def get_match_prediction(home_team: str, away_team: str, home_odd: float, draw_odd: float, away_odd: float):
+    """
+    Returns AI-blended probabilities and value assessment for a specific match.
+    """
+    # In a real scenario, we would fetch historical data for the teams
+    h_hist = [] # Placeholder for now
+    a_hist = []
+    
+    match_data = {
+        "home_team": home_team,
+        "away_team": away_team,
+        "odds": {"home": home_odd, "draw": draw_odd, "away": away_odd}
+    }
+    
+    # 1. Hybrid Prediction
+    probs = hybrid_engine.predict(match_data, h_hist, a_hist)
+    
+    # 2. Value Analysis
+    value_bets = value_engine.identify_value_bets(probs, match_data['odds'])
+    
+    # 3. Recommended Staking
+    for bet in value_bets:
+        bet['recommended_stake'] = kelly_engine.calculate_stake(
+            bet['probability'], bet['odds'], bankroll_manager.get_balance()
+        )
+        
+    return {
+        "match": f"{home_team} vs {away_team}",
+        "probabilities": probs,
+        "value_bets": value_bets,
+        "bankroll": bankroll_manager.get_balance()
+    }
+
+@router.get("/daily-signals")
+async def get_daily_signals():
+    """
+    Returns all identified value bets for upcoming matches.
+    """
+    matches = await data_service.get_upcoming_matches()
+    all_signals = []
+    
+    for m in matches:
+        probs = hybrid_engine.predict(m, [], [])
+        value_bets = value_engine.identify_value_bets(probs, m['odds'])
+        if value_bets:
+            for v in value_bets:
+                v['match'] = f"{m['home_team']['name']} vs {m['away_team']['name']}"
+                v['stake'] = kelly_engine.calculate_stake(v['probability'], v['odds'], bankroll_manager.get_balance())
+                all_signals.append(v)
+                
+    return {"signals": all_signals, "count": len(all_signals)}
+
+@router.get("/backtest")
+async def run_backtest(limit: int = 100):
+    """
+    Triggers a backtest simulation on historical data.
+    """
+    bt = Backtester()
+    report = bt.run('data/club-data/matches.csv', limit=limit)
+    return {"report": report}
 
 @app.middleware("http")
 async def log_requests(request, call_next):
