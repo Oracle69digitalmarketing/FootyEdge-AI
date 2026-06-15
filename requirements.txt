@@ -8,3 +8,6 @@ python-telegram-bot
 python-dotenv
 pytest
 pytest-asyncio
+tqdm
+lightgbm
+scikit-learn
