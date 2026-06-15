@@ -270,8 +270,8 @@ export default function App() {
     if (!user) return;
     try {
       const data = await safeFetchJson(`/api/bets/user/${user.id}`);
-      setUserBets(data);
-      const settled = data.filter((b: any) => b.status === 'won' || b.status === 'lost');
+      setUserBets(data || []);
+      const settled = (data || []).filter((b: any) => b.status === 'won' || b.status === 'lost');
       const profit = settled.reduce((acc: number, b: any) => acc + (b.profit_loss || 0), 0);
       setBankroll(1000 + profit);
     } catch (err: any) {
