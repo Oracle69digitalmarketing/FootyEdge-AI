@@ -94,6 +94,21 @@ class FootballDataOrgProvider(BaseFootballProvider):
             "status": {"long": m.get('status')}
         }
 
+    async def list_players_by_team(self, team_id: int):
+        res = await self._make_request(f"teams/{team_id}")
+        if res and 'squad' in res:
+            players = []
+            for p in res['squad']:
+                players.append({
+                    "player": {
+                        "id": p.get('id'),
+                        "name": p.get('name'),
+                        "position": p.get('position'),
+                    }
+                })
+            return {"response": players}
+        return {"response": []}
+
 class SportradarProvider(BaseFootballProvider):
     def __init__(self, api_key: str):
         super().__init__(api_key)
