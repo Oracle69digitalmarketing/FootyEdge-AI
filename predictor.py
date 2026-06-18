@@ -196,11 +196,8 @@ class FootyEdgePredictor:
             logger.error(f"Global scan failure: {e}")
 
         if not all_value_bets:
-            logger.warning("No value bets found via API. Returning simulated data for UI stability.")
-            return [
-                {"home_team": "Manchester City", "away_team": "Arsenal", "market_name": "Match Winner", "selection": "Away", "odds": 4.1, "ev": 0.12, "tier": "Hot 🔥", "is_simulated": True},
-                {"home_team": "Real Madrid", "away_team": "Barcelona", "market_name": "Goals", "selection": "Over 2.5", "odds": 1.95, "ev": 0.08, "tier": "Solid", "is_simulated": True}
-            ]
+            logger.warning("No value bets found via API.")
+            return []
             
         return sorted(all_value_bets, key=lambda x: x.get('ev', 0), reverse=True)
 
