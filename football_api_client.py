@@ -18,10 +18,7 @@ class BaseFootballProvider:
         raise NotImplementedError
 
     async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
-        # Sportradar might not have a direct league fixtures endpoint in the trial tier,
-        # fallback to matches by date if needed.
-        return await self.get_matches(from_date, to_date)
-
+        try:
             # football-data.org matches endpoint can be used with competition filter
             # Mapping from league_id to PL, PD, etc. handled in FootballRouter or here?
             # For now, assume league_id is the string code (e.g., 'PL')
