@@ -60,7 +60,6 @@ supabase_key = (
     os.environ.get("SUPABASE_ANON_KEY") or
     os.environ.get("VITE_SUPABASE_ANON_KEY")
 )
-rapidapi_key = os.environ.get("RAPIDAPI_KEY") or os.environ.get("RAPID_API_KEY")
 fd_org_key = os.environ.get("FOOTBALL_DATA_API_KEY") or os.environ.get("FOOTBALL_DATA_KEY")
 sportradar_key = os.environ.get("SPORTRADAR_API_KEY")
 
@@ -89,16 +88,92 @@ value_engine = ValueEngine()
 kelly_engine = KellyEngine()
 bankroll_manager = BankrollManager()
 
+# Initialize legacy clients for compatibility
+football_client = FootballRouter()
+predictor = FootyEdgePredictor()
+strategy_agent = StrategyAgent()
+
+# --- Pydantic Models ---
+class StrategyAnalyzeRequest(BaseModel):
+    text: str
+    stake: float = 1000
+
+class PredictRequest(BaseModel):
+    home_team: str
+    away_team: str
+    odds: Dict[str, float] = Field(default={
+        "home_win": 1.85, "draw": 3.40, "away_win": 4.20,
+        "Over 2.5": 1.90, "Under 2.5": 1.90,
+        "BTTS Yes": 1.75, "BTTS No": 2.05
+    })
+
+class AnalyzeBetRequest(BaseModel):
+    home_team: str
+    away_team: str
+    market: str
+    selection: str
+    odds: float
+
+class UpdateBetStatusRequest(BaseModel):
+    status: str
+
+class TelegramBroadcastRequest(BaseModel):
+    prediction: Dict[str, Any]
+    valueBet: Dict[str, Any]
+    isPremium: bool
+
+class AccaSelection(BaseModel):
+    match_id: int
+    market: str
+    odds: float
+    selection: str
+
+class AccaRecordRequest(BaseModel):
+    user_id: str
+    selections: List[AccaSelection]
+    total_odds: float
+    stake: float
+    potential_return: float
+    bookmaker: str
+
+class SubscribeRequest(BaseModel):
+    userId: str
+    plan: str = "Premium"
+
+class BetRecordRequest(BaseModel):
+    user_id: str
+    match_id: int
+    market: str
+    selection: str
+    odds: float
+    stake: float
+
 # --- Refactored Endpoints ---
+
+@router.post("/analyze-strategy")
+async def analyze_strategy_ext(request: StrategyAnalyzeRequest):
+    """
+    Analyzes a betting strategy text and returns risk/EV assessment.
+    """
+    return strategy_agent.analyze(strategy_agent.parse_strategy(request.text), request.stake)
 
 @router.get("/predict")
 async def get_match_prediction(home_team: str, away_team: str, home_odd: float, draw_odd: float, away_odd: float):
     """
     Returns AI-blended probabilities and value assessment for a specific match.
     """
-    # In a real scenario, we would fetch historical data for the teams
-    h_hist = [] # Placeholder for now
-    a_hist = []
+    # 1. Search Teams to get IDs
+    h_search = await football_client.search_teams(home_team)
+    a_search = await football_client.search_teams(away_team)
+    
+    h_id = h_search.get('response', [{}])[0].get('team', {}).get('id')
+    a_id = a_search.get('response', [{}])[0].get('team', {}).get('id')
+    
+    h_fixtures = await football_client.get_team_fixtures(h_id) if h_id else {'response': []}
+    a_fixtures = await football_client.get_team_fixtures(a_id) if a_id else {'response': []}
+    
+    h_hist = h_fixtures.get('response', [])
+    a_hist = a_fixtures.get('response', [])
     
     match_data = {
         "home_team": home_team,
@@ -106,13 +181,13 @@ async def get_match_prediction(home_team: str, away_team: str, home_odd: float, 
         "odds": {"home": home_odd, "draw": draw_odd, "away": away_odd}
     }
     
-    # 1. Hybrid Prediction
+    # 2. Hybrid Prediction
     probs = hybrid_engine.predict(match_data, h_hist, a_hist)
     
-    # 2. Value Analysis
+    # 3. Value Analysis
     value_bets = value_engine.identify_value_bets(probs, match_data['odds'])
     
-    # 3. Recommended Staking
+    # 4. Recommended Staking
     for bet in value_bets:
         bet['recommended_stake'] = kelly_engine.calculate_stake(
             bet['probability'], bet['odds'], bankroll_manager.get_balance()
@@ -158,8 +233,6 @@ async def log_requests(request, call_next):
     logger.info(f"API Request: {request.method} {request.url.path}")
     return await call_next(request)
 
-if not rapidapi_key:
-    logger.warning("RAPIDAPI_KEY is not set. RapidAPI features disabled.")
 if not fd_org_key:
     logger.warning("FOOTBALL_DATA_API_KEY is not set. Football-Data.org features disabled.")
 if not sportradar_key:
@@ -182,71 +255,9 @@ async def health_check():
         "status": "operational",
         "supabase_connected": supabase is not None,
         "football_api_configured": football_client is not None,
-        "rapid_api_key_present": rapidapi_key is not None,
         "football_data_key_present": fd_org_key is not None,
         "environment": "production" if os.environ.get("RENDER") or os.environ.get("VERCEL") else "development"
     }
-
-# --- Pydantic Models ---
-class PredictRequest(BaseModel):
-    home_team: str
-    away_team: str
-    odds: Dict[str, float] = Field(default={
-        "home_win": 1.85, "draw": 3.40, "away_win": 4.20,
-        "Over 2.5": 1.90, "Under 2.5": 1.90,
-        "BTTS Yes": 1.75, "BTTS No": 2.05
-    })
-
-class AnalyzeBetRequest(BaseModel):
-    home_team: str
-    away_team: str
-    market: str
-    selection: str
-    odds: float
-
-class UpdateBetStatusRequest(BaseModel):
-    status: str
-
-class TelegramBroadcastRequest(BaseModel):
-    prediction: Dict[str, Any]
-    valueBet: Dict[str, Any]
-    isPremium: bool
-
-class AccaSelection(BaseModel):
-    match_id: int
-    market: str
-    odds: float
-    selection: str
-
-class AccaRecordRequest(BaseModel):
-    user_id: str
-    selections: List[AccaSelection]
-    total_odds: float
-    stake: float
-    potential_return: float
-    bookmaker: str
-
-class SubscribeRequest(BaseModel):
-    userId: str
-    plan: str = "Premium"
-
-class StrategyAnalyzeRequest(BaseModel):
-    text: str
-    stake: float = 1000
-
-class BetRecordRequest(BaseModel):
-    user_id: str
-    match_id: int
-    market: str
-    selection: str
-    odds: float
-    stake: float
-# --- Health Check ---
-
-
-@app.get("/health", summary="Root health check")
-async def root_health():
-    return await health_check()
 
 # --- Core Features ---
 @router.post("/predict", summary="Generate predictions using live odds")
@@ -992,6 +1003,8 @@ async def telegram_webhook(request: Request):
     update = await request.json()
     await bot_app.update_queue.put(Update.de_json(data=update, bot=bot_app.bot))
     return {"status": "ok"}
+
+app.include_router(router)
 
 # --- Startup Logic ---
 @app.on_event("startup")

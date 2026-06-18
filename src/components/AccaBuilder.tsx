@@ -51,7 +51,7 @@ const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGener
           <h3 className="font-bold">Acca Builder</h3>
         </div>
         <div className="flex items-center gap-2">
-          {selections.length > 0 && (
+          {(selections || []).length > 0 && (
             <>
               <button 
                 onClick={handleCopy}

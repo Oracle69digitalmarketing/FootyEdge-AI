@@ -9,6 +9,9 @@ import AccaBuilder from './components/AccaBuilder';
 import Portfolio from './components/Portfolio';
 import HowToUse from './components/HowToUse';
 import H2HVisualizer from './components/H2HVisualizer';
+import PredictionCard from './components/PredictionCard';
+import StrategyView from './components/StrategyView';
+import FeedItem from './components/FeedItem';
 import { Activity, Terminal, TrendingUp, History, ShieldCheck, LogOut, LogIn, PlusCircle, AlertTriangle, Loader2, ChevronRight, Database, Search, User, CheckCircle, XCircle, Mail, Lock, Calendar, Wallet, Clock, DollarSign, Zap, Layers, Send, ExternalLink, Crown, Bell, HelpCircle, RefreshCw, Server, Menu, X, CreditCard, BookOpen, BrainCircuit, Shield, Cpu, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
@@ -754,7 +757,7 @@ export default function App() {
                        <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest">High EV Only</span>
                     </div>
                     <div className="space-y-4">
-                      {liveValueBets.length > 0 ? liveValueBets.slice(0, 4).map((bet, i) => (
+                      {(liveValueBets || []).length > 0 ? ((liveValueBets || []).slice(0, 4)).map((bet, i) => (
                         <div key={i} className="p-5 bg-zinc-900/50 border border-white/5 rounded-3xl space-y-3 hover:border-orange-500/30 transition-all group">
                            <div className="flex justify-between items-start">
                               <div className="space-y-1">
@@ -860,7 +863,7 @@ export default function App() {
                             <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest ml-4">Home Side</label>
                             <select value={selectedHome} onChange={(e) => setSelectedHome(e.target.value)} className="w-full bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 focus:border-orange-500 transition-colors appearance-none cursor-pointer">
                               <option value="">Select Home Team</option>
-                              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                              {(teams || []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
                           </div>
                           <div className="md:col-span-1 text-center">
@@ -870,7 +873,7 @@ export default function App() {
                             <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest ml-4">Away Side</label>
                             <select value={selectedAway} onChange={(e) => setSelectedAway(e.target.value)} className="w-full bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 focus:border-orange-500 transition-colors appearance-none cursor-pointer">
                               <option value="">Select Away Team</option>
-                              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                              {(teams || []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
                           </div>
                       </div>
@@ -924,7 +927,7 @@ export default function App() {
                 <div className="pt-12 border-t border-zinc-800/50">
                   <h3 className="text-xl font-bold mb-8">Generated History</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all">
-                    {predictions.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
+                    {(predictions || []).map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
                   </div>
                 </div>
               </div>
@@ -974,319 +977,3 @@ export default function App() {
   );
 }
 
-function StatItem({ icon, label, value }: { icon: any, label: string, value: string | number }) {
-  return (
-    <div className="bg-black/40 border border-white/5 p-6 rounded-3xl space-y-2">
-      <div className="flex items-center gap-3">
-        {icon}
-        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{label}</p>
-      </div>
-      <p className="text-2xl font-bold">{value || '0'}</p>
-    </div>
-  );
-}
-
-function AdminActionCard({ title, description, onClick, loading, icon }: any) {
-  return (
-    <button 
-      onClick={onClick} 
-      disabled={loading} 
-      className="w-full text-left bg-[#111] border border-zinc-800 p-8 rounded-[2rem] space-y-4 hover:border-orange-500/40 hover:scale-[1.02] transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-    >
-      <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-white/5 group-hover:bg-zinc-800 transition-colors">
-        {loading ? <Loader2 className="animate-spin text-orange-500" /> : icon}
-      </div>
-      <div className="space-y-1">
-        <h3 className="text-xl font-bold group-hover:text-orange-500 transition-colors">{title}</h3>
-        <p className="text-sm text-zinc-500">{description}</p>
-      </div>
-    </button>
-  );
-}
-
-function DateToggle({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) {
-  return (
-    <button 
-      onClick={onClick}
-      className={cn(
-        "px-6 py-2 rounded-xl text-xs font-bold transition-all",
-        active ? "bg-orange-500 text-black shadow-lg" : "text-zinc-500 hover:text-white"
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) {
-  return <button onClick={onClick} className={cn("w-full flex items-center gap-3 p-4 rounded-2xl transition-all", active ? "bg-orange-500 text-black font-bold shadow-[0_10px_20px_-5px_rgba(249,115,22,0.4)]" : "text-zinc-500 hover:text-white hover:bg-white/5")}><span>{icon}</span><span className="">{label}</span></button>;
-}
-
-function MatchCard({ match, onPlaceBet, onAddToAcca, isAdded }: { match: any, onPlaceBet: any, onAddToAcca: any, selectedBookmaker: string, isAdded: (id: string) => boolean }) {
-  return (
-    <div className="bg-[#111] border border-zinc-800 rounded-[2rem] p-6 space-y-6 hover:border-zinc-700 transition-all group">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            {match.homeTeam.logo ? <img src={match.homeTeam.logo} alt="" className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-zinc-800 rounded-full" />}
-            <span className="font-bold text-sm">{match.homeTeam.name}</span>
-          </div>
-          <span className="text-zinc-700 font-mono text-[10px]">VS</span>
-          <div className="flex items-center gap-2">
-            {match.awayTeam.logo ? <img src={match.awayTeam.logo} alt="" className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-zinc-800 rounded-full" />}
-            <span className="font-bold text-sm">{match.awayTeam.name}</span>
-          </div>
-        </div>
-      </div>
-      
-      <div className="flex items-center justify-between pt-4 border-t border-zinc-800/50">
-        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{match.league}</span>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => onAddToAcca(match, 'home_win', 1.95)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold transition-all",
-              isAdded(`${match.id}-home_win`) 
-                ? "bg-orange-500 text-black" 
-                : "bg-zinc-800 text-white hover:bg-zinc-700"
-            )}
-          >
-            {isAdded(`${match.id}-home_win`) ? <CheckCircle className="w-3 h-3" /> : <PlusCircle className="w-3 h-3" />}
-            {isAdded(`${match.id}-home_win`) ? "Added" : "Add to Acca"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface PredictionCardProps {
-  prediction: Prediction;
-  onGenerateCode: () => void;
-  isUserPremium: boolean;
-  isAdmin: boolean;
-  onBroadcast: () => void;
-  setShowPremiumModal: (show: boolean) => void;
-}
-
-function PredictionCard({ prediction, onGenerateCode, isUserPremium, isAdmin, onBroadcast, setShowPremiumModal }: PredictionCardProps) {
-  return (
-    <div className="bg-[#111] border border-zinc-800 rounded-[2rem] p-8 space-y-8 relative overflow-hidden group">
-      <div className="flex justify-between items-start relative z-10">
-        <div className="space-y-1">
-          <h3 className="text-2xl font-bold">{prediction.home_team} <span className="text-zinc-700 mx-2">vs</span> {prediction.away_team}</h3>
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em]">
-            {prediction.created_at ? new Date(prediction.created_at).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date Pending'}
-          </p>
-        </div>
-        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-          <BrainCircuit className="w-6 h-6 text-orange-500" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 relative z-10">
-        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-white/5 space-y-4">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Expected Goals (xG)</p>
-          <div className="flex justify-between items-end">
-            <div className="text-center">
-              <p className="text-2xl font-bold">{(prediction.home_xg ?? 0).toFixed(2)}</p>
-              <p className="text-[10px] text-zinc-600 uppercase">Home</p>
-            </div>
-            <div className="h-8 w-px bg-zinc-800 mb-2" />
-            <div className="text-center">
-              <p className="text-2xl font-bold">{(prediction.away_xg ?? 0).toFixed(2)}</p>
-              <p className="text-[10px] text-zinc-600 uppercase">Away</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-white/5 space-y-4">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">AI Confidence</p>
-          <div className="flex items-center gap-4">
-             <div className="relative w-16 h-16 flex items-center justify-center">
-                <svg className="w-full h-full -rotate-90">
-                  <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-zinc-800" />
-                  <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" strokeDasharray={175.9} strokeDashoffset={175.9 * (1 - (prediction.confidence ?? 0))} className="text-orange-500" />
-                </svg>
-                <p className="absolute text-xs font-bold">{((prediction.confidence ?? 0) * 100).toFixed(0)}%</p>
-             </div>
-             <p className="text-sm text-zinc-400 leading-tight">High probability matchup detected by Neural Net.</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4 relative z-10">
-        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Match Outcome Probabilities</p>
-        <div className="grid grid-cols-3 gap-3">
-          <ProbStat label="Home" value={prediction.home_prob} color="bg-orange-500" />
-          <ProbStat label="Draw" value={prediction.draw_prob} color="bg-zinc-700" />
-          <ProbStat label="Away" value={prediction.away_prob} color="bg-blue-500" />
-        </div>
-      </div>
-
-      <div className="space-y-4 relative z-10">
-        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Market Insights</p>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-400">Over 2.5 Goals</span>
-            <span className={cn("font-black", (prediction.over_2_5_prob || 0) > 0.6 ? "text-green-500" : "text-white")}>
-              {((prediction.over_2_5_prob || 0) * 100).toFixed(0)}%
-            </span>
-          </div>
-          <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 flex items-center justify-center gap-2">
-            <span className="text-xs font-bold text-zinc-400">BTTS:</span>
-            <span className={cn("font-black", (prediction.btts_prob || 0) > 0.6 ? "text-green-500" : "text-white")}>
-              {((prediction.btts_prob || 0) * 100).toFixed(0)}%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {prediction.home_id && prediction.away_id && (
-        <div className="relative z-10">
-          <H2HVisualizer team1Id={prediction.home_id} team2Id={prediction.away_id} />
-        </div>
-      )}
-
-      <div className="pt-6 border-t border-zinc-800 flex justify-between items-center relative z-10">
-        <div className="space-y-1">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Oracle Selection</p>
-          <p className="text-sm font-bold text-white">{prediction.best_bet_market}: <span className="text-orange-500">{prediction.best_bet_selection}</span></p>
-        </div>
-        <div className="text-right space-y-1">
-          <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Market Odds</p>
-          <p className="text-xl font-black text-green-500">@{(prediction.best_bet_odds ?? 0).toFixed(2)}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProbStat({ label, value, color }: { label: string, value: number, color: string }) {
-  return (
-    <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-2">
-      <div className="flex justify-between items-center">
-        <span className="text-[10px] font-mono text-zinc-500 uppercase">{label}</span>
-        <span className="text-xs font-bold">{((value ?? 0) * 100).toFixed(0)}%</span>
-      </div>
-      <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
-        <div className={cn("h-full transition-all duration-1000", color)} style={{ width: `${(value ?? 0) * 100}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function StrategyView() {
-  const [text, setText] = useState('');
-  const [analysis, setAnalysis] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleAnalyze = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/analyze-strategy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      });
-      const data = await res.json();
-      setAnalysis(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-8 md:p-12 space-y-8">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center border border-orange-500/20">
-            <Zap className="text-orange-500" />
-          </div>
-          <div className="space-y-1">
-            <h2 className="text-3xl font-bold">AI Strategy Analyzer</h2>
-            <p className="text-zinc-500 text-sm">Describe your betting plan in natural language. Use commas to separate selections.</p>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <textarea 
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="e.g., Man City win, Chelsea vs Arsenal draw, Over 2.5 in Liverpool match"
-            className="w-full bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-8 h-48 focus:outline-none focus:border-orange-500 transition-colors resize-none leading-relaxed"
-          />
-          <button 
-            onClick={handleAnalyze}
-            disabled={loading || !text}
-            className="w-full bg-orange-500 text-black font-black py-6 rounded-[2rem] flex items-center justify-center gap-4 hover:scale-[1.01] transition-all shadow-[0_20px_40px_-10px_rgba(249,115,22,0.3)] disabled:opacity-50 disabled:scale-100 uppercase tracking-widest"
-          >
-            {loading ? <Loader2 className="animate-spin w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
-            Analyze Strategy Risk & EV
-          </button>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {analysis && (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-8"
-          >
-            <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-10 space-y-8">
-              <h3 className="text-xl font-bold flex items-center gap-3"><Activity className="w-5 h-5 text-orange-500" /> Risk Assessment</h3>
-              <div className="space-y-6">
-                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
-                  <span className="text-zinc-500 text-sm">Risk Level</span>
-                  <span className={cn(
-                    "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest",
-                    analysis.metrics?.risk_score === 'Low' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
-                    analysis.metrics?.risk_score === 'Medium' ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'
-                  )}>{analysis.metrics?.risk_score || 'Calculating...'}</span>
-                </div>
-                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
-                  <span className="text-zinc-500 text-sm">Expected Value (EV)</span>
-                  <span className="text-green-500 font-black text-lg">{analysis.metrics?.expected_value || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
-                  <span className="text-zinc-500 text-sm">Combined Odds</span>
-                  <span className="font-black text-lg">@{analysis.metrics?.combined_odds_est || '0.00'}</span>
-                </div>
-                <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
-                  <span className="text-zinc-500 text-sm">Win Probability</span>
-                  <span className="font-black text-lg text-orange-500">{analysis.metrics?.win_probability || '0%'}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[#111] border border-zinc-800 rounded-[2.5rem] p-10 space-y-8">
-              <h3 className="text-xl font-bold flex items-center gap-3"><CheckCircle className="w-5 h-5 text-green-500" /> AI Recommendation</h3>
-              <div className="bg-zinc-900/50 p-6 rounded-2xl border-l-4 border-l-orange-500">
-                <p className="text-white text-sm leading-relaxed font-medium italic">"{analysis.recommendation}"</p>
-              </div>
-              <div className="pt-6 border-t border-zinc-800">
-                <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-4">Internal Agent Summary</p>
-                <p className="text-xs text-zinc-400 leading-relaxed">{analysis.summary}</p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-
-function FeedItem({ title, time, detail }: { title: string, time: string, detail: string }) {
-  return (
-    <div className="p-4 bg-zinc-900/30 border border-white/5 rounded-2xl space-y-1">
-      <div className="flex justify-between items-center">
-        <p className="text-xs font-bold text-zinc-300">{title}</p>
-        <p className="text-[10px] font-mono text-zinc-600">{time}</p>
-      </div>
-      <p className="text-[10px] text-zinc-500 leading-relaxed">{detail}</p>
-    </div>
-  );
-}

@@ -54,14 +54,21 @@ class DataService:
         cached = self._get_cache(cache_key)
         if cached: return cached
 
-        # In a production scenario, this would call specialized endpoints
-        # For now, we aggregate from available router methods
+        # Fetch actual team details and recent fixtures to calculate stats
+        team_detail = await self.router.get_team_detail(team_id)
+        fixtures = await self.router.get_team_fixtures(team_id, last=10)
+        
+        # Simple aggregation (can be improved with more granular logic)
+        matches = fixtures.get('response', [])
+        goals_scored = sum([m.get('goals', {}).get('home', 0) if m.get('teams', {}).get('home', {}).get('id') == team_id else m.get('goals', {}).get('away', 0) for m in matches])
+        goals_conceded = sum([m.get('goals', {}).get('away', 0) if m.get('teams', {}).get('home', {}).get('id') == team_id else m.get('goals', {}).get('home', 0) for m in matches])
+        
         stats = {
             "team_id": team_id,
             "league_id": league_id,
-            "form": "WDLWW", # Placeholder if API doesn't provide it
-            "avg_goals_scored": 1.5,
-            "avg_goals_conceded": 1.2
+            "form": "N/A", # Needs further implementation if needed
+            "avg_goals_scored": goals_scored / len(matches) if matches else 0,
+            "avg_goals_conceded": goals_conceded / len(matches) if matches else 0
         }
         self._set_cache(cache_key, stats)
         return stats
