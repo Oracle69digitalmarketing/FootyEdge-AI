@@ -186,11 +186,7 @@ class FootballAPIClient:
 
     def _mark_provider_failure(self, provider_name: str):
         self.circuit_breaker[provider_name] = {"status": "unhealthy", "last_failure": datetime.now()}
-async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
-    # Sportradar might not have a direct league fixtures endpoint in the trial tier,
-    # fallback to matches by date if needed.
-    return await self.get_matches(from_date, to_date)
-
+    async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue
