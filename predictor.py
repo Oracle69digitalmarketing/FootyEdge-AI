@@ -14,7 +14,6 @@ from pathlib import Path
 from agents.team_strength import TeamStrengthAgent
 from agents.tactical_agent import TacticalAgent
 from agents.player_impact import PlayerImpactAgent
-from agents.three_six_five_scores import ThreeSixFiveScoresClient
 from agents.models import TeamStrength, ValueBet
 from football_api_client import FootballAPIClient
 
@@ -39,8 +38,6 @@ class FootyEdgePredictor:
             self.supabase = None
 
         self.football_client = FootballAPIClient() 
-            
-        self.three_six_five_client = ThreeSixFiveScoresClient()
         
         self.cache = {}
         self.cache_ttl = 3600

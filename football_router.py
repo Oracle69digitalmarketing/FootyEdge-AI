@@ -2,8 +2,6 @@ import logging
 from typing import Dict, List, Any, Optional
 from football_api_client import FootballAPIClient
 from football_data_org_client import FootballDataOrgClient
-from sofascore_client import SofascoreClient
-from agents.three_six_five_scores import ThreeSixFiveScoresClient
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +13,6 @@ class FootballRouter:
     def __init__(self, fd_client: FootballDataOrgClient = None, aggregator_client: FootballAPIClient = None):
         self.fd_client = fd_client or FootballDataOrgClient()
         self.aggregator_client = aggregator_client or FootballAPIClient()
-        self.sofascore = SofascoreClient()
-        self.three_six_five = ThreeSixFiveScoresClient()
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None, league_id: Any = None) -> Dict:
         """Fetches matches, aggregating from available clients."""
@@ -123,10 +119,7 @@ class FootballRouter:
         return await self.aggregator_client.get_h2h(team1_id, team2_id)
 
     async def list_players_by_team(self, team_id: Any):
-        try:
-            res = await self.fd_client.list_players_by_team(team_id)
-            if res and res.get('response'): return res
-        except: pass
+        # FootballDataOrgClient does not support this.
         return await self.aggregator_client.list_players_by_team(team_id)
 
     async def get_player_detail(self, player_id: Any):
@@ -145,6 +138,3 @@ class FootballRouter:
 
     async def get_league_detail(self, league_id: Any):
         return await self.fd_client.get_league_detail(league_id)
-
-    def get_365scores_match_url(self, home_team: str, away_team: str) -> str:
-        return self.three_six_five.get_365scores_match_url(home_team, away_team)
