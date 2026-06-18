@@ -906,9 +906,9 @@ export default function App() {
                     <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
                     <p className="text-zinc-500 font-bold animate-pulse">Oracle is analyzing upcoming fixtures...</p>
                   </div>
-                ) : dailyPicks.length > 0 ? (
+                ) : (dailyPicks || []).length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {dailyPicks.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
+                    {(dailyPicks || []).map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
                   </div>
                 ) : (
                   <div className="col-span-full py-32 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
