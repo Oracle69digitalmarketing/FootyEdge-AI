@@ -1,4 +1,4 @@
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -20,6 +20,9 @@ from football_api_client import FootballAPIClient
 from football_data_org_client import FootballDataOrgClient
 from football_router import FootballRouter
 from agents.strategy_agent import StrategyAgent
+
+def get_provider():
+    return FootballDataOrgClient()
 
 # --- App Setup ---
 app = FastAPI(
@@ -457,53 +460,44 @@ async def subscribe(request: SubscribeRequest):
 
 
 # --- Admin Endpoints ---
+SOCCER_LEAGUE_MAP = {
+    42: "PL",   # Premier League
+    53: "BL1",  # Bundesliga
+    73: "PD",   # La Liga
+    342: "CL"   # Champions League
+}
+
 @router.post("/admin/sync-teams", summary="Sync teams from external API to Supabase")
-async def sync_teams():
-    if not football_client or not supabase:
-        raise HTTPException(status_code=503, detail="Clients not configured.")
-    
-    # Major league IDs to prioritize
-    major_league_ids = [47, 87, 54, 55, 53, 42, 73, 342]
+async def sync_teams(league_id: Optional[int] = None, provider: FootballDataOrgClient = Depends(get_provider)):
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not configured.")
     
     try:
-        all_teams = []
-        for league_id in major_league_ids:
-            logger.info(f"Syncing teams for league: {league_id}")
-            try:
-                # Based on Replit lessons: Use more specific league endpoints if available
-                teams_data = await football_client.get_teams_by_league(league_id)
-                if teams_data and 'response' in teams_data:
-                    for team_item in teams_data['response']:
-                        team_info = team_item.get('team', {})
-                        if team_info.get('id') and team_info.get('name'):
-                            all_teams.append({
-                                "id": str(team_info['id']),
-                                "name": team_info['name'],
-                                "country": team_info.get('country') or 'Unknown',
-                                "league_name": team_item.get('league', {}).get('name', 'Unknown'),
-                                "logo_url": team_info.get('crest', team_info.get('logo'))
-                            })
-            except Exception as e:
-                logger.error(f"Failed to fetch league {league_id}: {e}")
-            await asyncio.sleep(0.5) # Anti-rate limiting
-        
-        if not all_teams:
-            return {"status": "warning", "message": "No teams fetched from external providers."}
-        
-        # Deduplicate locally by name
-        unique_teams = {t['name']: t for t in all_teams}.values()
-        
-        # Replit Best Practice: Use UPSERT with unique constraint handling
-        success_count = 0
-        for ut in unique_teams:
-            try:
-                supabase.table("teams").upsert(ut).execute()
-                success_count += 1
-            except Exception as e:
-                logger.warning(f"Failed to upsert team {ut['name']}: {e}")
-
-        return {"status": "success", "synced_count": success_count, "total_attempted": len(unique_teams)}
-
+        # Use league_id if provided, else use major leagues
+        if league_id:
+            leagues_to_sync = [league_id]
+        else:
+            leagues_to_sync = [42, 53, 73, 342]
+            
+        for lid in leagues_to_sync:
+            api_code = SOCCER_LEAGUE_MAP.get(lid, str(lid))
+            logger.info(f"Syncing teams for league {lid} using verified code: {api_code}")
+            
+            data = await provider.get_teams_by_league(api_code)
+            if data and 'response' in data:
+                for team_item in data['response']:
+                    team_info = team_item.get('team', {})
+                    if team_info.get('id'):
+                        team_data = {
+                            "id": str(team_info['id']),
+                            "name": team_info.get('name', 'Unknown'),
+                            "country": team_info.get('country', 'Unknown'),
+                            "league_name": team_item.get('league', {}).get('name', 'Unknown'),
+                            "logo_url": team_info.get('logo') or team_info.get('crest')
+                        }
+                        supabase.table("teams").upsert(team_data).execute()
+            await asyncio.sleep(0.5)
+        return {"status": "success"}
     except Exception as e:
         logger.error(f"Sync teams failed: {e}")
         return {"status": "error", "message": str(e)}

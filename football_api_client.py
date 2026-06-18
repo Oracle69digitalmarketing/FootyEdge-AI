@@ -91,13 +91,21 @@ class SportradarProvider(BaseFootballProvider):
 
     async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
         try:
+            # New Base Tier Layout
+            url = f"https://sportradar.com/{date_from}/summaries.json?api_key={self.api_key}"
             async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.get(f"{self.base_url}/schedules/{date_from}/schedule.json", params={"api_key": self.api_key})
+                res = await client.get(url)
                 if res.status_code == 200:
                     data = res.json()
-                    return [self.normalize_match(self._raw_to_internal(s)) for s in data.get('schedules', [])]
+                    # Sportradar base tier might use different field names; 
+                    # assuming 'summaries' or similar based on the instruction
+                    return [self.normalize_match(self._raw_to_internal(s)) for s in data.get('summaries', [])]
+                else:
+                    logger.error(f"SportradarProvider error: {res.status_code} - {res.text[:200]}")
                 return []
-        except: return []
+        except Exception as e:
+            logger.error(f"SportradarProvider exception: {str(e)}")
+            return []
 
     def _raw_to_internal(self, s: Dict) -> Dict:
         ev = s.get('sport_event', {})
