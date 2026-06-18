@@ -751,11 +751,11 @@ async def search_sofascore_players(q: str):
 @router.post("/telegram/broadcast", summary="Broadcast a message to Telegram channel")
 async def telegram_broadcast(request: TelegramBroadcastRequest):
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "@footyedge_signals")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 
-    if not bot_token:
-        logger.warning("TELEGRAM_BOT_TOKEN not set. Simulating broadcast.")
-        return {"success": True, "message": "Simulated: Bot token missing."}
+    if not bot_token or not chat_id:
+        logger.warning("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set. Simulating broadcast.")
+        return {"success": True, "message": "Simulated: Bot configuration missing."}
 
     message = f"⚽ *{request.prediction.get('home_team')} vs {request.prediction.get('away_team')}*\n\n"
     message += f"🎯 *Value Bet Found!*\n"
@@ -764,7 +764,9 @@ async def telegram_broadcast(request: TelegramBroadcastRequest):
 
     if request.isPremium:
         message = "💎 *PREMIUM SIGNAL*\n" + message
-        chat_id = os.environ.get("TELEGRAM_PREMIUM_CHAT_ID", "@footyedge_premium")
+        chat_id = os.environ.get("TELEGRAM_PREMIUM_CHAT_ID")
+        if not chat_id:
+             return {"success": False, "error": "Premium chat ID not configured."}
 
     try:
         async with httpx.AsyncClient() as client:
