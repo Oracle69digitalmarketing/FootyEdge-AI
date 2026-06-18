@@ -240,16 +240,8 @@ if not sportradar_key:
 if not supabase_url or not supabase_key:
     logger.warning("Supabase environment variables are not set. Database features will be unavailable.")
 
-@app.get("/")
-@app.head("/")
-async def root():
-    return {"message": "FootyEdge AI API is running.", "status": "operational", "health": "/health", "api_health": "/api/health"}
+# --- Core Features ---
 
-@router.get("/")
-async def api_root():
-    return {"message": "FootyEdge AI API Router is active.", "docs": "/docs"}
-
-@router.get("/health")
 async def health_check():
     return {
         "status": "operational",
