@@ -18,7 +18,20 @@ class BaseFootballProvider:
         raise NotImplementedError
 
     async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
-        return []
+        # Sportradar might not have a direct league fixtures endpoint in the trial tier,
+        # fallback to matches by date if needed.
+        return await self.get_matches(from_date, to_date)
+
+            # football-data.org matches endpoint can be used with competition filter
+            # Mapping from league_id to PL, PD, etc. handled in FootballRouter or here?
+            # For now, assume league_id is the string code (e.g., 'PL')
+            res = await self._make_request(f"competitions/{league_id}/matches", {"dateFrom": from_date, "dateTo": to_date})
+            if res and 'matches' in res:
+                return [self.normalize_match(self._raw_to_internal(m)) for m in res['matches']]
+            return []
+        except Exception as e:
+            logger.error(f"FootballDataOrgProvider get_fixtures error: {e}")
+            return []
 
     def normalize_match(self, match: Dict) -> Dict:
         # Enforce strict schema: fixture, teams, league, goals, status
@@ -107,6 +120,9 @@ class SportradarProvider(BaseFootballProvider):
             logger.error(f"SportradarProvider exception: {str(e)}")
             return []
 
+    async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
+        return await self.get_matches(from_date, to_date)
+
     def _raw_to_internal(self, s: Dict) -> Dict:
         ev = s.get('sport_event', {})
         st = s.get('sport_event_status', {})
@@ -173,8 +189,11 @@ class FootballAPIClient:
 
     def _mark_provider_failure(self, provider_name: str):
         self.circuit_breaker[provider_name] = {"status": "unhealthy", "last_failure": datetime.now()}
+async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
+    # Sportradar might not have a direct league fixtures endpoint in the trial tier,
+    # fallback to matches by date if needed.
+    return await self.get_matches(from_date, to_date)
 
-    async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
         for provider in self.providers:
             provider_name = provider.__class__.__name__
             if not self._is_provider_healthy(provider_name): continue
