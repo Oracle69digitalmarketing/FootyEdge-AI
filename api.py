@@ -636,33 +636,56 @@ async def seed_database():
         return JSONResponse(status_code=500, content={"status": "error", "detail": f"Seeding failed: {str(e)}"})
 
 
-@router.get("/admin/stats", summary="Get admin dashboard statistics")
-async def get_admin_stats():
+@router.get("/admin/metrics", summary="Computes system accuracy matrices and portfolio yield")
+async def get_admin_model_metrics():
+    """
+    Computes system accuracy matrices and portfolio yield parameters 
+    for the admin metrics dashboard interface.
+    """
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    
-    users_response = supabase.table("profiles").select("id", count="exact").execute()
-    premium_users_response = supabase.table("profiles").select("id", count="exact").eq("is_premium", True).execute()
-    
-    total_premium = premium_users_response.count or 0
-    estimated_daily_revenue = (total_premium * 35000) / 30
-    
     try:
-        logs_response = supabase.table("agent_logs").select("success").order("created_at", desc=True).limit(100).execute()
-        if logs_response.data:
-            success_count = sum(log['success'] for log in logs_response.data)
-            bot_health = (success_count / len(logs_response.data)) * 100
-        else:
-            bot_health = 100.0
-    except Exception:
-        bot_health = 100.0
-    
-    return {
-        "total_users": users_response.count,
-        "premium_subs": premium_users_response.count,
-        "daily_revenue": round(estimated_daily_revenue, 2),
-        "bot_health": round(bot_health, 2)
-    }
+        # Fetch records
+        preds = supabase.table("predictions").select("*").execute()
+        matches = supabase.table("matches").select("id, home_goals, away_goals").execute()
+        
+        if not preds.data or not matches.data:
+            return {"status": "no_data", "message": "Seeding validation queues..."}
+            
+        p_df = pd.DataFrame(preds.data)
+        m_df = pd.DataFrame(matches.data).rename(columns={"id": "match_id"}).dropna()
+        
+        df = pd.merge(p_df, m_df, on="match_id", how="inner")
+        if df.empty:
+            return {"status": "no_completed_fixtures"}
+            
+        # Outcomes categorization mapping
+        df['actual'] = df.apply(
+            lambda r: "Home Win" if r['home_goals'] > r['away_goals'] else ("Draw" if r['home_goals'] == r['away_goals'] else "Away Win"), 
+            axis=1
+        )
+        
+        df['success'] = df['best_bet_selection'] == df['actual']
+        df['profit'] = df.apply(lambda r: (100 * r['best_bet_odds']) - 100 if r['success'] else -100, axis=1)
+        
+        # Calculate final metrics arrays
+        total_fixtures = len(df)
+        successful_predictions = int(df['success'].sum())
+        accuracy_rate = float((successful_predictions / total_fixtures) * 100)
+        net_profit = float(df['profit'].sum())
+        
+        return {
+            "status": "success",
+            "summary": {
+                "total_games_analyzed": total_fixtures,
+                "successful_picks": successful_predictions,
+                "model_accuracy_percentage": round(accuracy_rate, 2),
+                "simulated_net_profit_usd": round(net_profit, 2),
+                "simulated_roi_percentage": round((net_profit / (total_fixtures * 100)) * 100, 2)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Metrics calculations generation error: {str(e)}")
 
 
 @router.get("/admin/activity", summary="Get recent system activity logs")
