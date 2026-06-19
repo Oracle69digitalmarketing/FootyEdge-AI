@@ -91,7 +91,7 @@ def run_pipeline():
             print(f"🔄 Executing loop sequence for league context: {league}")
             # Note: league mapping to soccerdata needs attention if not direct
             league_short = league.split('-')[1] if '-' in league else league
-            fbref = sd.FBref(leagues=league_short, seasons=CURRENT_SEASON)
+            render_tmp_cache = os.path.join("/tmp", "soccerdata_cache"); fbref = sd.FBref(leagues=league_short, seasons=CURRENT_SEASON, data_dir=render_tmp_cache)
             schedule = fbref.read_schedule().reset_index()
             if schedule.empty:
                 continue
