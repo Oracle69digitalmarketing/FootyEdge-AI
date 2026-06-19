@@ -230,10 +230,10 @@ export default function App() {
 
   const fetchTerminalStats = useCallback(async () => {
     try {
-      const data = await safeFetchJson('/api/dashboard/stats');
+      const data = await safeFetchJson('/api/admin/metrics');
       setTerminalStats(data);
     } catch (err) {
-      console.error("Failed to fetch dashboard stats:", err);
+      console.error("Failed to fetch admin metrics:", err);
     }
   }, []);
 
