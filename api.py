@@ -70,7 +70,8 @@ app = FastAPI(
     title="FootyEdge AI - Production Betting Analysis",
     version="3.0.0",
     description="Provides sophisticated, production-ready match predictions and betting analysis.",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False
 )
 
 # Comprehensive ALLOWED_ORIGINS for all deployment scenarios
@@ -348,6 +349,7 @@ async def analyze_bet(request: AnalyzeBetRequest):
 
 
 @router.get("/cron-trigger")
+@router.get("/cron-trigger/")
 async def manual_cron_trigger(background_tasks: BackgroundTasks):
     """
     Secure verification endpoint. 
