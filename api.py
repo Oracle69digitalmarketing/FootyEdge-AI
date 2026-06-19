@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from prediction_pipeline import run_pipeline
+from backup_manager import run_database_backup
 
 # Load environment variables from .env file
 load_dotenv()
@@ -33,16 +34,25 @@ def get_provider():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handles automatic tasks on app startup and shutdown."""
-    logger.info("⏰ Starting internal background cron scheduler...")
+    logger.info("⏰ Waking up internal application cron engines...")
     
     # Schedule the open-source predictive pipeline
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         run_pipeline,
         trigger=CronTrigger(hour=2, minute=0),
-        id="nightly_football_sync",
+        id="nightly_prediction_sync",
         replace_existing=True
     )
+    
+    # Schedule the weekly database backup
+    scheduler.add_job(
+        run_database_backup,
+        trigger=CronTrigger(day_of_week="sun", hour=3, minute=0),
+        id="weekly_database_backup",
+        replace_existing=True
+    )
+    
     scheduler.start()
     
     # Configure Telegram Webhook
@@ -361,6 +371,13 @@ async def manual_cron_trigger(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_pipeline)
     
     # Returning a raw plain text string takes 0.001 seconds and consumes negligible bandwidth
+    return "OK"
+
+@router.get("/admin/backup-now", response_class=PlainTextResponse)
+@router.get("/admin/backup-now/", response_class=PlainTextResponse)
+async def trigger_instant_backup(background_tasks: BackgroundTasks):
+    """Secure endpoint to force an immediate snapshot backup to Supabase Storage."""
+    background_tasks.add_task(run_database_backup)
     return "OK"
 
 # --- Database Endpoints ---
