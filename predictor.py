@@ -193,7 +193,7 @@ class FootyEdgePredictor:
                 if isinstance(res, list):
                     all_value_bets.extend(res)
         except Exception as e:
-            logger.error(f"Global scan failure: {e}")
+            logger.error(f"Global scan failure: {e}", exc_info=True)
 
         if not all_value_bets:
             logger.warning("No value bets found via API.")
