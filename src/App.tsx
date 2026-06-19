@@ -15,7 +15,6 @@ import FeedItem from './components/FeedItem';
 import MatchCard from './components/MatchCard';
 import { StatItem, AdminActionCard, DateToggle, NavItem } from './components/UI';
 import { Activity, Terminal, TrendingUp, History, ShieldCheck, LogOut, LogIn, PlusCircle, AlertTriangle, Loader2, ChevronRight, Database, Search, User, CheckCircle, XCircle, Mail, Lock, Calendar, Wallet, Clock, DollarSign, Zap, Layers, Send, ExternalLink, Crown, Bell, HelpCircle, RefreshCw, Server, Menu, X, CreditCard, BookOpen, BrainCircuit, Shield, Cpu, BarChart3 } from 'lucide-react';
-import AdminMetrics from './pages/AdminMetrics';
 import PredictionsDashboard from './pages/PredictionsDashboard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
@@ -79,7 +78,7 @@ export default function App() {
   const [selectedHome, setSelectedHome] = useState<string>('');
   const [selectedAway, setSelectedAway] = useState<string>('');
   const [predicting, setPredicting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'predictions' | 'value' | 'players' | 'portfolio' | 'acca' | 'premium' | 'admin' | 'admin-metrics' | 'teams' | 'pricing' | 'how-to-use' | 'strategy'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'predictions' | 'value' | 'players' | 'portfolio' | 'acca' | 'premium' | 'teams' | 'pricing' | 'how-to-use' | 'strategy'>('dashboard');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [playerQuery, setPlayerQuery] = useState('');
@@ -145,7 +144,6 @@ export default function App() {
   }, [activeTab, picksDate, fetchDailyPicks]);
   const [syncingTeams, setSyncingTeams] = useState(false);
   const [syncingPlayers, setSyncingPlayers] = useState(false);
-  const [seedingData, setSeedingData] = useState(false);
 
   const [dashboardStats, setTerminalStats] = useState<any>({
     total_predictions: "0",
@@ -383,19 +381,6 @@ export default function App() {
     handleScanValueBets();
   }, [user, fetchTeams, fetchPredictions, fetchValueBets, fetchTerminalStats, fetchUserBets, handleScanValueBets]);
 
-  const handleSeedDatabase = useCallback(async () => {
-    setSeedingData(true);
-    try {
-      await safeFetchJson('/api/admin/seed-database', { method: 'POST' });
-      flashMessage(setSuccess, "Database seeded successfully.");
-      fetchTeams();
-    } catch (err: any) {
-      flashMessage(setError, "Seeding failed: " + err.message);
-    } finally {
-      setSeedingData(false);
-    }
-  }, [fetchTeams]);
-
   const handlePredict = useCallback(async () => {
     if (!selectedHome || !selectedAway) return;
     setPredicting(true);
@@ -600,8 +585,6 @@ export default function App() {
             <NavItem icon={<Wallet />} label="Portfolio" active={activeTab === 'portfolio'} onClick={() => { setActiveTab('portfolio'); setIsSidebarOpen(false); }} />
             <NavItem icon={<CreditCard />} label="Pricing" active={activeTab === 'pricing'} onClick={() => { setActiveTab('pricing'); setIsSidebarOpen(false); }} />
             <NavItem icon={<BookOpen />} label="Guide" active={activeTab === 'how-to-use'} onClick={() => { setActiveTab('how-to-use'); setIsSidebarOpen(false); }} />
-            {isAdmin && <NavItem icon={<ShieldCheck />} label="Admin" active={activeTab === 'admin'} onClick={() => { setActiveTab('admin'); setIsSidebarOpen(false); }} />}
-            {isAdmin && <NavItem icon={<BarChart3 />} label="Metrics" active={activeTab === 'admin-metrics'} onClick={() => { setActiveTab('admin-metrics'); setIsSidebarOpen(false); }} />}
         </nav>
 
         <div className="p-6 border-t border-zinc-800 space-y-4">
@@ -920,22 +903,8 @@ export default function App() {
             {activeTab === 'strategy' && <StrategyView />}
             {activeTab === 'portfolio' && <Portfolio bankroll={bankroll} userBets={userBets} />}
             {activeTab === 'how-to-use' && <HowToUse />}
-            {activeTab === 'admin-metrics' && isAdmin && <AdminMetrics />}
             {activeTab === 'predictions' && <PredictionsDashboard />}
             
-            {activeTab === 'admin' && isAdmin && (
-              <div className="space-y-12">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <AdminActionCard 
-                      title="Seed Data" 
-                      description="Populate DB with high-quality base stats."
-                      onClick={handleSeedDatabase}
-                      loading={seedingData}
-                      icon={<Database className="text-orange-500" />}
-                    />
-                    </div>
-                    </div>
-                    )}
           </motion.div>
         </div>
       </main>

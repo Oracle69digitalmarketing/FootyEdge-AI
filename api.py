@@ -574,45 +574,9 @@ SOCCER_LEAGUE_MAP = {
 
 
 
-@router.post("/admin/seed-database", summary="Seed the database with initial data")
-async def seed_database():
-    if not supabase:
-        raise HTTPException(status_code=503, detail="Database not configured.")
-    
-    initial_teams = [
-        {"id": 33, "name": "Manchester United", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/10260.png"},
-        {"id": 34, "name": "Manchester City", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png"},
-        {"id": 40, "name": "Liverpool", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8650.png"},
-        {"id": 42, "name": "Arsenal", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9825.png"},
-        {"id": 49, "name": "Chelsea", "country": "England", "league_name": "Premier League", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8455.png"},
-        {"id": 529, "name": "Barcelona", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8634.png"},
-        {"id": 541, "name": "Real Madrid", "country": "Spain", "league_name": "La Liga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/8633.png"},
-        {"id": 157, "name": "Bayern Munich", "country": "Germany", "league_name": "Bundesliga", "logo_url": "https://images.fotmob.com/image_resources/logo/teamlogo/9823.png"}
-    ]
-    
-    try:
-        success_count = 0
-        for team in initial_teams:
-            try:
-                supabase.table("teams").upsert(team).execute()
-                success_count += 1
-            except Exception as e:
-                logger.error(f"Failed to seed team {team['name']}: {e}")
-        
-        # Also clear any old test predictions to remove "placeholders"
-        try:
-            supabase.table("predictions").delete().neq("id", 0).execute()
-            logger.info("Cleared old predictions during seeding.")
-        except: pass
-
-        return {"status": "success", "message": "Database seeded with top clubs and old predictions cleared.", "count": success_count}
-    except Exception as e:
-        logger.error(f"Seeding failed: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "detail": f"Seeding failed: {str(e)}"})
-
-
 @router.get("/admin/metrics")
 async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client)):
+
     """
     Computes system accuracy matrices, portfolio yield parameters,
     and returns the Top 10 Biggest Value Wins the system has generated.
