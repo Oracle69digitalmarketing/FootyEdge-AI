@@ -1,4 +1,4 @@
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Depends
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -347,17 +347,26 @@ async def analyze_bet(request: AnalyzeBetRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/scan-value-bets", summary="Scans for all available value bets in upcoming matches.")
-async def scan_value_bets():
-    if not football_client:
-        raise HTTPException(status_code=503, detail="Football API not configured.")
+@router.get("/cron-trigger")
+async def manual_cron_trigger(background_tasks: BackgroundTasks):
+    """
+    Secure verification endpoint. 
+    Allows manual triggering of the pipeline and can be used for external cron-job pinging.
+    """
     try:
-        return await predictor.find_all_value_bets()
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.info("🛰️ External wake-up trigger received! Running pipeline...")
+        
+        # We run this in the background so the web request doesn't timeout
+        background_tasks.add_task(run_pipeline)
+        
+        return {
+            "status": "success",
+            "message": "FootyEdge AI container is awake. Prediction pipeline has been queued in the background.",
+            "timestamp": datetime.utcnow().isoformat()
+        }
     except Exception as e:
-        logger.error(f"Error in scan_value_bets: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ Manual trigger failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Manual trigger failed: {str(e)}")
 
 
 # --- Database Endpoints ---
