@@ -1,4 +1,4 @@
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Depends, BackgroundTasks
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Depends, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
@@ -28,6 +28,9 @@ from agents.strategy_agent import StrategyAgent
 
 def get_provider():
     return FootballDataOrgClient()
+
+def get_supabase_client():
+    return supabase
 
 # --- App Setup ---
 
@@ -425,52 +428,54 @@ async def get_team_detail_db(team_id: int):
 
 
 @router.get("/daily-picks", summary="Get AI predictions for a date range")
-async def get_daily_picks(from_date: Optional[str] = None, to_date: Optional[str] = None):
-    if not from_date:
-        from_date = datetime.now().strftime("%Y-%m-%d")
-    if not to_date:
-        to_date = from_date
-
+@router.get("/daily-picks")
+@router.get("/daily-picks/")
+async def get_user_filtered_predictions(
+    timeline: str = Query("daily", description="Options: daily, weekly, custom"),
+    start_date: str = Query(None, description="Format: YYYY-MM-DD"),
+    end_date: str = Query(None, description="Format: YYYY-MM-DD"),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    User endpoint to query predicted fixtures and selection picks.
+    Dynamically slices query parameters to handle Daily, Weekly, or Custom selections.
+    """
+    # 1. Parse target timestamps using timezone-naive strings for local compatibility
+    now = datetime.utcnow()
+    query_start = now.strftime("%Y-%m-%d 00:00:00")
+    query_end = now.strftime("%Y-%m-%d 23:59:59")
+    
+    if timeline == "weekly":
+        # Extend end boundary out 7 full calendar days
+        one_week_later = now + timedelta(days=7)
+        query_end = one_week_later.strftime("%Y-%m-%d 23:59:59")
+    elif timeline == "custom" and start_date and end_date:
+        query_start = f"{start_date} 00:00:00"
+        query_end = f"{end_date} 23:59:59"
+        
     try:
-        # 1. Fetch matches for the range
-        matches_data = await football_client.get_matches_by_date(from_date, to_date)
-        match_list = matches_data.get('response', [])
-        
-        # Note: Matches are already sorted by league priority in football_client
-        
-        results = []
-        # Increase limit to 30 to show more popular games
-        for m in match_list[:30]: 
-            home = m['teams']['home']['name']
-            away = m['teams']['away']['name']
+        # 2. Query matches that fall within the calculated date range
+        matches_res = supabase.table("matches") \
+            .select("id, home_team_id, away_team_id, match_date, league") \
+            .gte("match_date", query_start) \
+            .lte("match_date", query_end) \
+            .execute()
             
-            # Check if prediction exists in DB (if connected)
-            pred_data = None
-            if supabase:
-                try:
-                    pred_res = supabase.table("predictions").select("*").eq("home_team", home).eq("away_team", away).order("created_at", desc=True).limit(1).execute()
-                    pred_data = pred_res.data
-                except Exception as db_err:
-                    logger.warning(f"DB Prediction lookup failed: {db_err}")
+        if not matches_res.data:
+            return []
             
-            if pred_data:
-                results.append(pred_data[0])
-            else:
-                try:
-                    # Provide default odds for daily picks generator
-                    default_odds = {
-                        "home_win": 1.90, "draw": 3.30, "away_win": 4.20,
-                        "Over 2.5": 1.90, "Under 2.5": 1.90,
-                        "BTTS Yes": 1.80, "BTTS No": 2.00
-                    }
-                    # Attempt to generate new prediction
-                    prediction = await predictor.predict_match(home, away, default_odds)
-                    results.append(prediction)
-                except Exception as e:
-                    logger.error(f"Failed to predict {home} vs {away}: {e}")
-
-        return results
+        match_ids = [m["id"] for m in matches_res.data]
+        
+        # 3. Pull corresponding machine learning outputs from the predictions matrix
+        preds_res = supabase.table("predictions") \
+            .select("*") \
+            .in_("match_id", match_ids) \
+            .execute()
+            
+        return preds_res.data
+        
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to compile user predictions: {str(e)}")
         logger.error(f"Daily picks failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -582,44 +587,61 @@ async def seed_database():
         return JSONResponse(status_code=500, content={"status": "error", "detail": f"Seeding failed: {str(e)}"})
 
 
-@router.get("/admin/metrics", summary="Computes system accuracy matrices and portfolio yield")
-async def get_admin_model_metrics():
+@router.get("/admin/metrics")
+async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client)):
     """
-    Computes system accuracy matrices and portfolio yield parameters 
-    for the admin metrics dashboard interface.
+    Computes system accuracy matrices, portfolio yield parameters,
+    and returns the Top 10 Biggest Value Wins the system has generated.
     """
-    if not supabase:
-        raise HTTPException(status_code=503, detail="Database not configured.")
     try:
-        # Fetch records
         preds = supabase.table("predictions").select("*").execute()
         matches = supabase.table("matches").select("id, home_goals, away_goals").execute()
         
         if not preds.data or not matches.data:
-            return {"status": "no_data", "message": "Seeding validation queues..."}
+            return {"status": "no_data", "summary": {}, "top_10_wins": []}
             
         p_df = pd.DataFrame(preds.data)
         m_df = pd.DataFrame(matches.data).rename(columns={"id": "match_id"}).dropna()
         
         df = pd.merge(p_df, m_df, on="match_id", how="inner")
         if df.empty:
-            return {"status": "no_completed_fixtures"}
+            return {"status": "no_completed_fixtures", "summary": {}, "top_10_wins": []}
             
-        # Outcomes categorization mapping
+        # 1. Evaluate historical outcomes
         df['actual'] = df.apply(
             lambda r: "Home Win" if r['home_goals'] > r['away_goals'] else ("Draw" if r['home_goals'] == r['away_goals'] else "Away Win"), 
             axis=1
         )
-        
         df['success'] = df['best_bet_selection'] == df['actual']
         df['profit'] = df.apply(lambda r: (100 * r['best_bet_odds']) - 100 if r['success'] else -100, axis=1)
         
-        # Calculate final metrics arrays
+        # 2. Calculate general summary stats
         total_fixtures = len(df)
         successful_predictions = int(df['success'].sum())
-        accuracy_rate = float((successful_predictions / total_fixtures) * 100)
+        accuracy_rate = float((successful_predictions / total_fixtures) * 100) if total_fixtures > 0 else 0
         net_profit = float(df['profit'].sum())
         
+        # 3. Filter out historical WINNING value bets and rank by highest EV
+        # We look for rows that were marked successful, had positive EV, and sort descending
+        df['ev'] = df.get('ev', 0.0) # Fallback if missing
+        winning_value_bets = df[df['success'] == True].sort_values(by='ev', ascending=False)
+        
+        # Take the top 10 items
+        top_10_raw = winning_value_bets.head(10)
+        top_10_wins_list = []
+        
+        for _, row in top_10_raw.iterrows():
+            top_10_wins_list.append({
+                "match_id": int(row['match_id']),
+                "home_team": row['home_team'],
+                "away_team": row['away_team'],
+                "market": row['best_bet_market'],
+                "selection": row['best_bet_selection'],
+                "odds": float(row['best_bet_odds']),
+                "ev": float(row['ev']),
+                "score": f"{int(row['home_goals'])}-{int(row['away_goals'])}"
+            })
+            
         return {
             "status": "success",
             "summary": {
@@ -627,8 +649,9 @@ async def get_admin_model_metrics():
                 "successful_picks": successful_predictions,
                 "model_accuracy_percentage": round(accuracy_rate, 2),
                 "simulated_net_profit_usd": round(net_profit, 2),
-                "simulated_roi_percentage": round((net_profit / (total_fixtures * 100)) * 100, 2)
-            }
+                "simulated_roi_percentage": round((net_profit / (total_fixtures * 100)) * 100, 2) if total_fixtures > 0 else 0
+            },
+            "top_10_wins": top_10_wins_list
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Metrics calculations generation error: {str(e)}")
