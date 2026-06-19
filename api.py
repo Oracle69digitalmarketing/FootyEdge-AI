@@ -11,6 +11,10 @@ from supabase import create_client, Client
 from datetime import datetime, timedelta, timezone
 import asyncio
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from prediction_pipeline import run_pipeline
 
 # Load environment variables from .env file
 load_dotenv()
@@ -25,10 +29,48 @@ def get_provider():
     return FootballDataOrgClient()
 
 # --- App Setup ---
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handles automatic tasks on app startup and shutdown."""
+    logger.info("⏰ Starting internal background cron scheduler...")
+    
+    # Schedule the open-source predictive pipeline
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        run_pipeline,
+        trigger=CronTrigger(hour=2, minute=0),
+        id="nightly_football_sync",
+        replace_existing=True
+    )
+    scheduler.start()
+    
+    # Configure Telegram Webhook
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if bot_token:
+        webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'https://footyedge-ai.onrender.com')}/api/telegram-webhook"
+        async with httpx.AsyncClient() as client:
+            try:
+                res = await client.post(f"https://api.telegram.org/bot{bot_token}/setWebhook", json={"url": webhook_url})
+                if res.status_code == 200:
+                    logger.info(f"✅ Telegram Webhook set to {webhook_url}")
+                else:
+                    logger.error(f"❌ Failed to set Telegram Webhook: {res.text}")
+            except Exception as e:
+                logger.error(f"❌ Error setting Telegram Webhook: {e}")
+    else:
+        logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not be configured.")
+
+    yield # Application serves user traffic here...
+    
+    logger.info("🛑 Shutting down background scheduler...")
+    scheduler.shutdown()
+
 app = FastAPI(
     title="FootyEdge AI - Production Betting Analysis",
     version="3.0.0",
-    description="Provides sophisticated, production-ready match predictions and betting analysis."
+    description="Provides sophisticated, production-ready match predictions and betting analysis.",
+    lifespan=lifespan
 )
 
 # Comprehensive ALLOWED_ORIGINS for all deployment scenarios
@@ -1004,39 +1046,9 @@ async def telegram_webhook(request: Request):
 
 app.include_router(router)
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from prediction_pipeline import run_pipeline
 
-# ... (rest of imports)
 
-# --- Startup Logic ---
-@app.on_event("startup")
-async def startup_event():
-    # Initialize Scheduler
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(run_pipeline, 'cron', hour=2, minute=0)
-    scheduler.start()
-    logger.info("✅ APScheduler initialized: Analytics pipeline scheduled for 02:00 AM daily.")
-    
-    # Configure Telegram Webhook if token exists
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if bot_token:
-        webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'https://footyedge-ai.onrender.com')}/api/telegram-webhook"
-        async with httpx.AsyncClient() as client:
-            try:
-                res = await client.post(f"https://api.telegram.org/bot{bot_token}/setWebhook", json={"url": webhook_url})
-                if res.status_code == 200:
-                    logger.info(f"✅ Telegram Webhook set to {webhook_url}")
-                else:
-                    logger.error(f"❌ Failed to set Telegram Webhook: {res.text}")
-            except Exception as e:
-                logger.error(f"❌ Error setting Telegram Webhook: {e}")
-    else:
-        logger.warning("TELEGRAM_BOT_TOKEN not set. Bot will not be configured.")
 
-    if not supabase:
-        logger.warning("🚀 WARNING: Supabase not configured. Application will run in 'Offline Mode' (No DB persistence).")
-        return
 
 
 
