@@ -472,12 +472,27 @@ async def get_user_filtered_predictions(
             .in_("match_id", match_ids) \
             .execute()
             
-        return preds_res.data
+        predictions = preds_res.data
+        for p in predictions:
+            prob = 0.0
+            if p.get('best_bet_selection') == 'Home Win': prob = p.get('home_prob', 0.0)
+            elif p.get('best_bet_selection') == 'Draw': prob = p.get('draw_prob', 0.0)
+            elif p.get('best_bet_selection') == 'Away Win': prob = p.get('away_prob', 0.0)
+            
+            odds = p.get('best_bet_odds', 1.0)
+            
+            if odds > 1:
+                numerator = (prob * (odds - 1)) - (1 - prob)
+                denominator = odds - 1
+                kelly = (numerator / denominator) / 4 # Quarter Kelly
+                p['kelly_stake_percentage'] = max(0, min(100, round(kelly * 100, 1)))
+            else:
+                p['kelly_stake_percentage'] = 0.0
+                
+        return predictions
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to compile user predictions: {str(e)}")
-        logger.error(f"Daily picks failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recent-predictions", summary="Get the last N predictions")

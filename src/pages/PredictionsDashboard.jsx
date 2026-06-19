@@ -92,30 +92,58 @@ export default function PredictionsDashboard() {
       ) : predictions.length > 0 ? (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {predictions.map((pick: any) => (
-            <div key={pick.id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 hover:border-slate-700 transition shadow-lg">
-              <div className="flex items-center justify-between border-b border-slate-900 pb-3 text-xs text-slate-400">
-                <span>Model v2.0-Poisson</span>
-                <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-emerald-400 font-bold">
-                  {pick.best_bet_market}
-                </span>
-              </div>
-              <div className="my-4">
-                <h4 className="text-lg font-bold text-white truncate">{pick.home_team} vs {pick.away_team}</h4>
-                <p className="mt-2 text-xs text-slate-500">Suggested Choice:</p>
-                <p className="text-sm font-semibold text-emerald-400 mt-0.5">{pick.best_bet_selection} @ {pick.best_bet_odds.toFixed(2)}</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center text-xs bg-slate-900/50 p-3 rounded-lg border border-slate-900">
-                <div>
-                  <p className="text-slate-500 font-medium">Home</p>
-                  <p className="text-white font-bold font-mono mt-0.5">{((pick.home_prob || 0) * 100).toFixed(0)}%</p>
+            <div key={pick.id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 hover:border-slate-700 transition shadow-lg flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-slate-900 pb-3 text-xs text-slate-400">
+                  <span>Model v2.0-Poisson</span>
+                  <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-emerald-400 font-bold">
+                    {pick.best_bet_market}
+                  </span>
                 </div>
-                <div>
-                  <p className="text-slate-500 font-medium">Draw</p>
-                  <p className="text-white font-bold font-mono mt-0.5">{((pick.draw_prob || 0) * 100).toFixed(0)}%</p>
+                
+                <div className="my-4">
+                  <h4 className="text-lg font-bold text-white truncate">{pick.home_team} vs {pick.away_team}</h4>
+                  <p className="mt-2 text-xs text-slate-500">Suggested Action:</p>
+                  <p className="text-sm font-semibold text-emerald-400 mt-0.5">{pick.best_bet_selection} @ {pick.best_bet_odds.toFixed(2)}</p>
                 </div>
-                <div>
-                  <p className="text-slate-500 font-medium">Away</p>
-                  <p className="text-white font-bold font-mono mt-0.5">{((pick.away_prob || 0) * 100).toFixed(0)}%</p>
+              </div>
+
+              <div>
+                {/* KELLY CRITERION BANKROLL SIZING GRAPHIC */}
+                <div className="mb-4 rounded-xl bg-slate-900/60 p-3 border border-slate-800/60">
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="text-slate-400 font-medium">Suggested Bankroll Stake:</span>
+                    <span className="font-mono font-extrabold text-emerald-400">
+                      {pick.kelly_stake_percentage > 0 ? `${pick.kelly_stake_percentage}%` : 'No Value Edge'}
+                    </span>
+                  </div>
+                  
+                  {/* Progress Bar Gauge indicator */}
+                  <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(pick.kelly_stake_percentage * 4, 100)}%` }} // Scaled visually for readability
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-slate-500 leading-tight">
+                    Calculated using Quarter-Kelly models to optimize portfolio compounding risk protection parameters.
+                  </p>
+                </div>
+
+                {/* PROBABILITY DISTRIBUTION ROW */}
+                <div className="grid grid-cols-3 gap-2 text-center text-xs bg-slate-900/40 p-3 rounded-lg border border-slate-900">
+                  <div>
+                    <p className="text-slate-500 font-medium">Home</p>
+                    <p className="text-white font-bold font-mono mt-0.5">{((pick.home_prob || 0) * 100).toFixed(0)}%</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500 font-medium">Draw</p>
+                    <p className="text-white font-bold font-mono mt-0.5">{((pick.draw_prob || 0) * 100).toFixed(0)}%</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500 font-medium">Away</p>
+                    <p className="text-white font-bold font-mono mt-0.5">{((pick.away_prob || 0) * 100).toFixed(0)}%</p>
+                  </div>
                 </div>
               </div>
             </div>
