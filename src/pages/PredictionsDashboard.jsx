@@ -91,7 +91,7 @@ export default function PredictionsDashboard() {
         <div className="text-center text-slate-400 py-12 animate-pulse">Computing match models...</div>
       ) : predictions.length > 0 ? (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {predictions.map((pick: any) => (
+          {predictions.map((pick) => (
             <div key={pick.id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 hover:border-slate-700 transition shadow-lg flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between border-b border-slate-900 pb-3 text-xs text-slate-400">
