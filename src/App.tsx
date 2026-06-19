@@ -387,8 +387,8 @@ export default function App() {
     setSimulationLog([]);
     setSimulationStep(0);
 
-    const homeTeam = teams.find(t => t.id.toString() === selectedHome);
-    const awayTeam = teams.find(t => t.id.toString() === selectedAway);
+    const homeTeam = teams.find(t => t?.id?.toString() === selectedHome);
+    const awayTeam = teams.find(t => t?.id?.toString() === selectedAway);
 
     const steps = [
       "Initializing prediction matrix...",
@@ -881,9 +881,9 @@ export default function App() {
                 )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <StatCard title="Total Predictions" value={dashboardStats.total_predictions.toString()} icon={<History className="text-blue-500" />} />
-                  <StatCard title="Active Value Bets" value={dashboardStats.active_value_bets.toString()} icon={<TrendingUp className="text-green-500" />} />
-                  <StatCard title="AI Accuracy" value={dashboardStats.ai_accuracy} icon={<ShieldCheck className="text-orange-500" />} />
+                  <StatCard title="Total Predictions" value={dashboardStats?.total_predictions?.toString() || "0"} icon={<History className="text-blue-500" />} />
+                  <StatCard title="Active Value Bets" value={dashboardStats?.active_value_bets?.toString() || "0"} icon={<TrendingUp className="text-green-500" />} />
+                  <StatCard title="AI Accuracy" value={dashboardStats?.ai_accuracy || "0%"} icon={<ShieldCheck className="text-orange-500" />} />
                 </div>
                 
                 <div className="pt-12 border-t border-zinc-800/50">
