@@ -381,19 +381,6 @@ export default function App() {
     handleScanValueBets();
   }, [user, fetchTeams, fetchPredictions, fetchValueBets, fetchTerminalStats, fetchUserBets, handleScanValueBets]);
 
-  const handleSyncTeams = useCallback(async () => {
-    setSyncingTeams(true);
-    try {
-      const data = await safeFetchJson('/api/admin/sync-teams', { method: 'POST' });
-      flashMessage(setSuccess, `Synced ${data.synced_count} teams.`);
-      fetchTeams();
-    } catch (err: any) {
-      flashMessage(setError, err.message);
-    } finally {
-      setSyncingTeams(false);
-    }
-  }, [fetchTeams]);
-
   const handleSeedDatabase = useCallback(async () => {
     setSeedingData(true);
     try {
@@ -406,18 +393,6 @@ export default function App() {
       setSeedingData(false);
     }
   }, [fetchTeams]);
-
-  const handleSyncPlayers = useCallback(async () => {
-    setSyncingPlayers(true);
-    try {
-      const data = await safeFetchJson('/api/admin/sync-players', { method: 'POST' });
-      flashMessage(setSuccess, `Successfully synced ${data.synced_count} players.`);
-    } catch (err: any) {
-      flashMessage(setError, "Player sync failed: " + err.message);
-    } finally {
-      setSyncingPlayers(false);
-    }
-  }, []);
 
   const handlePredict = useCallback(async () => {
     if (!selectedHome || !selectedAway) return;
