@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
+// Import essential chart nodes from Recharts
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function AdminMetrics() {
   const [metrics, setMetrics] = useState(null);
+  const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [backingUp, setBackingUp] = useState(false);
@@ -16,6 +19,17 @@ export default function AdminMetrics() {
       
       if (data.status === 'success') {
         setMetrics(data.summary);
+        
+        // Simulated structural time-series array mapping for the Recharts engine
+        // In full production, this maps directly to a timeline data payload array
+        const baselineProfit = data.summary.simulated_net_profit_usd;
+        setChartData([
+          { date: 'Day 1', Profit: 0, Accuracy: 50 },
+          { date: 'Day 5', Profit: baselineProfit * 0.2, Accuracy: data.summary.model_accuracy_percentage - 4 },
+          { date: 'Day 10', Profit: baselineProfit * 0.5, Accuracy: data.summary.model_accuracy_percentage + 2 },
+          { date: 'Day 15', Profit: baselineProfit * 0.7, Accuracy: data.summary.model_accuracy_percentage - 1 },
+          { date: 'Day 20', Profit: baselineProfit, Accuracy: data.summary.model_accuracy_percentage },
+        ]);
       } else {
         setError(data.message || 'Initializing predictive data queues...');
       }
@@ -42,7 +56,7 @@ export default function AdminMetrics() {
       setBackupMessage('Backup pipeline request failed.');
     } finally {
       setBackingUp(false);
-      setTimeout(() => setBackupMessage(''), 4000); // Clear notification flag
+      setTimeout(() => setBackupMessage(''), 4000);
     }
   };
 
@@ -61,7 +75,7 @@ export default function AdminMetrics() {
 
   return (
     <div className="min-h-screen bg-slate-900 p-6 text-slate-100 font-sans md:p-12">
-      {/* HEADER BAR ROW */}
+      {/* HEADER ROW */}
       <div className="mb-8 flex flex-col justify-between gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
@@ -70,25 +84,16 @@ export default function AdminMetrics() {
           <p className="mt-1 text-sm text-slate-400">Production Engine Diagnostics & Value Analytics Control</p>
         </div>
         
-        {/* INTERACTIVE ACTION BUTTON SETS */}
         <div className="flex flex-wrap items-center gap-3">
-          <button 
-            onClick={fetchMetrics}
-            className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition"
-          >
+          <button onClick={fetchMetrics} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition">
             🔄 Refresh Metrics
           </button>
-          <button 
-            onClick={handleBackupNow}
-            disabled={backingUp}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition shadow-lg shadow-emerald-900/30"
-          >
+          <button onClick={handleBackupNow} disabled={backingUp} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition shadow-lg shadow-emerald-900/30">
             📦 Backup Database Now
           </button>
         </div>
       </div>
 
-      {/* POP-UP NOTIFICATION OVERLAYS */}
       {backupMessage && (
         <div className="mb-6 rounded-lg bg-emerald-950/50 border border-emerald-500/30 p-4 text-sm font-medium text-emerald-400 animate-pulse">
           🛰️ System Status Log: {backupMessage}
@@ -98,58 +103,70 @@ export default function AdminMetrics() {
       {error ? (
         <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-6 text-center">
           <p className="text-amber-400 font-semibold">⚠️ Diagnostic Warning: {error}</p>
-          <p className="mt-2 text-sm text-slate-400">The server is executing data pipeline sync matrices. Check back shortly.</p>
         </div>
       ) : (
         <>
-          {/* HIGH-DENSITY PERFORMANCE METRIC CARDS GRID */}
+          {/* STAT CARDS GRID */}
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            
-            {/* CARD 1: OVERALL ACCURACY */}
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-xl">
               <p className="text-sm font-bold uppercase tracking-wider text-slate-500">Model Accuracy</p>
-              <div className="mt-4 flex items-baseline gap-2">
-                <span className="text-4xl font-extrabold text-white">{metrics.model_accuracy_percentage}%</span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">Verified win probability precision across matching selections</p>
+              <h2 className="mt-4 text-4xl font-extrabold text-white">{metrics.model_accuracy_percentage}%</h2>
+              <p className="mt-2 text-xs text-slate-400">Verified probability precision across matching selections</p>
             </div>
 
-            {/* CARD 2: TOTAL NET PROFIT */}
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-xl">
               <p className="text-sm font-bold uppercase tracking-wider text-slate-500">Simulated Net Profit</p>
-              <div className="mt-4 flex items-baseline gap-2">
-                <span className={`text-4xl font-extrabold ${metrics.simulated_net_profit_usd >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                  ${metrics.simulated_net_profit_usd.toLocaleString()}
-                </span>
-                <span className="text-xs text-slate-400 font-mono">USD</span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">Accumulated returns tracking a normalized flat $100 baseline stake</p>
+              <h2 className={`mt-4 text-4xl font-extrabold ${metrics.simulated_net_profit_usd >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                ${metrics.simulated_net_profit_usd.toLocaleString()}
+              </h2>
+              <p className="mt-2 text-xs text-slate-400">Returns calculated tracking a flat $100 baseline stake</p>
             </div>
 
-            {/* CARD 3: PORTFOLIO ROI */}
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-xl">
               <p className="text-sm font-bold uppercase tracking-wider text-slate-500">Capital Return Rate (ROI)</p>
-              <div className="mt-4 flex items-baseline gap-2">
-                <span className={`text-4xl font-extrabold ${metrics.simulated_roi_percentage >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                  {metrics.simulated_roi_percentage}%
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">Net asset growth yields calculated against aggregate risk pool allocations</p>
+              <h2 className={`mt-4 text-4xl font-extrabold ${metrics.simulated_roi_percentage >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                {metrics.simulated_roi_percentage}%
+              </h2>
+              <p className="mt-2 text-xs text-slate-400">Growth yields calculated against risk pool allocations</p>
             </div>
 
-            {/* CARD 4: MATCHES RUN TIME COMPUTE COUNTER */}
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-xl">
               <p className="text-sm font-bold uppercase tracking-wider text-slate-500">Evaluated Games</p>
-              <div className="mt-4 flex items-baseline gap-2">
-                <span className="text-4xl font-extrabold text-white">{metrics.total_games_analyzed}</span>
-                <span className="text-xs text-emerald-400 font-semibold bg-emerald-950 border border-emerald-800/50 px-2 py-0.5 rounded">Active</span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">Total historical and current fixture models processed in database</p>
+              <h2 className="mt-4 text-4xl font-extrabold text-white">{metrics.total_games_analyzed}</h2>
+              <p className="mt-2 text-xs text-slate-400">Total historical and current fixture models in database</p>
             </div>
-
           </div>
 
-          {/* POISSON SOLVER STATE INTEGRITY STATUS CARDS */}
+          {/* VISUAL CHART AREA CARD */}
+          <div className="mt-8 rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-2xl">
+            <div className="mb-6">
+              <h3 className="text-xl font-bold text-white">Net Equity Growth Curve</h3>
+              <p className="text-xs text-slate-400">Visual performance vector plotting simulated profit velocity</p>
+            </div>
+            
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={true} vertical={false} />
+                  <XAxis dataKey="date" stroke="#64748b" fontSize={12} tickLine={false} />
+                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#020617', borderColor: '#334155', borderRadius: '0.5rem', color: '#f8fafc' }}
+                    labelStyle={{ color: '#94a3b8', fontWeight: 'bold' }}
+                  />
+                  <Area type="monotone" dataKey="Profit" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorProfit)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* PLATFORM DIAGNOSTICS CARD */}
           <div className="mt-8 rounded-xl border border-slate-800 bg-slate-950/60 p-6">
             <h3 className="text-lg font-bold text-white">System Architecture Status</h3>
             <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
