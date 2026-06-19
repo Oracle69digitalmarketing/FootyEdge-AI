@@ -408,15 +408,16 @@ async def recent_predictions(limit: int = 10):
     return response.data or []
 
 
-@router.get("/value-bets", summary="Get value bets from the database")
-async def get_value_bets(status: str = 'active'):
+@router.get("/value-bets")
+async def get_value_bets():
+    """Reads historical predictions directly from Supabase, removing brittle network overhead."""
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not configured.")
-    query = supabase.table("value_bets").select("*").order("ev", desc=True)
-    if status != 'all':
-        query = query.eq("status", status)
-    response = query.execute()
-    return response.data or []
+    try:
+        response = supabase.table("value_bets").select("*").eq("status", "active").order("ev", desc=True).execute()
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database state read exception: {str(e)}")
 
 
 @router.patch("/value-bets/{bet_id}", summary="Update the status of a value bet")

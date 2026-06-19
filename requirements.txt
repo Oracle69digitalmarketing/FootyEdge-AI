@@ -1,9 +1,9 @@
 fastapi
 uvicorn[standard]
 httpx
-numpy
-pandas
-supabase
+numpy>=1.24.0
+pandas>=2.0.0
+supabase>=2.3.0
 python-telegram-bot
 python-dotenv
 pytest
@@ -11,3 +11,6 @@ pytest-asyncio
 tqdm
 lightgbm
 scikit-learn
+scipy>=1.10.0
+requests>=2.31.0
+soccerdata[fbref]>=1.4.0

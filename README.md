@@ -79,9 +79,7 @@ Follow these instructions to set up and run the FootyEdge AI project on your loc
         ```
     *   Create a `.env` file in the root directory and add your environment variables:
         ```
-        FOOTBALL_DATA_API_KEY="YOUR_KEY"
-        SPORTRADAR_API_KEY="YOUR_KEY"
-        THESTATSAPI_KEY="YOUR_KEY"
+        ODDS_API_KEY="YOUR_KEY"
         SUPABASE_URL="YOUR_SUPABASE_URL"
         SUPABASE_KEY="YOUR_SUPABASE_ANON_KEY"
         ```

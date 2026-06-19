@@ -1,41 +1,15 @@
 services:
-  - type: web
-    name: footyedge-ai
-    runtime: docker
+  - type: cron
+    name: footyedge-ai-analytics-worker
+    env: python
     plan: free
-    dockerContext: .
-    dockerfilePath: Dockerfile
-    dockerBuildArgs:
-      - key: VITE_SUPABASE_URL
-        value: ${VITE_SUPABASE_URL}
-      - key: VITE_SUPABASE_ANON_KEY
-        value: ${VITE_SUPABASE_ANON_KEY}
+    schedule: "0 2 * * *" # Triggers automatically at 2:00 AM every night
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python prediction_pipeline.py"
     envVars:
-      - key: PORT
-        value: 10000
-      - key: RAPIDAPI_KEY
-        sync: false
-      - key: FOOTBALL_DATA_API_KEY
-        sync: false
-      - key: SPORTRADAR_API_KEY
-        sync: false
-      - key: THESTATSAPI_KEY
-        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
         sync: false
-      - key: SUPABASE_SERVICE_KEY
+      - key: ODDS_API_KEY
         sync: false
-      - key: VITE_SUPABASE_URL
-        sync: false
-      - key: VITE_SUPABASE_ANON_KEY
-        sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_CHAT_ID
-        value: "@footyedge_signals"
-      - key: TELEGRAM_PREMIUM_CHAT_ID
-        value: "@footyedge_premium"
-      - key: API_URL
-        value: "https://footyedge-ai.onrender.com/api"
