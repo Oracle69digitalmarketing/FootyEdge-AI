@@ -1,7 +1,7 @@
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import logging
@@ -348,20 +348,20 @@ async def analyze_bet(request: AnalyzeBetRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/cron-trigger")
-@router.get("/cron-trigger/")
+@router.get("/cron-trigger", response_class=PlainTextResponse)
+@router.get("/cron-trigger/", response_class=PlainTextResponse)
 async def manual_cron_trigger(background_tasks: BackgroundTasks):
     """
-    Optimized endpoint for cron-job.org.
-    Returns a small, instant payload and runs the heavy loop in the background.
+    Optimized for free monitoring platforms. 
+    Returns a 2-character plain text string instantly, avoiding any 'output too large' limits.
     """
-    logger.info("🛰️ External wake-up trigger received from cron-job.org.")
+    logger.info("🛰️ Keep-alive / Sync trigger received.")
     
-    # CRITICAL: This hands off the task to a background worker thread immediately
+    # Hand off the heavy scraping loop to a background thread instantly
     background_tasks.add_task(run_pipeline)
     
-    # Return a tiny, immediate response to prevent "output too large" or timeout errors
-    return {"status": "queued"}
+    # Returning a raw plain text string takes 0.001 seconds and consumes negligible bandwidth
+    return "OK"
 
 # --- Database Endpoints ---
 @router.get("/teams", summary="Get all teams from database")
