@@ -829,7 +829,6 @@ export default function App() {
                       </div>
                       {isAdmin && (
                         <div className="flex justify-center gap-4">
-                          <button onClick={handleSyncTeams} className="bg-zinc-900 border border-zinc-800 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-800 transition-all">Sync Teams</button>
                           <a href="/api/health" target="_blank" className="bg-zinc-900 border border-zinc-800 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-800 transition-all flex items-center gap-2">
                             <Server className="w-4 h-4" /> System Health
                           </a>
@@ -928,29 +927,15 @@ export default function App() {
               <div className="space-y-12">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <AdminActionCard 
-                      title="Sync Teams" 
-                      description="Fetch and update club details from API."
-                      onClick={handleSyncTeams}
-                      loading={syncingTeams}
-                      icon={<Shield className="text-blue-500" />}
-                    />
-                    <AdminActionCard 
-                      title="Sync Players" 
-                      description="Fetch and update player squads for all teams."
-                      onClick={handleSyncPlayers}
-                      loading={syncingPlayers}
-                      icon={<User className="text-green-500" />}
-                    />
-                    <AdminActionCard 
                       title="Seed Data" 
                       description="Populate DB with high-quality base stats."
                       onClick={handleSeedDatabase}
                       loading={seedingData}
                       icon={<Database className="text-orange-500" />}
                     />
-                  </div>
-              </div>
-            )}
+                    </div>
+                    </div>
+                    )}
           </motion.div>
         </div>
       </main>
