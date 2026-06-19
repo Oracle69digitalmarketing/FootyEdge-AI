@@ -16,6 +16,7 @@ import MatchCard from './components/MatchCard';
 import { StatItem, AdminActionCard, DateToggle, NavItem } from './components/UI';
 import { Activity, Terminal, TrendingUp, History, ShieldCheck, LogOut, LogIn, PlusCircle, AlertTriangle, Loader2, ChevronRight, Database, Search, User, CheckCircle, XCircle, Mail, Lock, Calendar, Wallet, Clock, DollarSign, Zap, Layers, Send, ExternalLink, Crown, Bell, HelpCircle, RefreshCw, Server, Menu, X, CreditCard, BookOpen, BrainCircuit, Shield, Cpu, BarChart3 } from 'lucide-react';
 import AdminMetrics from './pages/AdminMetrics';
+import PredictionsDashboard from './pages/PredictionsDashboard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
 
@@ -921,6 +922,7 @@ export default function App() {
             {activeTab === 'portfolio' && <Portfolio bankroll={bankroll} userBets={userBets} />}
             {activeTab === 'how-to-use' && <HowToUse />}
             {activeTab === 'admin-metrics' && isAdmin && <AdminMetrics />}
+            {activeTab === 'predictions' && <PredictionsDashboard />}
             
             {activeTab === 'admin' && isAdmin && (
               <div className="space-y-12">

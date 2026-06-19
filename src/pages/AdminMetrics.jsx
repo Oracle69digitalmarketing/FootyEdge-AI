@@ -166,6 +166,57 @@ export default function AdminMetrics() {
             </div>
           </div>
 
+          {/* TOP 10 BIGGEST VALUE WINS TABLE */}
+          <div className="mt-8 rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-2xl">
+            <div className="mb-6">
+              <h3 className="text-xl font-bold text-white">🏆 Top 10 Historical Value Wins</h3>
+              <p className="text-xs text-slate-400">The model's highest edge predictions that successfully hit in real matches</p>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-slate-800">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-900 text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="px-6 py-4">Fixture</th>
+                    <th className="px-6 py-4">Market</th>
+                    <th className="px-6 py-4">Selection Hit</th>
+                    <th className="px-6 py-4">Resulting Score</th>
+                    <th className="px-6 py-4 text-right">Odds</th>
+                    <th className="px-6 py-4 text-right">Value Edge (EV)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {metrics?.top_10_wins && metrics.top_10_wins.length > 0 ? (
+                    metrics.top_10_wins.map((win, idx) => (
+                      <tr key={idx} className="hover:bg-slate-900/40 transition">
+                        <td className="px-6 py-4 font-semibold text-white">
+                          {win.home_team} <span className="text-slate-500 font-normal text-xs">vs</span> {win.away_team}
+                        </td>
+                        <td className="px-6 py-4 text-slate-400">{win.market}</td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800/40">
+                            {win.selection}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-emerald-400 font-bold">{win.score}</td>
+                        <td className="px-6 py-4 text-right font-semibold text-slate-200">{win.odds.toFixed(2)}</td>
+                        <td className="px-6 py-4 text-right font-mono text-emerald-400 font-bold">
+                          +{((win.ev || 0) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                        Evaluating and seeding winning historical predictions...
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* PLATFORM DIAGNOSTICS CARD */}
           <div className="mt-8 rounded-xl border border-slate-800 bg-slate-950/60 p-6">
             <h3 className="text-lg font-bold text-white">System Architecture Status</h3>
