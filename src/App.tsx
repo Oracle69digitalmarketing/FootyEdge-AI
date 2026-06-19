@@ -825,8 +825,8 @@ export default function App() {
                       <Database className="w-16 h-16 text-orange-500 mx-auto" />
                       <div className="space-y-2">
                         <p className="text-xl font-bold">Team Database Not Initialized</p>
-                        <p className="text-sm text-zinc-500 max-w-md mx-auto">Please go to the **Admin** panel and click **Seed Data** or **Sync Teams** to enable the intelligence engine.</p>
-                      </div>
+                        <p className="text-sm text-zinc-500 max-w-md mx-auto">Please wait for the automated pipeline to seed the database, or check the system health.</p>
+                        </div>
                       {isAdmin && (
                         <div className="flex justify-center gap-4">
                           <a href="/api/health" target="_blank" className="bg-zinc-900 border border-zinc-800 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-800 transition-all flex items-center gap-2">

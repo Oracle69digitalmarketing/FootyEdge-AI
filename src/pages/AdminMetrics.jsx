@@ -201,7 +201,7 @@ export default function AdminMetrics() {
                         <td className="px-6 py-4 font-mono text-emerald-400 font-bold">{win.score}</td>
                         <td className="px-6 py-4 text-right font-semibold text-slate-200">{win.odds.toFixed(2)}</td>
                         <td className="px-6 py-4 text-right font-mono text-emerald-400 font-bold">
-                          +{((win.ev || 0) * 100).toFixed(1)}%
+                          +{(((win.ev || 0) * 100)).toFixed(1)}%
                         </td>
                       </tr>
                     ))
