@@ -1004,10 +1004,19 @@ async def telegram_webhook(request: Request):
 
 app.include_router(router)
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from prediction_pipeline import run_pipeline
+
+# ... (rest of imports)
+
 # --- Startup Logic ---
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Initializing FootyEdge AI Backend...")
+    # Initialize Scheduler
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(run_pipeline, 'cron', hour=2, minute=0)
+    scheduler.start()
+    logger.info("✅ APScheduler initialized: Analytics pipeline scheduled for 02:00 AM daily.")
     
     # Configure Telegram Webhook if token exists
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -1028,7 +1037,7 @@ async def startup_event():
     if not supabase:
         logger.warning("🚀 WARNING: Supabase not configured. Application will run in 'Offline Mode' (No DB persistence).")
         return
-    # ... rest of seeding logic ...
+
 
 
 # --- Static File Serving (Production) ---
