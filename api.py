@@ -358,6 +358,19 @@ async def analyze_bet(request: AnalyzeBetRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/scan-value-bets", summary="Scans for all available value bets in upcoming matches.")
+async def scan_value_bets():
+    if not football_client:
+        raise HTTPException(status_code=503, detail="Football API not configured.")
+    try:
+        return await predictor.find_all_value_bets()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in scan_value_bets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/cron-trigger", response_class=PlainTextResponse)
 @router.get("/cron-trigger/", response_class=PlainTextResponse)
 async def manual_cron_trigger(background_tasks: BackgroundTasks):
