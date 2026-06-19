@@ -16,6 +16,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from prediction_pipeline import run_pipeline
 from backup_manager import run_database_backup
+from settle_bets import run_settlement
 
 # Load environment variables from .env file
 load_dotenv()
@@ -45,6 +46,14 @@ async def lifespan(app: FastAPI):
         run_pipeline,
         trigger=CronTrigger(hour=2, minute=0),
         id="nightly_prediction_sync",
+        replace_existing=True
+    )
+    
+    # Schedule the daily settlement routine
+    scheduler.add_job(
+        run_settlement,
+        trigger=CronTrigger(hour=5, minute=0),
+        id="settlement_sync",
         replace_existing=True
     )
     
