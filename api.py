@@ -352,24 +352,16 @@ async def analyze_bet(request: AnalyzeBetRequest):
 @router.get("/cron-trigger/")
 async def manual_cron_trigger(background_tasks: BackgroundTasks):
     """
-    Secure verification endpoint. 
-    Allows manual triggering of the pipeline and can be used for external cron-job pinging.
+    Optimized endpoint for cron-job.org.
+    Returns a small, instant payload and runs the heavy loop in the background.
     """
-    try:
-        logger.info("🛰️ External wake-up trigger received! Running pipeline...")
-        
-        # We run this in the background so the web request doesn't timeout
-        background_tasks.add_task(run_pipeline)
-        
-        return {
-            "status": "success",
-            "message": "FootyEdge AI container is awake. Prediction pipeline has been queued in the background.",
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"❌ Manual trigger failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Manual trigger failed: {str(e)}")
-
+    logger.info("🛰️ External wake-up trigger received from cron-job.org.")
+    
+    # CRITICAL: This hands off the task to a background worker thread immediately
+    background_tasks.add_task(run_pipeline)
+    
+    # Return a tiny, immediate response to prevent "output too large" or timeout errors
+    return {"status": "queued"}
 
 # --- Database Endpoints ---
 @router.get("/teams", summary="Get all teams from database")
