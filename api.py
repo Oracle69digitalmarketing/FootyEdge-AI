@@ -245,8 +245,8 @@ async def get_dashboard_stats():
             try:
                 bets_res = supabase.table("user_bets").select("stake, profit_loss").not_.is_("profit_loss", "null").execute()
                 if bets_res.data:
-                    total_staked = sum(b.get('stake', 0) for b in bets_res.data)
-                    total_profit = sum(b.get('profit_loss', 0) for b in bets_res.data)
+                    total_staked = sum(b.get('stake') or 0 for b in bets_res.data)
+                    total_profit = sum(b.get('profit_loss') or 0 for b in bets_res.data)
                     if total_staked > 0:
                         roi = (total_profit / total_staked) * 100
             except: pass
