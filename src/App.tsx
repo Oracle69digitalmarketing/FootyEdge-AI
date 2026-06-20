@@ -11,6 +11,8 @@ import H2HVisualizer from './components/H2HVisualizer';
 import TeamsList from './components/TeamsList';
 import PlayersList from './components/PlayersList';
 import Pricing from './components/Pricing';
+import PredictionsDashboard from './pages/PredictionsDashboard';
+import AdminMetrics from './pages/AdminMetrics';
 import { 
   Activity,
   LayoutDashboard, 
@@ -55,8 +57,12 @@ import { cn } from './lib/utils';
 
 
 export default function App() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>({
+    id: '00000000-0000-0000-0000-000000000000',
+    email: 'admin@footyedge.ai',
+    user_metadata: { full_name: 'Admin User' }
+  });
+  const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
@@ -337,25 +343,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
-      })
-      .catch((err) => {
-        console.error("Session check failed:", err);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
+    // Auth bypassed for personal use
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -484,66 +473,6 @@ export default function App() {
     return <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center"><Loader2 className="w-8 h-8 text-orange-500 animate-spin" /></div>;
   }
 
-  if (!user) {
-    return (
-        <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
-            <div className="max-w-md w-full bg-[#111] border border-zinc-800 rounded-3xl p-8 space-y-8 shadow-2xl">
-                <div className="text-center space-y-2">
-                    <h1 className="text-3xl font-bold">FootyEdge AI</h1>
-                    <p className="text-zinc-500">Login to access the AI betting suite.</p>
-                </div>
-
-                {error && (
-                    <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex items-center gap-3 text-red-500 text-sm">
-                        <AlertTriangle className="w-4 h-4" />
-                        {error}
-                    </div>
-                )}
-
-                {success && (
-                    <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-2xl flex items-center gap-3 text-green-500 text-sm">
-                        <CheckCircle className="w-4 h-4" />
-                        {success}
-                    </div>
-                )}
-
-                <form onSubmit={handleEmailAuth} className="space-y-6">
-                    <div className="space-y-4">
-                        <div className="relative">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                            <input 
-                                type="email" 
-                                placeholder="Email" 
-                                value={email} 
-                                onChange={e => setEmail(e.target.value)} 
-                                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 pl-12 focus:border-orange-500 transition-colors" 
-                            />
-                        </div>
-                        <div className="relative">
-                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                            <input 
-                                type="password" 
-                                placeholder="Password" 
-                                value={password} 
-                                onChange={e => setPassword(e.target.value)} 
-                                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 pl-12 focus:border-orange-500 transition-colors" 
-                            />
-                        </div>
-                    </div>
-                    <button type="submit" className="w-full bg-orange-500 text-black font-bold py-4 rounded-2xl hover:bg-orange-400 transition-all flex items-center justify-center gap-2">
-                        {isSignUp ? "Create Account" : "Log In"}
-                        <ChevronRight className="w-4 h-4" />
-                    </button>
-                </form>
-                <div className="text-center">
-                    <button onClick={() => setIsSignUp(!isSignUp)} className="text-sm text-zinc-500 hover:text-white transition-colors">
-                        {isSignUp ? "Already have an account? Log In" : "Don't have an account? Sign Up"}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-  }
 
 
   return (
@@ -762,51 +691,7 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === 'predictions' && (
-              <div className="space-y-12">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div className="space-y-1">
-                    <h2 className="text-3xl font-bold">Match Intelligence</h2>
-                    <p className="text-zinc-500 text-sm">AI-generated daily picks and score predictions across global leagues.</p>
-                  </div>
-                  <div className="flex p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl">
-                    <DateToggle label="Today" active={picksDate === 'today'} onClick={() => setPicksDate('today')} />
-                    <DateToggle label="Tomorrow" active={picksDate === 'tomorrow'} onClick={() => setPicksDate('tomorrow')} />
-                    <DateToggle label="Next 7 Days" active={picksDate === 'week'} onClick={() => setPicksDate('week')} />
-                  </div>
-                </div>
-
-                {fetchingPicks ? (
-                  <div className="py-32 flex flex-col items-center justify-center space-y-6 bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
-                    <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
-                    <p className="text-zinc-500 font-bold animate-pulse">Oracle is analyzing upcoming fixtures...</p>
-                  </div>
-                ) : dailyPicks.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {dailyPicks.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
-                  </div>
-                ) : (
-                  <div className="col-span-full py-32 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[2.5rem]">
-                    <Target className="w-16 h-16 text-zinc-800 mx-auto mb-4" />
-                    <p className="text-zinc-500 text-xl font-bold">No fixtures found for this period.</p>
-                    <p className="text-sm text-zinc-600 mt-2">Try checking another date or wait for API refresh.</p>
-                  </div>
-                )}
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <StatCard title="Total Predictions" value={dashboardStats.total_predictions.toString()} icon={<History className="text-blue-500" />} />
-                  <StatCard title="Active Value Bets" value={dashboardStats.active_value_bets.toString()} icon={<TrendingUp className="text-green-500" />} />
-                  <StatCard title="AI Accuracy" value={dashboardStats.ai_accuracy} icon={<ShieldCheck className="text-orange-500" />} />
-                </div>
-                
-                <div className="pt-12 border-t border-zinc-800/50">
-                  <h3 className="text-xl font-bold mb-8">Generated History</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all">
-                    {predictions.map(pred => <PredictionCard key={pred.id} prediction={pred} onGenerateCode={()=>{}} isUserPremium={isPremium} isAdmin={isAdmin} onBroadcast={()=>{}} setShowPremiumModal={()=>{}} />)}
-                  </div>
-                </div>
-              </div>
-            )}
+            {activeTab === 'predictions' && <PredictionsDashboard />}
             
             {activeTab === 'value' && <ValueBets />}
             {activeTab === 'teams' && <TeamsList />}
@@ -817,33 +702,7 @@ export default function App() {
             {activeTab === 'portfolio' && <Portfolio bankroll={bankroll} userBets={userBets} />}
             {activeTab === 'how-to-use' && <HowToUse />}
             
-            {activeTab === 'admin' && isAdmin && (
-              <div className="space-y-12">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <AdminActionCard 
-                      title="Sync Teams" 
-                      description="Fetch and update club details from API."
-                      onClick={handleSyncTeams}
-                      loading={syncingTeams}
-                      icon={<Shield className="text-blue-500" />}
-                    />
-                    <AdminActionCard 
-                      title="Sync Players" 
-                      description="Fetch and update player squads for all teams."
-                      onClick={handleSyncPlayers}
-                      loading={syncingPlayers}
-                      icon={<User className="text-green-500" />}
-                    />
-                    <AdminActionCard 
-                      title="Seed Data" 
-                      description="Populate DB with high-quality base stats."
-                      onClick={handleSeedDatabase}
-                      loading={seedingData}
-                      icon={<Database className="text-orange-500" />}
-                    />
-                  </div>
-              </div>
-            )}
+            {activeTab === 'admin' && <AdminMetrics />}
           </motion.div>
         </div>
       </main>
