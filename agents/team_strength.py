@@ -118,7 +118,8 @@ class TeamStrengthAgent:
             weight = self.decay_rate ** i
             weighted_goals += match['goals_scored'] * weight
             total_weight += weight
-        return weighted_goals / total_weight if total_weight > 0 else 1.0
+        # Add smoothing to avoid 0.0
+        return max(0.1, (weighted_goals + 1.0) / (total_weight + 1.0)) if total_weight > 0 else 1.0
 
     def _calculate_defense_strength(self, matches: List[Dict]) -> float:
         if not matches: return 1.0
@@ -128,7 +129,8 @@ class TeamStrengthAgent:
             weight = self.decay_rate ** i
             weighted_goals_conceded += match['goals_conceded'] * weight
             total_weight += weight
-        return weighted_goals_conceded / total_weight if total_weight > 0 else 1.0
+        # Add smoothing to avoid 0.0
+        return max(0.1, (weighted_goals_conceded + 1.0) / (total_weight + 1.0)) if total_weight > 0 else 1.0
 
     def _calculate_variance(self, matches: List[Dict]) -> float:
         if len(matches) < 2: return 0.2

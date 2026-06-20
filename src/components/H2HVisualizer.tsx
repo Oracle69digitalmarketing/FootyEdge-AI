@@ -44,11 +44,11 @@ const H2HVisualizer: React.FC<H2HVisualizerProps> = ({ team1Id, team2Id }) => {
       <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl overflow-hidden">
         <div className="divide-y divide-zinc-800">
           {h2hData.map((match, i) => {
-            const homeScore = match.goals.home;
-            const awayScore = match.goals.away;
-            const homeTeam = match.teams.home.name;
-            const awayTeam = match.teams.away.name;
-            const date = new Date(match.fixture.date).toLocaleDateString();
+            const homeScore = match.goals?.home ?? '-';
+            const awayScore = match.goals?.away ?? '-';
+            const homeTeam = match.teams?.home?.name ?? 'Unknown';
+            const awayTeam = match.teams?.away?.name ?? 'Unknown';
+            const date = match.fixture?.date ? new Date(match.fixture.date).toLocaleDateString() : 'Unknown Date';
 
             return (
               <div key={i} className="px-4 py-3 flex justify-between items-center hover:bg-white/5 transition-colors">
