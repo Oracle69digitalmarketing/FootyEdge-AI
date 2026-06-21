@@ -27,16 +27,18 @@ async def get_user_filtered_predictions(
     Unified User Prediction Feed.
     Accepts from_date and to_date parameters to prevent duplicate match rendering across tabs.
     """
+    # Dynamic timeline filtering
     now = datetime.now(timezone.utc)
-    query_start = now.strftime("%Y-%m-%d 00:00:00")
-    query_end = now.strftime("%Y-%m-%d 23:59:59")
-
+    
     if timeline == "weekly":
-        one_week_later = now + timedelta(days=7)
-        query_end = one_week_later.strftime("%Y-%m-%d 23:59:59")
+        query_start = now.strftime("%Y-%m-%d 00:00:00")
+        query_end = (now + timedelta(days=7)).strftime("%Y-%m-%d 23:59:59")
     elif timeline == "custom" and from_date and to_date:
         query_start = f"{from_date} 00:00:00"
         query_end = f"{to_date} 23:59:59"
+    else: # Default 'daily'
+        query_start = now.strftime("%Y-%m-%d 00:00:00")
+        query_end = now.strftime("%Y-%m-%d 23:59:59")
 
     try:
         # Fetch target matches within selected date parameters
