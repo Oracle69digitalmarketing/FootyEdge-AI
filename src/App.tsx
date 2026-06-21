@@ -164,17 +164,26 @@ export default function App() {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Auth button clicked", { email, isSignUp });
     if (!supabase) {
       flashMessage(setError, "Auth service not configured");
       return;
     }
     if (isSignUp) {
+      console.log("Attempting sign up...");
       const { error } = await supabase.auth.signUp({ email, password });
-      if (error) flashMessage(setError, error.message);
+      if (error) {
+        console.error("Sign up error:", error);
+        flashMessage(setError, error.message);
+      }
       else flashMessage(setSuccess, "Check your email!");
     } else {
+      console.log("Attempting sign in...");
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) flashMessage(setError, error.message);
+      if (error) {
+        console.error("Sign in error:", error);
+        flashMessage(setError, error.message);
+      }
     }
   };
 
