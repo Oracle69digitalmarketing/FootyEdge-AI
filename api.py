@@ -170,6 +170,10 @@ async def get_user_filtered_predictions(
             p_dict["kelly_stake_percentage"] = round(max(0, raw_kelly * 0.25) * 100, 2)
             results.append(p_dict)
 
+            p_dict = dict(p)
+            p_dict["kelly_stake_percentage"] = round(max(0, raw_kelly * 0.25) * 100, 2)
+            results.append(p_dict)
+            
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch timeline predictions: {str(e)}")
