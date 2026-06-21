@@ -183,21 +183,21 @@ export default function App() {
     supabase
       .from('profiles')
       .select('is_premium, role')
-      .eq('id', user.id)
+      .eq('id', user?.id)
       .single()
       .then(({ data }) => {
         if (data) {
-          const adminStatus = data.role === 'admin' || user.email === 'sophiemabel69@gmail.com';
+          const adminStatus = data.role === 'admin' || user?.email === 'sophiemabel69@gmail.com';
           setIsAdmin(adminStatus);
           setIsPremium(data.is_premium || adminStatus);
-        } else if (user.email === 'sophiemabel69@gmail.com') {
+        } else if (user?.email === 'sophiemabel69@gmail.com') {
           setIsAdmin(true);
           setIsPremium(true);
         }
       })
       .catch(err => {
         console.error("Profile fetch failed:", err);
-        if (user.email === 'sophiemabel69@gmail.com') {
+        if (user?.email === 'sophiemabel69@gmail.com') {
           setIsAdmin(true);
           setIsPremium(true);
         }
@@ -543,7 +543,7 @@ export default function App() {
              </div>
              <div>
                 <p className="text-xs font-bold">{isPremium ? 'Premium Plan' : 'Basic Plan'}</p>
-                <p className="text-[10px] text-zinc-500">{user.email.split('@')[0]}</p>
+                <p className="text-[10px] text-zinc-500">{user?.email?.split('@')[0]}</p>
              </div>
           </div>
           <button onClick={() => supabase.auth.signOut()} className="w-full flex items-center justify-center gap-3 p-4 text-zinc-500 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all">
@@ -578,8 +578,8 @@ export default function App() {
             <div className="hidden md:block w-px h-6 bg-zinc-800" />
             <div className="hidden md:flex items-center gap-3">
               <div className="text-right">
-                <p className="text-xs font-bold text-white">{user.email}</p>
-                <p className="text-[10px] font-mono text-zinc-500">ID: {user.id.substring(0, 8)}</p>
+                <p className="text-xs font-bold text-white">{user?.email}</p>
+                <p className="text-[10px] font-mono text-zinc-500">ID: {user?.id?.substring(0, 8)}</p>
               </div>
             </div>
           </div>
