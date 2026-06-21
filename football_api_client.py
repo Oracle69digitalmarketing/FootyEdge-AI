@@ -22,10 +22,31 @@ class OddsAPIProvider(BaseFootballProvider):
     """
     Implementation for The-Odds-API (the-odds-api.com)
     """
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, sport: str = "soccer_epl"):
         super().__init__(api_key)
         self.base_url = "https://api.the-odds-api.com/v4/sports"
-        self.sport = "soccer_epl" # Default to EPL, can be dynamic
+        self.sport = sport
+
+    async def list_sports(self) -> List[Dict]:
+        """
+        Fetches all available sports from The-Odds-API.
+        """
+        if not self.api_key:
+            return []
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(
+                    f"{self.base_url}",
+                    params={"apiKey": self.api_key}
+                )
+                if res.status_code == 200:
+                    return res.json()
+                else:
+                    logger.error(f"Odds-API error: {res.status_code} - {res.text}")
+                    return []
+        except Exception as e:
+            logger.error(f"Odds-API exception: {e}")
+            return []
 
     async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
         """
@@ -40,7 +61,7 @@ class OddsAPIProvider(BaseFootballProvider):
                     params={
                         "apiKey": self.api_key,
                         "regions": "uk",
-                        "markets": "h2h,totals",
+                        "markets": "h2h,totals,spreads",
                         "oddsFormat": "decimal"
                     }
                 )
@@ -75,7 +96,11 @@ class OddsAPIProvider(BaseFootballProvider):
                                 odds['Over 2.5'] = outcome['price']
                             elif outcome['name'] == 'Under' and outcome['point'] == 2.5:
                                 odds['Under 2.5'] = outcome['price']
-                if odds.get('home_win'): break # Take first found reliable bookmaker with at least H2H
+                    elif market['key'] == 'spreads':
+                        for outcome in market.get('outcomes', []):
+                            point_str = str(outcome.get('point', ''))
+                            odds[f"Spread {outcome['name']} {point_str}"] = outcome['price']
+                if odds: break # Found odds for this bookmaker
 
         return {
             "fixture": {
@@ -95,15 +120,23 @@ class OddsAPIProvider(BaseFootballProvider):
 class FootballAPIClient:
     def __init__(self):
         self.api_key = os.environ.get('ODDS_API_KEY')
-        self.provider = OddsAPIProvider(self.api_key) if self.api_key else None
+        # Configure multiple sports to fetch
+        self.sports_to_fetch = ["soccer_epl", "soccer_fifa_world_cup"]
+        self.providers = [OddsAPIProvider(self.api_key, sport=sport) for sport in self.sports_to_fetch]
         
         if not self.api_key:
             logger.warning("ODDS_API_KEY not found. API calls will fail.")
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
-        if not self.provider: return {"response": []}
-        matches = await self.provider.get_matches(date_from, date_to)
-        return {"response": matches}
+        if not self.providers: return {"response": []}
+        
+        # Fetch matches from all configured providers concurrently
+        tasks = [p.get_matches(date_from, date_to) for p in self.providers]
+        results = await asyncio.gather(*tasks)
+        
+        # Flatten the list of results
+        all_matches = [match for sublist in results for match in sublist]
+        return {"response": all_matches}
 
     async def get_team_fixtures(self, team_id: str, last: int = 40) -> Dict:
         return {"response": []}

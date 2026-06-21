@@ -143,17 +143,40 @@ def run_pipeline():
                     # MARKET 3: Both Teams to Score (BTTS Yes)
                     p_btts_yes = float(np.sum(grid[1:, 1:]))
 
-                    # Determine which market holds the strongest mathematical edge
-                    best_market = "3-Way Result"
-                    best_selection = "Home Win"
-                    best_prob = p_home
-                    if p_away > best_prob: best_selection, best_prob = "Away Win", p_away
-                    if p_draw > best_prob: best_selection, best_prob = "Draw", p_draw
+                    # Helper to get current market price
+                    def get_market_price(market_key, selection_name, point=None):
+                        match_odds = odds_feed.get(f"{h_name} vs {a_name}")
+                        if not match_odds or 'bookmakers' not in match_odds: return None
+                        
+                        for bookmaker in match_odds['bookmakers']:
+                            for market in bookmaker.get('markets', []):
+                                if market['key'] == market_key:
+                                    for outcome in market.get('outcomes', []):
+                                        if outcome['name'] == selection_name:
+                                            if point is None or outcome.get('point') == point:
+                                                return float(outcome['price'])
+                        return None
 
-                    if p_over_25 > best_prob and p_over_25 > 0.60:
-                        best_market, best_selection, best_prob = "Over/Under 2.5", "Over 2.5 Goals", p_over_25
-                    elif p_btts_yes > best_prob and p_btts_yes > 0.65:
-                        best_market, best_selection, best_prob = "Both Teams to Score", "BTTS - Yes", p_btts_yes
+                    # MARKET 4: Spreads (calculate prob of covering)
+                    # Note: Simplified spread analysis
+                    p_home_spread = float(np.sum(np.tril(grid, -1))) + float(np.sum(np.diag(grid))) # Win or Draw covers +0.5
+                    
+                    # Update best selection logic using actual market prices
+                    potential_bets = [
+                        {"market": "3-Way Result", "sel": "Home Win", "prob": p_home, "price": get_market_price('h2h', h_name)},
+                        {"market": "3-Way Result", "sel": "Away Win", "prob": p_away, "price": get_market_price('h2h', a_name)},
+                        {"market": "Over/Under 2.5", "sel": "Over 2.5 Goals", "prob": p_over_25, "price": get_market_price('totals', 'Over', 2.5)},
+                    ]
+                    
+                    # Filter for bets where market price is available
+                    valid_bets = [b for b in potential_bets if b['price']]
+                    
+                    best_bet = max(valid_bets, key=lambda x: (x['prob'] * x['price']) - 1) if valid_bets else potential_bets[0]
+                    
+                    best_market = best_bet['market']
+                    best_selection = best_bet['sel']
+                    best_prob = best_bet['prob']
+                    actual_odds = best_bet['price'] or 1.95
 
                     # Insert full multi-market probability payload
                     pred_res = supabase.table("predictions").insert({
@@ -168,27 +191,21 @@ def run_pipeline():
                         "confidence": best_prob,
                         "best_bet_market": best_market,
                         "best_bet_selection": best_selection,
-                        "best_bet_odds": 1.95,
+                        "best_bet_odds": actual_odds,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }).execute()
 
                     # CLOSING LINE VALUE TRACKER (CLV)
-                    match_odds = odds_feed.get(f"{h_name} vs {a_name}")
-                    if match_odds and 'bookmakers' in match_odds and match_odds['bookmakers']:
-                        try:
-                            # Using first reliable bookmaker found in UK/US region
-                            current_market_price = float(match_odds['bookmakers'][0]['markets'][0]['outcomes'][0]['price'])
-                            ev_edge = (best_prob * current_market_price) - 1
+                    ev_edge = (best_prob * actual_odds) - 1
 
-                            if ev_edge > 0.03 and pred_res.data:
-                                supabase.table("value_bets").insert({
-                                    "prediction_id": pred_res.data[0]['id'], "match_id": db_match_id,
-                                    "home_team": h_name, "away_team": a_name,
-                                    "market": best_market, "selection": best_selection,
-                                    "odds": current_market_price, "ev": ev_edge, "status": "active",
-                                    "created_at": datetime.now(timezone.utc).isoformat()
-                                }).execute()
-                        except: pass
+                    if ev_edge > 0.03 and pred_res.data:
+                        supabase.table("value_bets").insert({
+                            "prediction_id": pred_res.data[0]['id'], "match_id": db_match_id,
+                            "home_team": h_name, "away_team": a_name,
+                            "market": best_market, "selection": best_selection,
+                            "odds": actual_odds, "ev": ev_edge, "status": "active",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }).execute()
 
         except Exception as e:
             logger.error(f"⚠️ League sync interruption loop warning ({league}): {str(e)}")

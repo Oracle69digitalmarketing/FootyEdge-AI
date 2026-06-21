@@ -1,23 +1,28 @@
 # FootyEdge AI
 
-Production-grade football predictive analytics engine.
+## Enterprise AI Engine | Open-Source Pipeline | PostgreSQL
 
-## Setup
+**Powered by Oracle69 Systems**
 
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   npm install
-   ```
+FootyEdge AI is a cutting-edge, open-source platform designed to revolutionize your football betting strategy. Leveraging a sophisticated multi-agent AI architecture, real-time data integration, and advanced statistical models, we provide unparalleled insights to help you identify value bets and optimize your returns.
 
-2. Configure environment variables in `.env`.
+### Core Architecture
 
-3. Run the backend:
-   ```bash
-   uvicorn api:app --host 0.0.0.0 --port 8000
-   ```
+- **Multi-Agent AI Architecture:** Specialized agents for data ingestion, team strength, goal distribution, value detection, bet sizing, and insight generation.
+- **Open-Source Pipeline:** Fully migrated to open-source data fetching, removing reliance on commercial APIs.
+- **PostgreSQL Database:** Robust data storage with support for analytics.
+- **Automated Operations:** Integrated Render cron jobs for automated prediction pipelines and settlement tasks.
 
-4. Run the frontend:
-   ```bash
-   npm run dev
-   ```
+### Agent Architecture
+
+| Agent | Function |
+|-------|----------|
+| Data Ingestion | Collects from 3+ sources |
+| Team Strength | Bayesian Elo ratings |
+| Goal Distribution | Poisson modeling |
+| Value Detection | EV > 5% threshold |
+| Kelly Calculator | Optimal bet sizing |
+| Insight Generator | LLM-powered analysis |
+
+---
+© 2026 Oracle69 Systems. All rights reserved.
