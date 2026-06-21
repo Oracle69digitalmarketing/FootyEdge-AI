@@ -330,10 +330,22 @@ async def analyze_strategy_endpoint(req: StrategyAnalyzeRequest):
     selections = strategy_agent.parse_strategy(req.text)
     return strategy_agent.analyze(selections, req.stake)
 
-@router.get("/api/admin/backup-now")
-async def trigger_backup(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_database_backup)
-    return {"status": "success", "message": "Backup queued."}
+@router.get("/api/admin/trigger-full-sync")
+async def trigger_full_sync(x_cron_token: str = Header(None)):
+    """Authenticated endpoint to cleanup dummy data and force a pipeline sync."""
+    CRON_SECRET = os.environ.get("CRON_SECRET_TOKEN", "1690")
+    if x_cron_token != CRON_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    # Run cleanup
+    from cleanup_db import cleanup_database
+    cleanup_database()
+    
+    # Run pipeline
+    run_pipeline()
+    
+    return {"status": "success", "message": "Cleanup and sync triggered."}
+
 
 @router.get("/api/recent-predictions")
 async def recent_predictions(supabase: Client = Depends(get_supabase_client)):
