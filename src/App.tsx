@@ -57,12 +57,22 @@ import { cn } from './lib/utils';
 
 
 export default function App() {
-  const [user, setUser] = useState<any>({
-    id: '00000000-0000-0000-0000-000000000000',
-    email: 'admin@footyedge.ai',
-    user_metadata: { full_name: 'Admin User' }
-  });
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
