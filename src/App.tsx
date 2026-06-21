@@ -500,15 +500,29 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
-        <form onSubmit={handleEmailAuth} className="bg-[#111] border border-zinc-800 p-8 rounded-3xl w-full max-w-sm space-y-6">
+        <div className="bg-[#111] border border-zinc-800 p-8 rounded-3xl w-full max-w-sm space-y-6">
           <h2 className="text-2xl font-bold text-white text-center">{isSignUp ? "Sign Up" : "Sign In"}</h2>
           <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-xl text-white" />
           <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-xl text-white" />
-          <button type="submit" className="w-full bg-orange-500 text-black font-bold py-3 rounded-xl hover:bg-orange-400">{isSignUp ? "Sign Up" : "Sign In"}</button>
+          <button 
+            onClick={async () => {
+              console.log("Button clicked manually", { email, isSignUp });
+              // Direct invocation of auth logic
+              if (!supabase) return;
+              if (isSignUp) {
+                await supabase.auth.signUp({ email, password });
+              } else {
+                await supabase.auth.signInWithPassword({ email, password });
+              }
+            }}
+            className="w-full bg-orange-500 text-black font-bold py-3 rounded-xl hover:bg-orange-400"
+          >
+            {isSignUp ? "Sign Up" : "Sign In"}
+          </button>
           <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="w-full text-zinc-500 text-sm hover:text-white">
             {isSignUp ? "Already have an account? Sign In" : "Need an account? Sign Up"}
           </button>
-        </form>
+        </div>
       </div>
     );
   }
