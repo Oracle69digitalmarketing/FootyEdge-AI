@@ -28,10 +28,10 @@ const Portfolio: React.FC<PortfolioProps> = ({ bankroll, userBets }) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard title="Active Bets" value={(userBets || []).filter(b => b.status === 'pending').length.toString()} icon={<Clock className="text-blue-500" />} />
-        <StatCard title="Total Stake" value={`₦${((userBets || []).reduce((acc, b) => acc + (b.stake ?? 0), 0) ?? 0).toFixed(2)}`} icon={<DollarSign className="text-green-500" />} />
-        <StatCard title="Win Rate" value={`${(((userBets || []).filter(b => b.status === 'won').length / ((userBets || []).filter(b => b.status !== 'pending').length || 1)) * 100).toFixed(1)}%`} icon={<TrendingUpIcon className="text-orange-500" />} />
-        <StatCard title="Net Profit" value={`₦${((bankroll ?? 1000) - 1000).toFixed(2)}`} icon={<Wallet className="text-purple-500" />} />
+        <StatCard title="Active Bets" value={userBets.filter(b => b.status === 'pending').length.toString()} icon={<Clock className="text-blue-500" />} />
+        <StatCard title="Total Stake" value={`₦${userBets.reduce((acc, b) => acc + b.stake, 0).toFixed(2)}`} icon={<DollarSign className="text-green-500" />} />
+        <StatCard title="Win Rate" value={`${((userBets.filter(b => b.status === 'won').length / (userBets.filter(b => b.status !== 'pending').length || 1)) * 100).toFixed(1)}%`} icon={<TrendingUpIcon className="text-orange-500" />} />
+        <StatCard title="Net Profit" value={`₦${(bankroll - 1000).toFixed(2)}`} icon={<Wallet className="text-purple-500" />} />
       </div>
 
       <div className="bg-[#111] border border-zinc-800 rounded-3xl overflow-hidden">
@@ -51,7 +51,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ bankroll, userBets }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {(userBets || []).map(bet => (
+              {userBets.map(bet => (
                 <tr key={bet.id} className="hover:bg-zinc-900/30 transition-colors">
                   <td className="px-6 py-4 font-medium">{bet.selection.split(' to ')[0]}</td>
                   <td className="px-6 py-4">
@@ -59,7 +59,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ bankroll, userBets }) => {
                   </td>
                   <td className="px-6 py-4 font-mono">{bet.odds}</td>
                   <td className="px-6 py-4 font-mono">₦{bet.stake}</td>
-                  <td className="px-6 py-4 font-mono text-green-500">₦{(bet.potential_win ?? 0).toFixed(2)}</td>
+                  <td className="px-6 py-4 font-mono text-green-500">₦{bet.potential_win.toFixed(2)}</td>
                   <td className="px-6 py-4">
                     <span className={cn(
                       "text-[10px] font-bold uppercase px-2 py-1 rounded-full",

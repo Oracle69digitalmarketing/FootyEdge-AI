@@ -95,9 +95,9 @@ const TeamSearch: React.FC = () => {
         
         {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
 
-        {(results || []).length > 0 && (
+        {results.length > 0 && (
           <div className="mt-4 bg-[#111] border border-zinc-800 rounded-2xl max-h-80 overflow-y-auto shadow-2xl">
-            {(results || []).map(team => (
+            {results.map(team => (
               <div
                 key={team.id}
                 onClick={() => handleTeamClick(team)}

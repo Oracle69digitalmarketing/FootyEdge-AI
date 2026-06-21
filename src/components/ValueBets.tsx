@@ -68,7 +68,7 @@ const ValueBets: React.FC = () => {
   return (
     <div className="p-4 md:p-8">
       <h1 className="text-3xl font-bold mb-6 text-center">Real-Time Value Bets</h1>
-      {(valueBets || []).length > 0 ? (
+      {valueBets.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full bg-[#1a1a1a] rounded-lg">
             <thead className="bg-[#2a2a2a]">
@@ -84,7 +84,7 @@ const ValueBets: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {(valueBets || []).map((bet) => (
+              {valueBets.map((bet) => (
                 <tr key={bet.id} className="hover:bg-[#2a2a2a]">
                   <td className="px-6 py-4 whitespace-nowrap">{bet.home_team} vs {bet.away_team}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-xs text-zinc-500">{bet.market}</td>
@@ -98,10 +98,10 @@ const ValueBets: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{bet.selection}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{(bet.odds || 0).toFixed(2)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{((bet.our_probability || 0) * 100).toFixed(1)}%</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-green-400">{(bet.ev || 0).toFixed(3)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{(bet.recommended_stake_percentage || 0).toFixed(1)}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{bet.odds.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{(bet.our_probability * 100).toFixed(1)}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-green-400">{bet.ev.toFixed(3)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{bet.recommended_stake_percentage.toFixed(1)}%</td>
                 </tr>
               ))}
             </tbody>
