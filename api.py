@@ -28,16 +28,6 @@ from agents.strategy_agent import StrategyAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
 
-# Clients
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
-football_client = FootballAPIClient()
-strategy_agent = StrategyAgent()
-
-def get_supabase_client():
-    return supabase
-
 # Scheduler setup
 scheduler = BackgroundScheduler()
 
@@ -73,7 +63,7 @@ async def lifespan(app: FastAPI):
     yield
     scheduler.shutdown()
 
-app = FastAPI(lifespan=lifespan, title="FootyEdge AI Production Engine", version="5.6.0")
+app = FastAPI(lifespan=lifespan, title="FootyEdge AI Production Engine", version="5.4.0")
 
 ALLOWED_ORIGINS = ["*"]
 app.add_middleware(
@@ -83,6 +73,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Clients
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+football_client = FootballAPIClient()
+strategy_agent = StrategyAgent()
+
+def get_supabase_client():
+    return supabase
 
 # Models
 class StrategyAnalyzeRequest(BaseModel):
@@ -94,10 +94,10 @@ class PredictRequest(BaseModel):
     away_team: str
     odds: Dict[str, float] = Field(default={})
 
-# --- API Router ---
-router = APIRouter(prefix="/api")
+# API Router
+router = APIRouter()
 
-@router.get("/health")
+@router.get("/api/health")
 async def health_check():
     return {
         "status": "operational",
@@ -106,7 +106,7 @@ async def health_check():
         "environment": "production"
     }
 
-@router.get("/cron-trigger")
+@router.get("/api/cron-trigger")
 async def manual_cron_trigger(
     background_tasks: BackgroundTasks,
     x_cron_token: str = Header(None)
@@ -119,8 +119,8 @@ async def manual_cron_trigger(
     background_tasks.add_task(run_pipeline)
     return {"status": "queued"}
 
-@router.get("/daily-picks")
-@router.get("/daily-picks/")
+@router.get("/api/daily-picks")
+@router.get("/api/daily-picks/")
 async def get_user_filtered_predictions(
     timeline: str = Query("daily", description="Options: daily, weekly, custom"),
     from_date: str = Query(None, alias="from_date", description="YYYY-MM-DD"),
@@ -131,7 +131,6 @@ async def get_user_filtered_predictions(
     Unified User Prediction Feed.
     Accepts from_date and to_date parameters to prevent duplicate match rendering.
     """
-    if not supabase: return []
     now = datetime.now(timezone.utc)
     query_start = now.strftime("%Y-%m-%d 00:00:00")
     query_end = now.strftime("%Y-%m-%d 23:59:59")
@@ -170,36 +169,36 @@ async def get_user_filtered_predictions(
             p_dict = dict(p)
             p_dict["kelly_stake_percentage"] = round(max(0, raw_kelly * 0.25) * 100, 2)
             results.append(p_dict)
+
+            p_dict = dict(p)
+            p_dict["kelly_stake_percentage"] = round(max(0, raw_kelly * 0.25) * 100, 2)
+            results.append(p_dict)
             
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch timeline predictions: {str(e)}")
 
-@router.get("/teams")
-@router.get("/teams/")
+@router.get("/api/teams")
+@router.get("/api/teams/")
 async def get_production_teams(supabase: Client = Depends(get_supabase_client)):
-    """Returns actual teams built by soccerdata, sorted alphabetically."""
-    if not supabase: return []
+    """Returns actual teams sorted alphabetically."""
     res = supabase.table("teams").select("*").order("name").execute()
     return res.data
 
-@router.get("/players")
-@router.get("/players/")
+@router.get("/api/players")
+@router.get("/api/players/")
 async def get_production_players(supabase: Client = Depends(get_supabase_client)):
     """Read-only actual players feed."""
-    if not supabase: return []
     res = supabase.table("players").select("*, teams(name)").limit(100).execute()
     return res.data
 
-@router.get("/value-bets")
-@router.get("/value-bets/")
+@router.get("/api/value-bets")
 async def get_value_bets_dashboard(supabase: Client = Depends(get_supabase_client)):
-    """Fetches high EV advantages directly from Supabase cache tables."""
-    if not supabase: return []
+    """Fetches high EV advantages directly from Supabase."""
     res = supabase.table("value_bets").select("*").eq("status", "active").order("ev", desc=True).execute()
     return res.data
 
-@router.get("/dashboard/stats")
+@router.get("/api/dashboard/stats")
 async def get_dashboard_stats():
     """Calculates overall platform statistics."""
     if not supabase:
@@ -207,7 +206,7 @@ async def get_dashboard_stats():
     try:
         preds_count = supabase.table("predictions").select("id", count="exact").execute().count or 0
         value_count = supabase.table("value_bets").select("id", count="exact").eq("status", "active").execute().count or 0
-        
+
         settled = supabase.table("predictions").select("best_bet_selection, actual_result").not_.is_("actual_result", "null").execute().data
         accuracy = "N/A"
         if settled:
@@ -225,11 +224,9 @@ async def get_dashboard_stats():
         logger.error(f"Stats fetch error: {e}")
         return {"total_predictions": 0, "active_value_bets": 0, "ai_accuracy": "N/A"}
 
-@router.get("/acca-builder")
-@router.get("/acca-builder/")
+@router.get("/api/acca-builder")
 async def get_automated_accumulator_ticket(supabase: Client = Depends(get_supabase_client)):
     """Greedy Combinator Algorithm for Accas."""
-    if not supabase: return {"status": "insufficient_data", "combined_odds": 1.0, "selections": []}
     try:
         res = supabase.table("value_bets") \
             .select("id, home_team, away_team, market, selection, odds, ev") \
@@ -250,14 +247,11 @@ async def get_automated_accumulator_ticket(supabase: Client = Depends(get_supaba
             "selections": selections
         }
     except Exception as e:
-        logger.error(f"Acca Combinator failed: {e}")
         raise HTTPException(status_code=500, detail=f"Acca Combinator computation failed: {str(e)}")
 
-@router.get("/public-ledger")
-@router.get("/public-ledger/")
+@router.get("/api/public-ledger")
 async def get_public_accuracy_audit_trail(supabase: Client = Depends(get_supabase_client)):
     """Public Transparency Audit Ledger."""
-    if not supabase: return []
     try:
         res = supabase.table("predictions") \
             .select("id, home_team, away_team, best_bet_market, best_bet_selection, best_bet_odds, actual_result") \
@@ -267,14 +261,11 @@ async def get_public_accuracy_audit_trail(supabase: Client = Depends(get_supabas
             .execute()
         return res.data
     except Exception as e:
-        logger.error(f"Failed to fetch public accuracy audit trail: {str(e)}")
-        return []
+        raise HTTPException(status_code=500, detail=f"Failed to fetch public accuracy audit trail: {str(e)}")
 
-@router.get("/admin/metrics")
-@router.get("/admin/metrics/")
+@router.get("/api/admin/metrics")
 async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client)):
     """Computes system accuracy and Top 10 wins."""
-    if not supabase: return {"status": "no_supabase", "summary": {}, "top_10_wins": []}
     try:
         preds = supabase.table("predictions").select("*").execute().data
         matches = supabase.table("matches").select("id, home_goals, away_goals").execute().data
@@ -284,7 +275,7 @@ async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client
 
         p_df = pd.DataFrame(preds)
         m_df = pd.DataFrame(matches).rename(columns={"id": "match_id"}).dropna()
-
+        
         df = pd.merge(p_df, m_df, on="match_id", how="inner")
         if df.empty:
             return {"status": "no_completed_fixtures", "summary": {}, "top_10_wins": []}
@@ -295,7 +286,7 @@ async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client
         )
         df['success'] = df['best_bet_selection'] == df['actual']
         df['profit'] = df.apply(lambda r: (100 * r['best_bet_odds']) - 100 if r['success'] else -100, axis=1)
-        
+
         total_fixtures = len(df)
         successful_predictions = int(df['success'].sum())
         accuracy_rate = (successful_predictions / total_fixtures) * 100
@@ -313,7 +304,7 @@ async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client
                 "ev": float(row.get('ev', 0)),
                 "score": f"{int(row['home_goals'])}-{int(row['away_goals'])}"
             })
-            
+
         return {
             "status": "success",
             "summary": {
@@ -328,41 +319,34 @@ async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/predict")
+@router.post("/api/predict")
 async def predict_endpoint(request: PredictRequest):
     from predictor import FootyEdgePredictor
     predictor = FootyEdgePredictor(football_client=football_client)
     return await predictor.predict_match(request.home_team, request.away_team, request.odds)
 
-@router.post("/analyze-strategy")
+@router.post("/api/analyze-strategy")
 async def analyze_strategy_endpoint(req: StrategyAnalyzeRequest):
     selections = strategy_agent.parse_strategy(req.text)
     return strategy_agent.analyze(selections, req.stake)
 
-@router.get("/admin/backup-now")
+@router.get("/api/admin/backup-now")
 async def trigger_backup(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_database_backup)
     return {"status": "success", "message": "Backup queued."}
 
-@router.get("/recent-predictions")
+@router.get("/api/recent-predictions")
 async def recent_predictions(supabase: Client = Depends(get_supabase_client)):
-    if not supabase: return []
     res = supabase.table("predictions").select("*").order("created_at", desc=True).limit(10).execute()
     return res.data or []
 
-@router.get("/matches")
+@router.get("/api/matches")
 async def get_matches():
     return await football_client.get_matches_by_date(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
-@router.get("/bets/user/{user_id}")
-async def get_user_bets(user_id: str, supabase: Client = Depends(get_supabase_client)):
-    if not supabase: return []
-    res = supabase.table("user_bets").select("*").order("created_at", desc=True).execute()
-    return res.data or []
-
 app.include_router(router)
 
-# Static files
+# Static file serving
 dist_path = os.path.join(os.path.dirname(__file__), "dist")
 if os.path.exists(dist_path):
     @app.exception_handler(404)
