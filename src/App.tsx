@@ -691,6 +691,7 @@ function ProbStat({ label, value, color }: { label: string, value: number, color
   );
 }
 
+}
 function StrategyView() {
   const [text, setText] = useState('');
   const [analysis, setAnalysis] = useState<any>(null);
