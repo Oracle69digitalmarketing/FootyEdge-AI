@@ -38,7 +38,7 @@ class OddsAPIProvider(BaseFootballProvider):
                 res = await client.get(
                     f"{self.base_url}/{self.sport}/odds",
                     params={
-                        "api_key": self.api_key,
+                        "apiKey": self.api_key,
                         "regions": "uk",
                         "markets": "h2h,totals",
                         "oddsFormat": "decimal"
@@ -114,7 +114,7 @@ class FootballAPIClient:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.get(
                     f"{self.provider.base_url}",
-                    params={"api_key": self.api_key}
+                    params={"apiKey": self.api_key}
                 )
                 if res.status_code == 200:
                     data = res.json()

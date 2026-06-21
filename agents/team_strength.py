@@ -14,11 +14,12 @@ class TeamStrengthAgent:
     Builds dynamic team ratings using data from a persistent source.
     """
     
-    def __init__(self, supabase_client: Any, k_factor=20, decay_rate=0.95, history_length=20):
+    def __init__(self, supabase_client: Any, k_factor=32, decay_rate=0.95, history_length=20):
         self.supabase = supabase_client
         self.k_factor = k_factor
         self.decay_rate = decay_rate
         self.history_length = history_length
+        self.home_advantage = 50 # Explicit PDF factor
         self._rating_cache = {}
 
     async def assess(self, team_name: str, matches: List[Dict], league_name: str = None, squad_data: Dict = None) -> TeamStrength:
@@ -83,7 +84,7 @@ class TeamStrengthAgent:
             opponent_name = match.get('opponent_name', 'Unknown Opponent')
             opponent_rating = await self._get_rating_from_db(opponent_name)
             
-            home_adv = 50 if match['is_home'] else -50
+            home_adv = self.home_advantage if match['is_home'] else -self.home_advantage
             expected_score = 1 / (1 + 10**((opponent_rating - (current_rating + home_adv)) / 400))
             
             if match['result'] == 'win': actual_score = 1
@@ -118,7 +119,8 @@ class TeamStrengthAgent:
             weight = self.decay_rate ** i
             weighted_goals += match['goals_scored'] * weight
             total_weight += weight
-        return weighted_goals / total_weight if total_weight > 0 else 1.0
+        # Add smoothing to avoid 0.0
+        return (weighted_goals + 1.0) / (total_weight + 1.0) if total_weight > 0 else 1.0
 
     def _calculate_defense_strength(self, matches: List[Dict]) -> float:
         if not matches: return 1.0
@@ -128,7 +130,8 @@ class TeamStrengthAgent:
             weight = self.decay_rate ** i
             weighted_goals_conceded += match['goals_conceded'] * weight
             total_weight += weight
-        return weighted_goals_conceded / total_weight if total_weight > 0 else 1.0
+        # Add smoothing to avoid 0.0
+        return (weighted_goals_conceded + 1.0) / (total_weight + 1.0) if total_weight > 0 else 1.0
 
     def _calculate_variance(self, matches: List[Dict]) -> float:
         if len(matches) < 2: return 0.2

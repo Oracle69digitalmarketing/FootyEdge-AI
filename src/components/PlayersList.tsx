@@ -110,8 +110,9 @@ const PlayersList: React.FC = () => {
       )}
       
       {!loading && filteredPlayers.length === 0 && (
-        <div className="text-center py-20 bg-[#111] border border-zinc-800 rounded-3xl">
-          <p className="text-zinc-500">No players found matching your search.</p>
+        <div className="text-center py-20 bg-[#111] border border-zinc-800 rounded-3xl space-y-4">
+          <p className="text-zinc-500 font-bold">No players found in your database.</p>
+          <p className="text-sm text-zinc-600">Please go to the **Admin** panel and click **Sync Players** to fetch squad details from the API.</p>
         </div>
       )}
 

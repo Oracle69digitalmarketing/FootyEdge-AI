@@ -1,5 +1,6 @@
 import os
 import logging
+import hashlib
 import soccerdata as sd
 import pandas as pd
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,11 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 LEAGUES = ["ENG-Premier League", "ESP-La Liga", "GER-Bundesliga", "ITA-Serie A", "FRA-Ligue 1"]
 CURRENT_SEASON = "2425"
+
+def generate_deterministic_id(name: str) -> int:
+    """Generates a consistent BIGINT ID from string tokens to avoid 404 conflicts."""
+    hash_obj = hashlib.sha256(name.encode('utf-8'))
+    return int(hash_obj.hexdigest()[:12], 16)
 
 def run_settlement():
     logger.info("🏁 Initiating automated bet settlement routine...")
@@ -33,9 +39,14 @@ def run_settlement():
             completed_games = schedule[(schedule['match_date_str'] == yesterday) & schedule['home_score'].notna()]
 
             for _, row in completed_games.iterrows():
+                h_id = generate_deterministic_id(row['home_team'])
+                a_id = generate_deterministic_id(row['away_team'])
+
                 # Query our database to find this specific active match row
                 match_query = supabase.table("matches") \
                     .select("id") \
+                    .eq("home_team_id", h_id) \
+                    .eq("away_team_id", a_id) \
                     .eq("league", league) \
                     .gte("match_date", f"{yesterday} 00:00:00") \
                     .lte("match_date", f"{yesterday} 23:59:59") \

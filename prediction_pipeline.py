@@ -164,15 +164,29 @@ def run_pipeline():
                         h2h_market = next((m for m in best_bookie['markets'] if m['key'] == 'h2h'), None)
 
                         if h2h_market:
+                            # 1. Home Win
                             odds_home = next((o['price'] for o in h2h_market['outcomes'] if o['name'] == row['home_team']), 1.0)
                             ev_home = (p_home * odds_home) - 1
                             if ev_home > final_ev:
                                 final_ev, final_odds, best_market, best_selection = ev_home, odds_home, "3-Way Result", "Home Win"
 
+                            # 2. Draw
+                            odds_draw = next((o['price'] for o in h2h_market['outcomes'] if o['name'].lower() == "draw"), 1.0)
+                            ev_draw = (p_draw * odds_draw) - 1
+                            if ev_draw > final_ev:
+                                final_ev, final_odds, best_market, best_selection = ev_draw, odds_draw, "3-Way Result", "Draw"
+
+                            # 3. Away Win
+                            odds_away = next((o['price'] for o in h2h_market['outcomes'] if o['name'] == row['away_team']), 1.0)
+                            ev_away = (p_away * odds_away) - 1
+                            if ev_away > final_ev:
+                                final_ev, final_odds, best_market, best_selection = ev_away, odds_away, "3-Way Result", "Away Win"
+
+                    # Determine best bet payload - only pick Home Win as fallback if nothing found at all
                     pred_payload.update({
                         "best_bet_market": best_market or "3-Way Result",
-                        "best_bet_selection": best_selection or "Home Win",
-                        "best_bet_odds": final_odds or 2.0
+                        "best_bet_selection": best_selection or ("Home Win" if p_home > p_away else "Away Win"),
+                        "best_bet_odds": final_odds or (1.95 if p_home > p_away else 2.10)
                     })
                     pred_res = supabase.table("predictions").insert(pred_payload).execute()
 

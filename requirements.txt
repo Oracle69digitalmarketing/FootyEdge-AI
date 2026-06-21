@@ -11,4 +11,7 @@ pytest-asyncio
 scipy>=1.10.0
 requests>=2.31.0
 soccerdata[fbref]>=1.4.0
-apscheduler
+apscheduler>=3.10.0
+tqdm
+lightgbm
+scikit-learn

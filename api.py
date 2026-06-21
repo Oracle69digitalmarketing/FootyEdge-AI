@@ -265,7 +265,7 @@ async def get_matches():
 @router.get("/bets/user/{user_id}")
 async def get_user_bets(user_id: str):
     if not supabase: return []
-    res = supabase.table("user_bets").select("*").order("created_at", desc=True).execute()
+    res = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
     return res.data or []
 
 app.include_router(router)
