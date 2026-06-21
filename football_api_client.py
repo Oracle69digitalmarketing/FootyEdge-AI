@@ -1,10 +1,8 @@
 import os
 import httpx
 import asyncio
-import json
-import pandas as pd
-from datetime import datetime
 import logging
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -17,294 +15,123 @@ class BaseFootballProvider:
     async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
         raise NotImplementedError
 
-    async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
-        try:
-            # football-data.org matches endpoint can be used with competition filter
-            # Mapping from league_id to PL, PD, etc. handled in FootballRouter or here?
-            # For now, assume league_id is the string code (e.g., 'PL')
-            res = await self._make_request(f"competitions/{league_id}/matches", {"dateFrom": from_date, "dateTo": to_date})
-            if res and 'matches' in res:
-                return [self.normalize_match(self._raw_to_internal(m)) for m in res['matches']]
-            return []
-        except Exception as e:
-            logger.error(f"FootballDataOrgProvider get_fixtures error: {e}")
-            return []
-
     def normalize_match(self, match: Dict) -> Dict:
-        # Enforce strict schema: fixture, teams, league, goals, status
-        return {
-            "fixture": {"id": match.get("fixture", {}).get("id"), "date": match.get("fixture", {}).get("date")},
-            "teams": {
-                "home": {"name": match.get("teams", {}).get("home", {}).get("name"), "id": match.get("teams", {}).get("home", {}).get("id"), "logo": match.get("teams", {}).get("home", {}).get("logo")},
-                "away": {"name": match.get("teams", {}).get("away", {}).get("name"), "id": match.get("teams", {}).get("away", {}).get("id"), "logo": match.get("teams", {}).get("away", {}).get("logo")}
-            },
-            "league": {"name": match.get("league", {}).get("name"), "id": match.get("league", {}).get("id")},
-            "goals": {"home": match.get("goals", {}).get("home"), "away": match.get("goals", {}).get("away")},
-            "status": match.get("status", {"long": "Unknown"})
-        }
+        return match
 
-class LocalCSVProvider(BaseFootballProvider):
-    def __init__(self, file_path: str):
-        super().__init__()
-        self.file_path = file_path
-        self.df = pd.read_csv(file_path)
-
-    async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
-        mask = (self.df['MatchDate'] >= date_from) & (self.df['MatchDate'] <= date_to)
-        subset = self.df.loc[mask]
-        matches = []
-        for _, row in subset.iterrows():
-            matches.append({
-                "fixture": {"id": f"{row['HomeTeam']}-{row['AwayTeam']}-{row['MatchDate']}", "date": row['MatchDate']},
-                "teams": {
-                    "home": {"name": row['HomeTeam'], "id": None, "logo": None},
-                    "away": {"name": row['AwayTeam'], "id": None, "logo": None}
-                },
-                "league": {"name": row['Division'], "id": None},
-                "goals": {"home": row['FTHome'], "away": row['FTAway']},
-                "status": {"long": "Finished"}
-            })
-        return [self.normalize_match(m) for m in matches]
-
-class FootballDataOrgProvider(BaseFootballProvider):
+class OddsAPIProvider(BaseFootballProvider):
+    """
+    Implementation for The-Odds-API (the-odds-api.com)
+    """
     def __init__(self, api_key: str):
         super().__init__(api_key)
-        self.base_url = "https://api.football-data.org/v4"
-        self.headers = {'X-Auth-Token': self.api_key}
+        self.base_url = "https://api.the-odds-api.com/v4/sports"
+        self.sport = "soccer_epl" # Default to EPL, can be dynamic
 
     async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
+        """
+        Fetches odds (which include match info) from The-Odds-API.
+        """
+        if not self.api_key:
+            return []
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.get(f"{self.base_url}/matches", headers=self.headers, params={"dateFrom": date_from, "dateTo": date_to})
-                if res.status_code == 200:
-                    data = res.json()
-                    return [self.normalize_match(self._raw_to_internal(m)) for m in data.get('matches', [])]
-                return []
-        except: return []
-
-    def _raw_to_internal(self, m: Dict) -> Dict:
-        return {
-            "fixture": {"id": m.get('id'), "date": m.get('utcDate')},
-            "teams": {
-                "home": {"name": m.get('homeTeam', {}).get('name'), "id": m.get('homeTeam', {}).get('id'), "logo": m.get('homeTeam', {}).get('crest')},
-                "away": {"name": m.get('awayTeam', {}).get('name'), "id": m.get('awayTeam', {}).get('id'), "logo": m.get('awayTeam', {}).get('crest')}
-            },
-            "league": {"name": m.get('competition', {}).get('name'), "id": m.get('competition', {}).get('id')},
-            "goals": {"home": m.get('score', {}).get('fullTime', {}).get('home'), "away": m.get('score', {}).get('fullTime', {}).get('away')},
-            "status": {"long": m.get('status')}
-        }
-
-    async def list_players_by_team(self, team_id: int):
-        res = await self._make_request(f"teams/{team_id}")
-        if res and 'squad' in res:
-            players = []
-            for p in res['squad']:
-                players.append({
-                    "player": {
-                        "id": p.get('id'),
-                        "name": p.get('name'),
-                        "position": p.get('position'),
+                res = await client.get(
+                    f"{self.base_url}/{self.sport}/odds",
+                    params={
+                        "apiKey": self.api_key,
+                        "regions": "uk",
+                        "markets": "h2h,totals",
+                        "oddsFormat": "decimal"
                     }
-                })
-            return {"response": players}
-        return {"response": []}
-
-class SportradarProvider(BaseFootballProvider):
-    def __init__(self, api_key: str):
-        super().__init__(api_key)
-        self.base_url = "https://api.sportradar.com/soccer/trial/v4/en"
-
-    async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
-        try:
-            # New Base Tier Layout
-            url = f"https://sportradar.com/{date_from}/summaries.json?api_key={self.api_key}"
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.get(url)
+                )
                 if res.status_code == 200:
                     data = res.json()
-                    # Sportradar base tier might use different field names; 
-                    # assuming 'summaries' or similar based on the instruction
-                    return [self.normalize_match(self._raw_to_internal(s)) for s in data.get('summaries', [])]
+                    return [self.normalize_match(m) for m in data]
                 else:
-                    logger.error(f"SportradarProvider error: {res.status_code} - {res.text[:200]}")
-                return []
+                    logger.error(f"Odds-API error: {res.status_code} - {res.text}")
+                    return []
         except Exception as e:
-            logger.error(f"SportradarProvider exception: {str(e)}")
+            logger.error(f"Odds-API exception: {e}")
             return []
 
-    async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
-        return await self.get_matches(from_date, to_date)
+    def normalize_match(self, m: Dict) -> Dict:
+        # Map The-Odds-API format to our internal format
+        home_team = m.get('home_team')
+        away_team = m.get('away_team')
 
-    def _raw_to_internal(self, s: Dict) -> Dict:
-        ev = s.get('sport_event', {})
-        st = s.get('sport_event_status', {})
-        home = next((c for c in ev.get('competitors', []) if c.get('qualifier') == 'home'), {})
-        away = next((c for c in ev.get('competitors', []) if c.get('qualifier') == 'away'), {})
+        # Extract odds if available
+        odds = {}
+        for bookmaker in m.get('bookmakers', []):
+            if bookmaker['key'] in ['williamhill', 'betfair_ex_uk', 'unibet_uk', 'bet365']:
+                for market in bookmaker.get('markets', []):
+                    if market['key'] == 'h2h':
+                        for outcome in market.get('outcomes', []):
+                            if outcome['name'] == home_team: odds['home_win'] = outcome['price']
+                            elif outcome['name'] == away_team: odds['away_win'] = outcome['price']
+                            else: odds['draw'] = outcome['price']
+                    elif market['key'] == 'totals':
+                        for outcome in market.get('outcomes', []):
+                            if outcome['name'] == 'Over' and outcome['point'] == 2.5:
+                                odds['Over 2.5'] = outcome['price']
+                            elif outcome['name'] == 'Under' and outcome['point'] == 2.5:
+                                odds['Under 2.5'] = outcome['price']
+                if odds.get('home_win'): break # Take first found reliable bookmaker with at least H2H
+
         return {
-            "fixture": {"id": ev.get('id'), "date": ev.get('start_time')},
-            "teams": {
-                "home": {"name": home.get('name'), "id": home.get('id'), "logo": None},
-                "away": {"name": away.get('name'), "id": away.get('id'), "logo": None}
+            "fixture": {
+                "id": m.get('id'),
+                "date": m.get('commence_time')
             },
-            "league": {"name": ev.get('sport_event_context', {}).get('league', {}).get('name'), "id": ev.get('sport_event_context', {}).get('league', {}).get('id')},
-            "goals": {"home": st.get('home_score'), "away": st.get('away_score')},
-            "status": {"long": st.get('status')}
+            "teams": {
+                "home": {"name": home_team, "id": None, "logo": None},
+                "away": {"name": away_team, "id": None, "logo": None}
+            },
+            "league": {"name": m.get('sport_title'), "id": m.get('sport_key')},
+            "goals": {"home": None, "away": None},
+            "status": {"long": "Upcoming"},
+            "live_odds": odds
         }
-
-class TheStatsAPIProvider(BaseFootballProvider):
-    def __init__(self, api_key: str):
-        super().__init__(api_key)
-        self.base_url = "https://thestatsapi.com"
-        self.headers = {"Authorization": f"Bearer {self.api_key}", "Accept": "application/json"}
-
-    async def get_match_deep_stats(self, match_id: str) -> Dict[str, Any]:
-        return {} # Simplified for now
-
-    async def get_matches(self, date_from: str, date_to: str) -> List[Dict]:
-        return []
-    
-    def normalize_match(self, match: Dict) -> Dict:
-        return {}
 
 class FootballAPIClient:
     def __init__(self):
-        self.providers = []
-        self.stats_provider = None
-        self.circuit_breaker = {} # {provider_name: {"status": "healthy", "last_failure": None}}
-        self.POPULAR_LEAGUES = {
-            2021: "Premier League", 2014: "La Liga", 2002: "Bundesliga", 2019: "Serie A", 
-            2015: "Ligue 1", 2001: "Champions League", 73: "Europa League"
-        }
+        self.api_key = os.environ.get('ODDS_API_KEY')
+        self.provider = OddsAPIProvider(self.api_key) if self.api_key else None
         
-        # Load keys strictly from environment
-        fd_key = os.environ.get('FOOTBALL_DATA_API_KEY')
-        sr_key = os.environ.get('SPORTRADAR_API_KEY')
-        stats_key = os.environ.get('THESTATSAPI_KEY')
-        
-        # Focus on stable providers only. RapidAPI removed as per user request.
-        if fd_key:
-            self.providers.append(FootballDataOrgProvider(fd_key))
-            self.circuit_breaker["FootballDataOrgProvider"] = {"status": "healthy", "last_failure": None}
-        if sr_key:
-            self.providers.append(SportradarProvider(sr_key))
-            self.circuit_breaker["SportradarProvider"] = {"status": "healthy", "last_failure": None}
-            
-        if stats_key:
-            self.stats_provider = TheStatsAPIProvider(stats_key)
-
-    def _is_provider_healthy(self, provider_name: str) -> bool:
-        if self.circuit_breaker.get(provider_name, {}).get("status") == "healthy": return True
-        last_failure = self.circuit_breaker.get(provider_name, {}).get("last_failure")
-        if last_failure and (datetime.now() - last_failure).total_seconds() > 60:
-            self.circuit_breaker[provider_name]["status"] = "healthy"; return True
-        return False
-
-    def _mark_provider_failure(self, provider_name: str):
-        self.circuit_breaker[provider_name] = {"status": "unhealthy", "last_failure": datetime.now()}
-    async def get_fixtures(self, league_id: int, season: int, from_date: str, to_date: str) -> List[Dict]:
-        for provider in self.providers:
-            provider_name = provider.__class__.__name__
-            if not self._is_provider_healthy(provider_name): continue
-            
-            fixtures = await provider.get_fixtures(league_id, season, from_date, to_date)
-            if fixtures: return fixtures
-            else: self._mark_provider_failure(provider_name)
-        return []
+        if not self.api_key:
+            logger.warning("ODDS_API_KEY not found. API calls will fail.")
 
     async def get_matches_by_date(self, date_from: str, date_to: str = None) -> Dict:
-        if not date_to: date_to = date_from
-        for provider in self.providers:
-            provider_name = provider.__class__.__name__
-            if not self._is_provider_healthy(provider_name): continue
-            matches = await provider.get_matches(date_from, date_to)
-            if matches: return {"response": matches}
-            self._mark_provider_failure(provider_name)
+        if not self.provider: return {"response": []}
+        matches = await self.provider.get_matches(date_from, date_to)
+        return {"response": matches}
 
+    async def get_team_fixtures(self, team_id: str, last: int = 40) -> Dict:
         return {"response": []}
-
-    async def _make_request(self, endpoint: str, params: Dict = None) -> Dict:
-        # Generic request logic for internal providers if needed
-        return {}
-
-    async def get_match_deep_stats(self, match_id: str) -> Dict[str, Any]:
-        if self.stats_provider:
-            return await self.stats_provider.get_match_deep_stats(match_id)
-        return {"error": "Stats provider not configured"}
-
-    async def search_teams(self, query: str) -> Dict:
-        for provider in self.providers:
-            res = await provider.search_teams(query)
-            if res and res.get('response'): return res
-        return {"response": []}
-
-    async def get_odds_by_event_id(self, event_id: str):
-        # Fallback logic for odds from stable providers
-        for provider in self.providers:
-            res = await provider.get_odds_by_event_id(event_id)
-            if res and res.get('response'): return res
-        return {"response": []}
-
-    async def get_standings(self, league_id: str):
-        for provider in self.providers:
-            res = await provider.get_standings(league_id)
-            if res and res.get('response'): return res
-        return {"response": []}
-
-    def get_365scores_match_url(self, home_team: str, away_team: str) -> str:
-        query = f"{home_team} vs {away_team}"
-        encoded_query = query.replace(" ", "%20")
-        return f"https://www.365scores.com/football/search?query={encoded_query}"
 
     async def list_leagues(self):
-        for provider in self.providers:
-            res = await provider.list_leagues()
-            if res and res.get('response'): return res
+        if not self.provider: return {"response": []}
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(
+                    f"{self.provider.base_url}",
+                    params={"apiKey": self.api_key}
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    leagues = []
+                    for s in data:
+                        if s.get('group') == 'Soccer':
+                            leagues.append({"league": {"id": s.get('key'), "name": s.get('title')}})
+                    return {"response": leagues}
+                return {"response": []}
+        except Exception:
+            return {"response": []}
+
+    async def search_teams(self, query: str) -> Dict:
         return {"response": []}
 
-    async def get_teams_by_league(self, league_id: int):
-        for provider in self.providers:
-            res = await provider.get_teams_by_league(league_id)
-            if res and res.get('response'): return res
+    async def get_odds_by_event_id(self, event_id: str) -> Dict:
+        return {}
+
+    async def get_stats_by_event_id(self, event_id: str) -> Dict:
         return {"response": []}
-
-    async def get_team_fixtures(self, team_id: int, last: int = 40):
-        for provider in self.providers:
-            res = await provider.get_team_fixtures(team_id, last)
-            if res and res.get('response'): return res
-        return {"response": []}
-
-    async def search_players(self, query: str):
-        return {"response": []}
-
-    async def get_team_detail(self, team_id: int):
-        for provider in self.providers:
-            res = await provider.get_team_detail(team_id)
-            if res: return res
-        return {"response": {}}
-
-    async def get_league_detail(self, league_id: int):
-        return {"response": {}}
-
-    async def search_leagues(self, query: str):
-        for provider in self.providers:
-            res = await provider.search_leagues(query)
-            if res and res.get('response'): return res
-        return {"response": []}
-
-    async def get_stats_by_event_id(self, event_id: int):
-        return {"response": []}
-
-    async def get_h2h(self, team1_id: int, team2_id: int):
-        return {"response": []}
-
-    async def list_players_by_team(self, team_id: int):
-        for provider in self.providers:
-            res = await provider.list_players_by_team(team_id)
-            if res and res.get('response'): return res
-        return {"response": []}
-
-    async def get_player_detail(self, player_id: int):
-        for provider in self.providers:
-            res = await provider.get_player_detail(player_id)
-            if res: return res
-        return {"response": {}}
