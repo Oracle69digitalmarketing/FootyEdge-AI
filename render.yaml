@@ -1,0 +1,15 @@
+services:
+  - type: cron
+    name: footyedge-ai-analytics-worker
+    env: python
+    plan: free
+    schedule: "0 2 * * *" # Triggers automatically at 2:00 AM every night
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python prediction_pipeline.py"
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: ODDS_API_KEY
+        sync: false
