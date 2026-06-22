@@ -9,15 +9,20 @@ from scipy.stats import poisson
 from supabase import create_client, Client
 import logging
 
+# Setup Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("pipeline")
+
 # Initialize Environment Elements
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    logger.warning("SUPABASE_URL and SUPABASE_KEY not set. Pipeline will run in limited mode.")
+    # No-op or mock logic could go here
+else:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Active international and domestic target registry matrix
 LEAGUES = [

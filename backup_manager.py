@@ -9,7 +9,11 @@ logger = logging.getLogger("backup_manager")
 # Initialize clients using existing environment parameters
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+else:
+    supabase = None
+    print("⚠️ Supabase credentials not set. Backup manager will be disabled.")
 
 def run_database_backup():
     """

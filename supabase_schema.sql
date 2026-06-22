@@ -133,3 +133,18 @@ CREATE TRIGGER on_auth_user_created
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read access" ON teams FOR SELECT USING (true);
 CREATE POLICY "Admin full access" ON teams FOR ALL USING (auth.jwt()->>'email' = 'sophiemabel69@gmail.com');
+
+-- 6. BETS TABLE (FOR USER TRACKING)
+CREATE TABLE IF NOT EXISTS bets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    match_id BIGINT REFERENCES matches(id),
+    market TEXT NOT NULL,
+    selection TEXT NOT NULL,
+    odds FLOAT NOT NULL,
+    stake FLOAT NOT NULL,
+    potential_win FLOAT NOT NULL,
+    status TEXT DEFAULT 'active', -- 'active', 'won', 'lost', 'void'
+    booking_code TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
