@@ -31,6 +31,11 @@ export default function App() {
   const [isSignUp, setIsSignUp] = useState(false);
 
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
@@ -44,11 +49,33 @@ export default function App() {
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
   };
 
   if (loading) {
     return <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center"><Loader2 className="w-8 h-8 text-orange-500 animate-spin" /></div>;
+  }
+
+  if (!supabase) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-[#111] border border-red-900/30 p-8 rounded-3xl w-full max-w-md space-y-4">
+          <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <LogOut className="w-8 h-8 text-red-500 rotate-180" />
+          </div>
+          <h2 className="text-2xl font-bold text-white">Configuration Error</h2>
+          <p className="text-zinc-400">
+            The Supabase client could not be initialized. Please ensure that 
+            <code className="bg-zinc-900 px-2 py-1 rounded mx-1 text-orange-500 font-mono text-sm">VITE_SUPABASE_URL</code> 
+            and 
+            <code className="bg-zinc-900 px-2 py-1 rounded mx-1 text-orange-500 font-mono text-sm">VITE_SUPABASE_ANON_KEY</code> 
+            are correctly set in your environment variables.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
