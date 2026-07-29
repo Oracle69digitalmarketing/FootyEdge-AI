@@ -15,6 +15,8 @@ from agents.team_strength import TeamStrengthAgent
 from agents.tactical_agent import TacticalAgent
 from agents.player_impact import PlayerImpactAgent
 from agents.models import TeamStrength, ValueBet
+from agents.goal_distribution_agent import GoalDistributionAgent
+from agents.kelly_agent import KellyAgent
 from football_api_client import FootballAPIClient
 
 logging.basicConfig(level=logging.INFO)
@@ -43,6 +45,8 @@ class FootyEdgePredictor:
         self.team_strength_agent = TeamStrengthAgent(supabase_client=self.supabase)
         self.tactical_agent = TacticalAgent()
         self.player_agent = PlayerImpactAgent(football_client=self.football_client, team_agent=self.team_strength_agent)
+        self.goal_agent = GoalDistributionAgent()
+        self.kelly_agent = KellyAgent()
 
 
     async def get_team_matches(self, team_name: str, limit: int = 40) -> List[Dict]:
@@ -63,13 +67,20 @@ class FootyEdgePredictor:
             db_matches = []
             for m in (h_res.data or []) + (a_res.data or []):
                 is_home = m['home_team_id'] == team_id
+                opp_id = m['away_team_id'] if is_home else m['home_team_id']
+                
+                # Fetch opponent name for Elo context
+                opp_res = self.supabase.table("teams").select("name").eq("id", opp_id).execute()
+                opp_name = opp_res.data[0]['name'] if opp_res.data else "Unknown"
+
                 db_matches.append({
                     'date': m['match_date'].split('T')[0],
                     'is_home': is_home,
                     'goals_scored': m.get('home_goals', 0) if is_home else m.get('away_goals', 0),
                     'goals_conceded': m.get('away_goals', 0) if is_home else m.get('home_goals', 0),
                     'result': 'win' if (is_home and m['home_goals'] > m['away_goals']) or (not is_home and m['away_goals'] > m['home_goals']) else ('draw' if m['home_goals'] == m['away_goals'] else 'loss'),
-                    'opponent_name': 'Opponent'
+                    'opponent_id': opp_id,
+                    'opponent_name': opp_name
                 })
             return sorted(db_matches, key=lambda x: x['date'], reverse=True)[:limit]
         except Exception as e:
@@ -103,11 +114,18 @@ class FootyEdgePredictor:
         return all_value_bets
 
     async def predict_match(self, home_team: str, away_team: str, odds: Dict) -> Dict:
+        # Resolve team IDs for accurate Elo lookups
+        home_id_res = self.supabase.table("teams").select("id").eq("name", home_team).execute()
+        away_id_res = self.supabase.table("teams").select("id").eq("name", away_team).execute()
+        
+        home_id = home_id_res.data[0]['id'] if home_id_res.data else None
+        away_id = away_id_res.data[0]['id'] if away_id_res.data else None
+
         home_matches = await self.get_team_matches(home_team)
         away_matches = await self.get_team_matches(away_team)
 
-        home_strength = await self.team_strength_agent.assess(home_team, home_matches)
-        away_strength = await self.team_strength_agent.assess(away_team, away_matches)
+        home_strength = await self.team_strength_agent.assess(home_team, home_matches, team_id=home_id)
+        away_strength = await self.team_strength_agent.assess(away_team, away_matches, team_id=away_id)
 
         # Poisson distribution model
         h_att = home_strength.attack_strength
@@ -118,35 +136,41 @@ class FootyEdgePredictor:
         home_xG = max(0.5, h_att * a_def * 1.1)
         away_xG = max(0.5, a_att * h_def * 0.9)
 
-        # Calculate probabilities
-        total_xG = home_xG + away_xG
+        # Use shared GoalDistributionAgent (AR-008)
+        dist = self.goal_agent.calculate(home_xG, away_xG)
         probs = {
-            "home_win": (home_xG / total_xG) * 0.8 + 0.1,
-            "draw": 0.25,
-            "away_win": (away_xG / total_xG) * 0.8 + 0.1
+            "home_win": dist.home_win_prob,
+            "draw": dist.draw_prob,
+            "away_win": dist.away_win_prob,
+            "Over 2.5": dist.over_under["2.5"],
+            "BTTS Yes": dist.both_teams_score
         }
-        # Normalize
-        s = sum(probs.values())
-        probs = {k: v/s for k, v in probs.items()}
-
-        probs['Over 2.5'] = 1 - math.exp(-(home_xG + away_xG)) * (1 + (home_xG + away_xG) + (home_xG + away_xG)**2 / 2)
-        probs['BTTS Yes'] = (1 - math.exp(-home_xG)) * (1 - math.exp(-away_xG))
 
         value_bets = []
-        mapping = [("Match Winner", "Home", "home_win"), ("Match Winner", "Draw", "draw"), ("Match Winner", "Away", "away_win")]
+        mapping = [
+            ("Match Winner", "Home", "home_win"), 
+            ("Match Winner", "Draw", "draw"), 
+            ("Match Winner", "Away", "away_win"),
+            ("Over/Under 2.5", "Over 2.5 Goals", "Over 2.5"),
+            ("Both Teams to Score", "BTTS Yes", "BTTS Yes")
+        ]
         for market, selection, odd_key in mapping:
             if odd_key in odds and odds[odd_key] > 1.0:
                 prob = probs.get(odd_key)
                 if prob and prob * odds[odd_key] > 1.05:
                     ev = (prob * odds[odd_key]) - 1
+                    # Use shared KellyAgent (CR-014)
+                    kelly_stake = self.kelly_agent.calculate_stake(prob, odds[odd_key])
+                    
                     value_bets.append({
                         "market_name": market,
                         "selection": selection,
                         "odds": odds[odd_key],
                         "our_probability": prob,
                         "ev": ev,
+                        "kelly_percentage": kelly_stake,
                         "tier": "Hot 🔥" if ev > 0.15 else "Solid",
-                        "recommended_stake_percentage": max(1.0, min(10.0, ev * 15))
+                        "recommended_stake_percentage": kelly_stake
                     })
 
         return {
@@ -157,6 +181,9 @@ class FootyEdgePredictor:
             "home_prob": probs["home_win"],
             "draw_prob": probs["draw"],
             "away_prob": probs["away_win"],
+            "kelly_percentage": value_bets[0]['kelly_percentage'] if value_bets else 0.0,
+            "over_2_5_prob": probs["Over 2.5"],
+            "btts_prob": probs["BTTS Yes"],
             "probabilities": probs,
             "value_bets": value_bets,
             "confidence": (probs["home_win"] + probs["away_win"]) / 1.5,

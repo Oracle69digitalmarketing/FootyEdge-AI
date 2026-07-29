@@ -234,17 +234,9 @@ async def get_user_filtered_predictions(
         
         results = []
         for p in (preds_res.data or []):
-            # Kelly Calculation
-            prob = p.get("home_prob", 0.33)
-            if p.get("best_bet_selection") == "Away Win": prob = p.get("away_prob", 0.33)
-            elif p.get("best_bet_selection") == "Draw": prob = p.get("draw_prob", 0.33)
-            
-            odds = p.get("best_bet_odds", 1.95)
-            b = odds - 1
-            raw_kelly = ((prob * b) - (1 - prob)) / b if b > 0 else 0
-
             p_dict = dict(p)
-            p_dict["kelly_stake_percentage"] = round(max(0, raw_kelly * 0.25) * 100, 2)
+            # Use stored kelly_percentage if available, otherwise fallback to legacy field name
+            p_dict["kelly_stake_percentage"] = p.get("kelly_percentage") or 0.0
             results.append(p_dict)
             
         return results

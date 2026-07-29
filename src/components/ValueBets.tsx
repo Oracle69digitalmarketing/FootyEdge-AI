@@ -10,7 +10,6 @@ interface ValueBet {
   our_probability: number;
   ev: number;
   kelly_percentage: number;
-  recommended_stake_percentage: number;
   tier: 'Hot 🔥' | 'Solid' | 'Neutral';
   created_at: string;
 }
@@ -101,7 +100,7 @@ const ValueBets: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{bet.odds.toFixed(2)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{(bet.our_probability * 100).toFixed(1)}%</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-green-400">{bet.ev.toFixed(3)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{bet.recommended_stake_percentage.toFixed(1)}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{(bet.kelly_percentage || 0).toFixed(1)}%</td>
                 </tr>
               ))}
             </tbody>

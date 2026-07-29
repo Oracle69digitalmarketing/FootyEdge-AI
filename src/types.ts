@@ -69,7 +69,7 @@ export interface ValueBet {
   odds: number;
   our_probability: number;
   ev: number;
-  kelly: number;
+  kelly_percentage: number;
   recommended_stake: string;
   status: 'active' | 'won' | 'lost';
   tier: 'Hot 🔥' | 'Solid' | 'Neutral';

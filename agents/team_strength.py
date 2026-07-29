@@ -21,17 +21,17 @@ class TeamStrengthAgent:
         self.history_length = history_length
         self._rating_cache = {}
 
-    async def assess(self, team_name: str, matches: List[Dict], league_name: str = None, squad_data: Dict = None) -> TeamStrength:
+    async def assess(self, team_name: str, matches: List[Dict], team_id: str = None, league_name: str = None, squad_data: Dict = None) -> TeamStrength:
         """
         Calculates comprehensive team strength based on provided match history.
         """
-        base_rating, history = await self._calculate_elo_from_history(team_name, matches)
+        base_rating, history = await self._calculate_elo_from_history(team_name, matches, team_id=team_id)
         
         home_matches = [m for m in history if m['is_home']]
         away_matches = [m for m in history if not m['is_home']]
 
-        home_rating, _ = await self._calculate_elo_from_history(team_name, home_matches)
-        away_rating, _ = await self._calculate_elo_from_history(team_name, away_matches)
+        home_rating, _ = await self._calculate_elo_from_history(team_name, home_matches, team_id=team_id)
+        away_rating, _ = await self._calculate_elo_from_history(team_name, away_matches, team_id=team_id)
 
         form_rating = self._calculate_form(history[:10])
         attack_strength = self._calculate_attack_strength(history)
@@ -60,28 +60,36 @@ class TeamStrengthAgent:
         # High ratio means overperforming (lucky or efficient)
         return 1.0 + (sum(m['goals_scored'] for m in history) / len(history)) / 5.0
 
-    async def _get_rating_from_db(self, team_name: str) -> float:
-        if team_name in self._rating_cache:
-            return self._rating_cache[team_name]
+    async def _get_rating_from_db(self, team_name: str, team_id: str = None) -> float:
+        cache_key = team_id if team_id else team_name
+        if cache_key in self._rating_cache:
+            return self._rating_cache[cache_key]
 
         if not self.supabase: return 1500.0
         try:
-            # Using execute() which is sync in current supabase-py setup usually
-            res = self.supabase.table('teams').select('elo_rating').eq('name', team_name).execute()
+            query = self.supabase.table('teams').select('elo_rating')
+            if team_id:
+                res = query.eq('id', team_id).execute()
+            else:
+                res = query.eq('name', team_name).execute()
+                
             rating = res.data[0].get('elo_rating', 1500.0) if res.data else 1500.0
-            self._rating_cache[team_name] = rating
+            self._rating_cache[cache_key] = rating
             return rating
         except Exception:
             return 1500.0
 
-    async def _calculate_elo_from_history(self, team_name: str, matches: List[Dict]) -> (float, List[Dict]):
-        current_rating = await self._get_rating_from_db(team_name)
+    async def _calculate_elo_from_history(self, team_name: str, matches: List[Dict], team_id: str = None) -> (float, List[Dict]):
+        current_rating = await self._get_rating_from_db(team_name, team_id=team_id)
         if not matches: return current_rating, []
         
         processed_matches = []
         for match in reversed(matches): # Process chronologically
+            opponent_id = match.get('opponent_id')
             opponent_name = match.get('opponent_name', 'Unknown Opponent')
-            opponent_rating = await self._get_rating_from_db(opponent_name)
+            
+            # CR-001: Resolve opponent rating via ID if available, otherwise name
+            opponent_rating = await self._get_rating_from_db(opponent_name, team_id=opponent_id)
             
             home_adv = 50 if match['is_home'] else -50
             expected_score = 1 / (1 + 10**((opponent_rating - (current_rating + home_adv)) / 400))

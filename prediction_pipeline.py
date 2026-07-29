@@ -9,9 +9,16 @@ from scipy.stats import poisson
 from supabase import create_client, Client
 import logging
 
+from agents.goal_distribution_agent import GoalDistributionAgent
+from agents.kelly_agent import KellyAgent
+
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pipeline")
+
+# Initialize Shared Agents
+goal_agent = GoalDistributionAgent()
+kelly_agent = KellyAgent()
 
 # Initialize Environment Elements
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -133,20 +140,13 @@ def run_pipeline():
                     mu_h = h_form["att"] * a_form["def"] * 1.14
                     mu_a = a_form["att"] * h_form["def"]
 
-                    max_g = 10
-                    grid = np.outer(poisson.pmf(range(max_g), mu_h), poisson.pmf(range(max_g), mu_a))
-
-                    # MARKET 1: 3-Way Match Winner (Home, Draw, Away)
-                    p_home = float(np.sum(np.tril(grid, -1)))
-                    p_draw = float(np.sum(np.diag(grid)))
-                    p_away = float(np.sum(np.triu(grid, 1)))
-
-                    # MARKET 2: Over/Under 2.5 Goals
-                    p_under_25 = float(np.sum([grid[i, j] for i in range(max_g) for j in range(max_g) if i + j < 2.5]))
-                    p_over_25 = 1.0 - p_under_25
-
-                    # MARKET 3: Both Teams to Score (BTTS Yes)
-                    p_btts_yes = float(np.sum(grid[1:, 1:]))
+                    # Use shared GoalDistributionAgent (AR-008)
+                    dist = goal_agent.calculate(mu_h, mu_a)
+                    p_home = dist.home_win_prob
+                    p_draw = dist.draw_prob
+                    p_away = dist.away_win_prob
+                    p_over_25 = dist.over_under["2.5"]
+                    p_btts_yes = dist.both_teams_score
 
                     # Helper to get current market price
                     def get_market_price(market_key, selection_name, point=None):
@@ -183,6 +183,9 @@ def run_pipeline():
                     best_prob = best_bet['prob']
                     actual_odds = best_bet['price'] or 1.95
 
+                    # Calculate Kelly Stake (CR-014)
+                    kelly_stake = kelly_agent.calculate_stake(best_prob, actual_odds)
+
                     # Insert full multi-market probability payload
                     pred_res = supabase.table("predictions").insert({
                         "match_id": db_match_id,
@@ -197,6 +200,9 @@ def run_pipeline():
                         "best_bet_market": best_market,
                         "best_bet_selection": best_selection,
                         "best_bet_odds": actual_odds,
+                        "kelly_percentage": kelly_stake,
+                        "over_2_5_prob": p_over_25,
+                        "btts_prob": p_btts_yes,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }).execute()
 
@@ -208,7 +214,9 @@ def run_pipeline():
                             "prediction_id": pred_res.data[0]['id'], "match_id": db_match_id,
                             "home_team": h_name, "away_team": a_name,
                             "market": best_market, "selection": best_selection,
-                            "odds": actual_odds, "ev": ev_edge, "status": "active",
+                            "odds": actual_odds, "ev": ev_edge, 
+                            "kelly_percentage": kelly_stake,
+                            "status": "active",
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }).execute()
 

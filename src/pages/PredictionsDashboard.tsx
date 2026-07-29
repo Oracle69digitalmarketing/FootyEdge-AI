@@ -189,10 +189,14 @@ export default function PredictionsDashboard() {
                           <div className="h-full bg-orange-500 rounded-full transition-all duration-1000" style={{ width: `${Math.min(stakePct * 4, 100)}%` }} />
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-3 gap-3 mb-3">
                          <ProbBox label="HOME" val={pick.home_prob} />
                          <ProbBox label="DRAW" val={pick.draw_prob} />
                          <ProbBox label="AWAY" val={pick.away_prob} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                         <ProbBox label="OVER 2.5" val={pick.over_2_5_prob || 0} />
+                         <ProbBox label="BTTS" val={pick.btts_prob || 0} />
                       </div>
                     </div>
                   </div>

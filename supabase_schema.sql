@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS predictions (
     model_version VARCHAR(20),
     actual_result VARCHAR(10), -- Required for accuracy tracking
     prediction_error FLOAT,
+    kelly_percentage FLOAT,
+    over_2_5_prob FLOAT,
+    btts_prob FLOAT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -82,6 +85,7 @@ CREATE TABLE IF NOT EXISTS value_bets (
     selection VARCHAR(100),
     odds FLOAT,
     ev FLOAT,
+    kelly_percentage FLOAT,
     status VARCHAR(20) DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -107,6 +111,7 @@ CREATE TABLE IF NOT EXISTS players (
 
 CREATE INDEX IF NOT EXISTS idx_predictions_created ON predictions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date);
+CREATE INDEX IF NOT EXISTS idx_matches_composite ON matches (home_team_id, away_team_id, match_date);
 CREATE INDEX IF NOT EXISTS idx_teams_name ON teams(name);
 
 -- ============================================
