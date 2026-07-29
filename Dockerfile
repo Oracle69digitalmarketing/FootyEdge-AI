@@ -1,6 +1,15 @@
 # Stage 1: Build the React Frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app
+
+# Add build arguments for Vite (Required for build-time injection)
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+
+# Set them as environment variables for the build process
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 COPY package*.json ./
 RUN npm install
 COPY . .
