@@ -1,4 +1,20 @@
 services:
+  - type: web
+    name: footyedge-ai-web
+    env: docker
+    plan: free
+    region: oregon # Or your preferred region
+    healthCheckPath: /api/health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: ODDS_API_KEY
+        sync: false
+      - key: CRON_SECRET_TOKEN
+        generateValue: true
+
   - type: cron
     name: footyedge-ai-analytics-worker
     env: python
