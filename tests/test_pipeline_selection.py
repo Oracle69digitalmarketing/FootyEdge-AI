@@ -1,7 +1,7 @@
-"""P0 tests for prediction_pipeline.select_best_bet(potential_bets)."""
+"""P0 tests for bet_selection.select_best_bet(potential_bets)."""
 import pytest
 
-from prediction_pipeline import select_best_bet
+from bet_selection import select_best_bet
 
 
 def test_no_bets_returns_none():

@@ -11,6 +11,7 @@ import logging
 
 from agents.goal_distribution_agent import GoalDistributionAgent
 from agents.kelly_agent import KellyAgent
+from bet_selection import select_best_bet
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -91,20 +92,6 @@ def compute_ewma_form_factors(df_matches, alpha=0.35):
         form_registry[a]["def"] = (alpha * a_perf_def) + ((1 - alpha) * form_registry[a]["def"])
 
     return form_registry
-
-def select_best_bet(potential_bets):
-    """
-    Pure best-market selection over already-created potential bets.
-
-    Mirrors the pipeline's validity and ranking semantics exactly:
-    a bet is valid when its 'price' is truthy, and the winner is the
-    valid bet maximizing expected-value edge (prob * price) - 1.
-    Returns the winning bet object itself, or None when no valid bets exist.
-    """
-    valid_bets = [b for b in potential_bets if b['price']]
-    if not valid_bets:
-        return None
-    return max(valid_bets, key=lambda x: (x['prob'] * x['price']) - 1)
 
 def run_pipeline():
     logger.info("🚀 Initiating Production Multi-Market Analytics Optimization Pipeline...")
