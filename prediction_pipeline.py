@@ -117,8 +117,8 @@ def run_pipeline():
             for _, row in schedule.iterrows():
                 try:
                     h_name, a_name = row['home_team'], row['away_team']
-                    h_id = str(generate_deterministic_id(h_name))
-                    a_id = str(generate_deterministic_id(a_name))
+                    h_id = generate_deterministic_id(h_name)
+                    a_id = generate_deterministic_id(a_name)
 
                     # Auto-Seed teams tables dynamically to resolve dependencies
                     supabase.table("teams").upsert({"id": h_id, "name": h_name, "league_name": league}).execute()
