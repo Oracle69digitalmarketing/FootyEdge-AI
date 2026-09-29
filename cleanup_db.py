@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
+from env_guard import require_destructive_approval
+
 # Load environment variables
 load_dotenv()
 
@@ -11,6 +13,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABAS
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def cleanup_database():
+    require_destructive_approval("cleanup")
     print("🧹 Cleaning up dummy seeded data...")
     
     try:

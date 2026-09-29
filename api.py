@@ -22,6 +22,7 @@ load_dotenv()
 from prediction_pipeline import run_pipeline
 from backup_manager import run_database_backup
 from settle_bets import run_settlement
+from env_guard import EnvGuardError, require_destructive_approval
 from football_api_client import FootballAPIClient
 from agents.strategy_agent import StrategyAgent
 
@@ -468,6 +469,11 @@ async def trigger_full_sync(x_cron_token: str = Header(None)):
     CRON_SECRET = os.environ.get("CRON_SECRET_TOKEN", "1690")
     if x_cron_token != CRON_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        require_destructive_approval("cleanup")
+    except EnvGuardError as e:
+        raise HTTPException(status_code=403, detail=str(e))
         
     # Run cleanup
     from cleanup_db import cleanup_database

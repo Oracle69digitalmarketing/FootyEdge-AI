@@ -4,6 +4,8 @@ import argparse
 import logging
 from supabase import create_client, Client
 
+from env_guard import require_destructive_approval
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("restore_backup")
 
@@ -36,6 +38,7 @@ def list_available_backups():
 
 def restore_database_snapshot(filename: str):
     """Downloads a historical backup and overwrites production tables while handling foreign keys."""
+    require_destructive_approval("restore")
     logger.info(f"🔄 Downloading snapshot archive file from storage: {filename}")
 
     try:
