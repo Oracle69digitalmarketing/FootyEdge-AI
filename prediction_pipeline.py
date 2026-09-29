@@ -92,6 +92,20 @@ def compute_ewma_form_factors(df_matches, alpha=0.35):
 
     return form_registry
 
+def select_best_bet(potential_bets):
+    """
+    Pure best-market selection over already-created potential bets.
+
+    Mirrors the pipeline's validity and ranking semantics exactly:
+    a bet is valid when its 'price' is truthy, and the winner is the
+    valid bet maximizing expected-value edge (prob * price) - 1.
+    Returns the winning bet object itself, or None when no valid bets exist.
+    """
+    valid_bets = [b for b in potential_bets if b['price']]
+    if not valid_bets:
+        return None
+    return max(valid_bets, key=lambda x: (x['prob'] * x['price']) - 1)
+
 def run_pipeline():
     logger.info("🚀 Initiating Production Multi-Market Analytics Optimization Pipeline...")
     render_cache = os.path.join("/tmp", "soccerdata_cache")
@@ -114,111 +128,115 @@ def run_pipeline():
             odds_feed = fetch_market_odds(ODDS_API_LEAGUE_MAP.get(league))
 
             for _, row in schedule.iterrows():
-                h_name, a_name = row['home_team'], row['away_team']
-                h_id = str(generate_deterministic_id(h_name))
-                a_id = str(generate_deterministic_id(a_name))
+                try:
+                    h_name, a_name = row['home_team'], row['away_team']
+                    h_id = str(generate_deterministic_id(h_name))
+                    a_id = str(generate_deterministic_id(a_name))
 
-                # Auto-Seed teams tables dynamically to resolve dependencies
-                supabase.table("teams").upsert({"id": h_id, "name": h_name, "league_name": league}).execute()
-                supabase.table("teams").upsert({"id": a_id, "name": a_name, "league_name": league}).execute()
+                    # Auto-Seed teams tables dynamically to resolve dependencies
+                    supabase.table("teams").upsert({"id": h_id, "name": h_name, "league_name": league}).execute()
+                    supabase.table("teams").upsert({"id": a_id, "name": a_name, "league_name": league}).execute()
 
-                match_payload = {
-                    "home_team_id": h_id, "away_team_id": a_id, "match_date": row['match_date'].isoformat(),
-                    "league": league, "season": CURRENT_SEASON,
-                    "home_goals": int(row['home_score']) if pd.notna(row['home_score']) else None,
-                    "away_goals": int(row['away_score']) if pd.notna(row['away_score']) else None,
-                }
-                match_res = supabase.table("matches").upsert(match_payload, on_conflict="home_team_id,away_team_id,match_date").execute()
+                    match_payload = {
+                        "home_team_id": h_id, "away_team_id": a_id, "match_date": row['match_date'].isoformat(),
+                        "league": league, "season": CURRENT_SEASON,
+                        "home_goals": int(row['home_score']) if pd.notna(row['home_score']) else None,
+                        "away_goals": int(row['away_score']) if pd.notna(row['away_score']) else None,
+                    }
+                    match_res = supabase.table("matches").upsert(match_payload, on_conflict="home_team_id,away_team_id,match_date").execute()
 
-                if pd.isna(row['home_score']) and match_res.data:
-                    db_match_id = match_res.data[0]['id']
+                    if pd.isna(row['home_score']) and match_res.data:
+                        db_match_id = match_res.data[0]['id']
 
-                    h_form = team_strengths.get(h_name, {"att": 1.45, "def": 1.15})
-                    a_form = team_strengths.get(a_name, {"att": 1.45, "def": 1.15})
+                        h_form = team_strengths.get(h_name, {"att": 1.45, "def": 1.15})
+                        a_form = team_strengths.get(a_name, {"att": 1.45, "def": 1.15})
 
-                    # Compute expected goals grid using dynamic EWMA form factors
-                    mu_h = h_form["att"] * a_form["def"] * 1.14
-                    mu_a = a_form["att"] * h_form["def"]
+                        # Compute expected goals grid using dynamic EWMA form factors
+                        mu_h = h_form["att"] * a_form["def"] * 1.14
+                        mu_a = a_form["att"] * h_form["def"]
 
-                    # Use shared GoalDistributionAgent (AR-008)
-                    dist = goal_agent.calculate(mu_h, mu_a)
-                    p_home = dist.home_win_prob
-                    p_draw = dist.draw_prob
-                    p_away = dist.away_win_prob
-                    p_over_25 = dist.over_under["2.5"]
-                    p_btts_yes = dist.both_teams_score
+                        # Use shared GoalDistributionAgent (AR-008)
+                        dist = goal_agent.calculate(mu_h, mu_a)
+                        p_home = dist.home_win_prob
+                        p_draw = dist.draw_prob
+                        p_away = dist.away_win_prob
+                        p_over_25 = dist.over_under["2.5"]
+                        p_btts_yes = dist.both_teams_score
 
-                    # Helper to get current market price
-                    def get_market_price(market_key, selection_name, point=None):
-                        match_odds = odds_feed.get(f"{h_name} vs {a_name}")
-                        if not match_odds or 'bookmakers' not in match_odds: return None
+                        # Helper to get current market price
+                        def get_market_price(market_key, selection_name, point=None):
+                            match_odds = odds_feed.get(f"{h_name} vs {a_name}")
+                            if not match_odds or 'bookmakers' not in match_odds: return None
+
+                            for bookmaker in match_odds['bookmakers']:
+                                for market in bookmaker.get('markets', []):
+                                    if market['key'] == market_key:
+                                        for outcome in market.get('outcomes', []):
+                                            if outcome['name'] == selection_name:
+                                                if point is None or outcome.get('point') == point:
+                                                    return float(outcome['price'])
+                            return None
+
+                        # Update best selection logic using actual market prices
+                        potential_bets = [
+                            {"market": "3-Way Result", "sel": "Home Win", "prob": p_home, "price": get_market_price('h2h', h_name)},
+                            {"market": "3-Way Result", "sel": "Away Win", "prob": p_away, "price": get_market_price('h2h', a_name)},
+                            {"market": "Over/Under 2.5", "sel": "Over 2.5 Goals", "prob": p_over_25, "price": get_market_price('totals', 'Over', 2.5)},
+                        ]
                         
-                        for bookmaker in match_odds['bookmakers']:
-                            for market in bookmaker.get('markets', []):
-                                if market['key'] == market_key:
-                                    for outcome in market.get('outcomes', []):
-                                        if outcome['name'] == selection_name:
-                                            if point is None or outcome.get('point') == point:
-                                                return float(outcome['price'])
-                        return None
+                        # Filter for bets where market price is available
+                        best_bet = select_best_bet(potential_bets)
 
-                    # MARKET 4: Spreads (calculate prob of covering)
-                    # Note: Simplified spread analysis
-                    p_home_spread = float(np.sum(np.tril(grid, -1))) + float(np.sum(np.diag(grid))) # Win or Draw covers +0.5
-                    
-                    # Update best selection logic using actual market prices
-                    potential_bets = [
-                        {"market": "3-Way Result", "sel": "Home Win", "prob": p_home, "price": get_market_price('h2h', h_name)},
-                        {"market": "3-Way Result", "sel": "Away Win", "prob": p_away, "price": get_market_price('h2h', a_name)},
-                        {"market": "Over/Under 2.5", "sel": "Over 2.5 Goals", "prob": p_over_25, "price": get_market_price('totals', 'Over', 2.5)},
-                    ]
-                    
-                    # Filter for bets where market price is available
-                    valid_bets = [b for b in potential_bets if b['price']]
-                    
-                    best_bet = max(valid_bets, key=lambda x: (x['prob'] * x['price']) - 1) if valid_bets else potential_bets[0]
-                    
-                    best_market = best_bet['market']
-                    best_selection = best_bet['sel']
-                    best_prob = best_bet['prob']
-                    actual_odds = best_bet['price'] or 1.95
+                        if best_bet is None:
+                            logger.warning(f"No valid market odds for {league} | {h_name} vs {a_name} — skipping fixture (reason: no valid market odds).")
+                            continue
 
-                    # Calculate Kelly Stake (CR-014)
-                    kelly_stake = kelly_agent.calculate_stake(best_prob, actual_odds)
+                        best_market = best_bet['market']
+                        best_selection = best_bet['sel']
+                        best_prob = best_bet['prob']
+                        actual_odds = best_bet['price']
 
-                    # Insert full multi-market probability payload
-                    pred_res = supabase.table("predictions").insert({
-                        "match_id": db_match_id,
-                        "home_team": h_name,
-                        "away_team": a_name,
-                        "home_prob": p_home,
-                        "draw_prob": p_draw,
-                        "away_prob": p_away,
-                        "home_xg": mu_h,
-                        "away_xg": mu_a,
-                        "confidence": best_prob,
-                        "best_bet_market": best_market,
-                        "best_bet_selection": best_selection,
-                        "best_bet_odds": actual_odds,
-                        "kelly_percentage": kelly_stake,
-                        "over_2_5_prob": p_over_25,
-                        "btts_prob": p_btts_yes,
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }).execute()
+                        # Calculate Kelly Stake (CR-014)
+                        kelly_stake = kelly_agent.calculate_stake(best_prob, actual_odds)
 
-                    # CLOSING LINE VALUE TRACKER (CLV)
-                    ev_edge = (best_prob * actual_odds) - 1
-
-                    if ev_edge > 0.03 and pred_res.data:
-                        supabase.table("value_bets").insert({
-                            "prediction_id": pred_res.data[0]['id'], "match_id": db_match_id,
-                            "home_team": h_name, "away_team": a_name,
-                            "market": best_market, "selection": best_selection,
-                            "odds": actual_odds, "ev": ev_edge, 
+                        # Insert full multi-market probability payload
+                        pred_res = supabase.table("predictions").insert({
+                            "match_id": db_match_id,
+                            "home_team": h_name,
+                            "away_team": a_name,
+                            "home_prob": p_home,
+                            "draw_prob": p_draw,
+                            "away_prob": p_away,
+                            "home_xg": mu_h,
+                            "away_xg": mu_a,
+                            "confidence": best_prob,
+                            "best_bet_market": best_market,
+                            "best_bet_selection": best_selection,
+                            "best_bet_odds": actual_odds,
                             "kelly_percentage": kelly_stake,
-                            "status": "active",
+                            "over_2_5_prob": p_over_25,
+                            "btts_prob": p_btts_yes,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }).execute()
+
+                        # CLOSING LINE VALUE TRACKER (CLV)
+                        ev_edge = (best_prob * actual_odds) - 1
+
+                        if ev_edge > 0.03 and pred_res.data:
+                            supabase.table("value_bets").insert({
+                                "prediction_id": pred_res.data[0]['id'], "match_id": db_match_id,
+                                "home_team": h_name, "away_team": a_name,
+                                "market": best_market, "selection": best_selection,
+                                "odds": actual_odds, "ev": ev_edge,
+                                "kelly_percentage": kelly_stake,
+                                "status": "active",
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }).execute()
+                except Exception as fixture_error:
+                    logger.error(
+                        f"⚠️ Fixture sync warning ({league} | {locals().get('h_name', '?')} vs {locals().get('a_name', '?')}): {fixture_error}"
+                    )
+                    continue
 
         except Exception as e:
             logger.error(f"⚠️ League sync interruption loop warning ({league}): {str(e)}")
