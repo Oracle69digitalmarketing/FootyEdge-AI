@@ -4,28 +4,30 @@ import numpy as np
 from supabase import create_client, Client
 import logging
 from datetime import datetime
-import hashlib
-from dotenv import load_dotenv
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from team_identity import resolve_canonical_id
 
-# Load environment variables
-load_dotenv()
-
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Supabase configuration
+# Supabase configuration (service key is canonical; never print it)
 url = os.environ.get("SUPABASE_URL")
-key = os.environ.get("SUPABASE_KEY")
+key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
 
 if not url or not key:
-    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set.")
+    raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set.")
 
 supabase: Client = create_client(url, key)
 
+
 def get_team_id(team_name: str) -> int:
-    """Generate a consistent numeric ID from team name."""
-    return int(hashlib.md5(team_name.encode()).hexdigest(), 16) % (10**10)
+    """Resolve provider name to canonical SHA-256/12-hex team ID.
+
+    Canonicalize -> alias map -> canonical entity. Never MD5, never legacy.
+    """
+    _canonical_name, canonical_id = resolve_canonical_id(team_name)
+    return canonical_id
 
 def process_and_import_data(csv_path: str, start_year: int = 2010):
     logger.info(f"Processing matches from {csv_path} starting from {start_year}...")
@@ -47,7 +49,10 @@ def process_and_import_data(csv_path: str, start_year: int = 2010):
     
     for i in range(0, len(unique_team_names), 100):
         batch_names = unique_team_names[i:i+100]
-        batch_data = [{"name": name, "league": "Various"} for name in batch_names]
+        batch_data = []
+        for name in batch_names:
+            canonical_name, canonical_id = resolve_canonical_id(str(name))
+            batch_data.append({"id": canonical_id, "name": canonical_name, "league_name": "Various"})
         try:
             res = supabase.table("teams").upsert(batch_data, on_conflict="name").execute()
             for team in res.data:
@@ -85,8 +90,6 @@ def process_and_import_data(csv_path: str, start_year: int = 2010):
             "away_goals": clean_val(row['FTAway']),
             "home_xg": float(row['HomeElo']) / 1000.0 if row['HomeElo'] is not None else None,
             "away_xg": float(row['AwayElo']) / 1000.0 if row['AwayElo'] is not None else None,
-            "home_shots": clean_val(row['HomeShots']),
-            "away_shots": clean_val(row['AwayShots']),
         })
 
     logger.info(f"Inserting {len(matches_to_import)} matches...")

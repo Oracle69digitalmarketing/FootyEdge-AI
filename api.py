@@ -302,7 +302,8 @@ async def get_value_bets_dashboard(supabase: Client = Depends(get_supabase_clien
 
 @router.get("/api/bets/user/{user_id}")
 async def get_user_bets(user_id: str, supabase: Client = Depends(get_supabase_client)):
-    res = supabase.table("bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    # Production contract: user_bets is the canonical table (no `bets` table in prod).
+    res = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
     return res.data or []
 
 @router.post("/api/bets/record")
@@ -319,7 +320,7 @@ async def record_bet(req: BetRecordRequest, supabase: Client = Depends(get_supab
             "status": "active",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        res = supabase.table("bets").insert(data).execute()
+        res = supabase.table("user_bets").insert(data).execute()
         return {"status": "success", "data": res.data[0] if res.data else data}
     except Exception as e:
         logger.error(f"Bet record error: {e}")
