@@ -1,9 +1,12 @@
 """Canonical identity tests (stdlib-only, no network/DB)."""
 import hashlib
 
+import pytest
+
 from team_identity import (
     CANONICAL_TEAMS,
     LEGACY_TEAM_IDS,
+    UnknownTeamIdentityError,
     canonicalize_name,
     generate_canonical_id,
     is_canonical_id_for_name,
@@ -63,15 +66,35 @@ def test_alias_resolution_evidence_based():
     name, team_id = resolve_canonical_id("Man Utd", aliases={"Man Utd": "Manchester United"})
     assert name == "Manchester United"
     assert team_id == generate_canonical_id("Manchester United")
-    # Without evidence, similar names stay distinct.
-    a = resolve_canonical_id("Nottm Forest")
-    b = resolve_canonical_id("Nottingham Forest")
-    assert a != b
+    # Without evidence, variants must NOT silently merge into one team:
+    # they raise instead of minting separate identities.
+    with pytest.raises(UnknownTeamIdentityError):
+        resolve_canonical_id("Nottm Forest")
+    with pytest.raises(UnknownTeamIdentityError):
+        resolve_canonical_id("Nottingham Forest")
+    # ...but an explicit alias merges them deterministically.
+    a = resolve_canonical_id("Nottm Forest", aliases={"Nottm Forest": "Nottingham Forest"})
+    b = resolve_canonical_id("Nottingham Forest", allow_create=True)
+    assert a == b
 
 
-def test_unknown_entity_gets_stable_new_canonical():
-    first = resolve_canonical_id("Nigeria")
-    second = resolve_canonical_id("  Nigeria ")
+def test_unknown_identity_not_silently_merged():
+    # Man United variants must not auto-create separate teams by default.
+    for variant in ("Man United", "Manchester United", "Man Utd"):
+        with pytest.raises(UnknownTeamIdentityError):
+            resolve_canonical_id(variant)
+    # Explicit alias evidence merges variants to one canonical entity.
+    aliases = {"Man United": "Manchester United", "Man Utd": "Manchester United"}
+    target = resolve_canonical_id("Manchester United", allow_create=True)
+    assert resolve_canonical_id("Man United", aliases=aliases) == target
+    assert resolve_canonical_id("Man Utd", aliases=aliases) == target
+
+
+def test_unknown_explicit_registration_path():
+    with pytest.raises(UnknownTeamIdentityError):
+        resolve_canonical_id("Nigeria")
+    first = resolve_canonical_id("Nigeria", allow_create=True)
+    second = resolve_canonical_id("  Nigeria ", allow_create=True)
     assert first == second
     assert first[1] == generate_canonical_id("Nigeria")
 

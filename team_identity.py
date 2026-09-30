@@ -51,6 +51,15 @@ LEGACY_TEAM_IDS = frozenset({101, 102, 103, 104, 105, 106, 10001, 10002, 10003, 
 KNOWN_ALIASES: dict[str, str] = {}
 
 
+class UnknownTeamIdentityError(ValueError):
+    """Raised when a provider name has no canonical/alias registration.
+
+    Callers must register an alias (team_aliases) or use the explicit
+    registration path (allow_create=True) instead of silently minting
+    a possibly-duplicate identity from spelling variation.
+    """
+
+
 def is_legacy_id(team_id: int) -> bool:
     return team_id in LEGACY_TEAM_IDS
 
@@ -59,12 +68,25 @@ def is_canonical_id_for_name(team_id: int, canonical_name: str) -> bool:
     return team_id == generate_canonical_id(canonical_name)
 
 
-def resolve_canonical_id(raw_name: str, aliases: dict[str, str] | None = None) -> tuple[str, int]:
+def resolve_canonical_id(
+    raw_name: str,
+    aliases: dict[str, str] | None = None,
+    allow_create: bool = False,
+) -> tuple[str, int]:
     """Resolve raw provider name -> (canonical_name, canonical_id).
 
-    Order: canonicalize -> explicit alias map -> known canonical set ->
-    new canonical identity (SHA of canonicalized name, NOT a new namespace).
-    Never returns a legacy ID. Raises ValueError on empty input.
+    known provider identity -> canonical team
+    known explicit alias    -> canonical team
+    unknown provider identity -> raises UnknownTeamIdentityError
+        unless allow_create=True (explicit deterministic registration path).
+
+    Unknown entities are never silently merged and never auto-minted by
+    default, so spelling variants (Man Utd vs Manchester United,
+    Nott'm vs Nottm vs Nottingham Forest) cannot create separate teams
+    unless identity evidence is registered. allow_create=True mints the
+    stable SHA-256/12-hex of the canonicalized name (same namespace,
+    explicit path only). Never returns a legacy ID. Raises ValueError
+    on empty input.
     """
     canonical = canonicalize_name(raw_name)
     alias_map = dict(KNOWN_ALIASES)
@@ -75,13 +97,19 @@ def resolve_canonical_id(raw_name: str, aliases: dict[str, str] | None = None) -
         return target, generate_canonical_id(target)
     if canonical in CANONICAL_TEAMS:
         return canonical, CANONICAL_TEAMS[canonical]
-    return canonical, generate_canonical_id(canonical)
+    if allow_create:
+        return canonical, generate_canonical_id(canonical)
+    raise UnknownTeamIdentityError(
+        f"Unknown team identity {canonical!r}: register an alias in "
+        "team_aliases/team_identity_sources or call with allow_create=True."
+    )
 
 
 __all__ = [
     "CANONICAL_TEAMS",
     "KNOWN_ALIASES",
     "LEGACY_TEAM_IDS",
+    "UnknownTeamIdentityError",
     "canonicalize_name",
     "generate_canonical_id",
     "is_canonical_id_for_name",

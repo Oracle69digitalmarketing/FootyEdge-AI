@@ -24,9 +24,13 @@ supabase: Client = create_client(url, key)
 def get_team_id(team_name: str) -> int:
     """Resolve provider name to canonical SHA-256/12-hex team ID.
 
-    Canonicalize -> alias map -> canonical entity. Never MD5, never legacy.
+    Explicit registration path (allow_create=True): controlled bulk import
+    may mint stable canonical IDs for genuinely new entities. Spelling
+    variants must be registered as aliases instead; unknown names without
+    evidence raise upstream and are logged/skipped by the caller.
+    Never MD5, never legacy.
     """
-    _canonical_name, canonical_id = resolve_canonical_id(team_name)
+    _canonical_name, canonical_id = resolve_canonical_id(team_name, allow_create=True)
     return canonical_id
 
 def process_and_import_data(csv_path: str, start_year: int = 2010):
@@ -51,7 +55,7 @@ def process_and_import_data(csv_path: str, start_year: int = 2010):
         batch_names = unique_team_names[i:i+100]
         batch_data = []
         for name in batch_names:
-            canonical_name, canonical_id = resolve_canonical_id(str(name))
+            canonical_name, canonical_id = resolve_canonical_id(str(name), allow_create=True)
             batch_data.append({"id": canonical_id, "name": canonical_name, "league_name": "Various"})
         try:
             res = supabase.table("teams").upsert(batch_data, on_conflict="name").execute()
