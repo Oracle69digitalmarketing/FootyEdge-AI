@@ -10,4 +10,15 @@
   body {
     @apply bg-[#0a0a0a] text-white;
   }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(249 115 22 / 0.7);
+    outline-offset: 2px;
+  }
 }

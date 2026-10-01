@@ -7,11 +7,13 @@ import HowToUse from './components/HowToUse';
 import TeamsList from './components/TeamsList';
 import PlayersList from './components/PlayersList';
 import PredictionsDashboard from './pages/PredictionsDashboard';
-import AdminMetrics from './pages/AdminMetrics';
+import ProductPage from './components/product/ProductPage';
+import OwnerConsole from './components/OwnerConsole';
+import { canViewOwnerConsole, planDisplayName, resolveAccess } from './lib/access';
 import { 
   LayoutDashboard, 
   TrendingUp, 
-  ShieldCheck, 
+  Crown,
   LogOut, 
   Loader2,
   Database,
@@ -24,11 +26,8 @@ import { cn } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'value' | 'players' | 'portfolio' | 'acca' | 'admin' | 'teams' | 'how-to-use'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'value' | 'players' | 'portfolio' | 'acca' | 'owner' | 'teams' | 'how-to-use'>('dashboard');
   const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -78,31 +77,18 @@ export default function App() {
     );
   }
 
+  // Signed-out visitors see the commercial product page, which includes
+  // the same Supabase email/password sign-in. The authenticated app below
+  // is unchanged.
   if (!user) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
-        <div className="bg-[#111] border border-zinc-800 p-8 rounded-3xl w-full max-w-sm space-y-6">
-          <h2 className="text-2xl font-bold text-white text-center">{isSignUp ? "Sign Up" : "Sign In"}</h2>
-          <div className="space-y-4">
-            <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-xl text-white outline-none focus:border-orange-500" />
-            <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-xl text-white outline-none focus:border-orange-500" />
-          </div>
-          <button 
-            onClick={async () => {
-              if (isSignUp) await supabase.auth.signUp({ email, password });
-              else await supabase.auth.signInWithPassword({ email, password });
-            }}
-            className="w-full bg-orange-500 text-black font-bold py-3 rounded-xl hover:bg-orange-400 transition-colors"
-          >
-            {isSignUp ? "Sign Up" : "Sign In"}
-          </button>
-          <button onClick={() => setIsSignUp(!isSignUp)} className="w-full text-zinc-500 text-sm hover:text-white transition-colors">
-            {isSignUp ? "Already have an account? Sign In" : "Need an account? Sign Up"}
-          </button>
-        </div>
-      </div>
-    );
+    return <ProductPage />;
   }
+
+  // Access model: ROLE (owner/admin/user) and subscription PLAN are
+  // independent concepts (see src/lib/access.ts). Role recognition is
+  // currently a documented bootstrap mapping; plan is a labeled default
+  // until the subscription backend exists. Frontend checks are UX only.
+  const access = resolveAccess({ email: user?.email ?? null });
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0a] text-white">
@@ -121,12 +107,19 @@ export default function App() {
           <NavItem active={activeTab === 'portfolio'} onClick={() => setActiveTab('portfolio')} icon={<Layers size={20} />} label="My Portfolio" />
           <NavItem active={activeTab === 'acca'} onClick={() => setActiveTab('acca')} icon={<Send size={20} />} label="Acca Builder" />
           <NavItem active={activeTab === 'how-to-use'} onClick={() => setActiveTab('how-to-use')} icon={<HelpCircle size={20} />} label="How to Use" />
-          {user.email === 'admin@footyedge.ai' && (
-            <NavItem active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} icon={<ShieldCheck size={20} />} label="Admin Panel" />
+          {canViewOwnerConsole(access) && (
+            <NavItem active={activeTab === 'owner'} onClick={() => setActiveTab('owner')} icon={<Crown size={20} />} label="Owner Console" />
           )}
         </nav>
 
-        <div className="pt-6 border-t border-zinc-800">
+        <div className="pt-6 border-t border-zinc-800 space-y-3">
+          <div className="px-2">
+            <p className="text-xs text-zinc-500 truncate" title={user.email}>{user.email}</p>
+            <p className="text-xs text-zinc-600">
+              Plan: {planDisplayName(access)}
+              {access.role === 'owner' && <span className="text-orange-500 font-semibold"> · Owner</span>}
+            </p>
+          </div>
           <button onClick={handleLogout} className="flex items-center gap-3 text-zinc-500 hover:text-red-500 transition-colors w-full p-2">
             <LogOut size={20} />
             <span>Sign Out</span>
@@ -143,7 +136,7 @@ export default function App() {
         {activeTab === 'portfolio' && <Portfolio />}
         {activeTab === 'acca' && <AccaBuilder />}
         {activeTab === 'how-to-use' && <HowToUse />}
-        {activeTab === 'admin' && <AdminMetrics />}
+        {activeTab === 'owner' && canViewOwnerConsole(access) && <OwnerConsole ownerEmail={user.email} />}
       </main>
     </div>
   );
