@@ -61,8 +61,20 @@ jobs:
           grep -c "Dashboard" $(cat /tmp/app_chunks.txt | head -1)
 
       - name: Upload production artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: footyedge-dist
           path: dist
           retention-days: 7
+
+      - name: Diagnose entry chunk (first bytes only, no secrets)
+        if: always()
+        run: |
+          ls -la dist/assets
+          for f in dist/assets/index-*.js; do
+            case "$f" in *vendor*|*chart*) continue;; esac
+            echo "--- head of $f ---"
+            head -c 600 "$f"
+            echo
+          done
