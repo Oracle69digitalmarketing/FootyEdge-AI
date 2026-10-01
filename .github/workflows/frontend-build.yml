@@ -48,6 +48,21 @@ jobs:
         run: |
           test -f dist/index.html
           test "$(find dist -type f -size +0c | wc -l)" -gt 0
-          test "$(find dist/assets -name '*.js' -size +100k | wc -l)" -gt 0
           du -sh dist
           find dist -maxdepth 2 -type f | sort
+
+      - name: Verify bundle contains the application (stub guard)
+        # A stub bundle exits 0 but carries no app code. Fail unless the
+        # entry chunk contains recognizable application strings.
+        run: |
+          grep -rl "FootyEdge" dist/assets/*.js | tee /tmp/app_chunks.txt
+          test -s /tmp/app_chunks.txt
+          grep -c "Owner Console" $(cat /tmp/app_chunks.txt | head -1)
+          grep -c "Dashboard" $(cat /tmp/app_chunks.txt | head -1)
+
+      - name: Upload production artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: footyedge-dist
+          path: dist
+          retention-days: 7
