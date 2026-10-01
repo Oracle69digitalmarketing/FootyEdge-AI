@@ -24,6 +24,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # BUILD-TIME CONFIG (placeholders, NOT secrets, NOT production values).
+    #
+    # Why this exists: Vite statically inlines `import.meta.env.*` at build
+    # time. With these variables absent/empty, `src/supabase.ts` folds to a
+    # statically-null client, and esbuild dead-code elimination then removes
+    # the ENTIRE application from the bundle (leaving only the
+    # "Configuration Error" screen) — with exit code 0. Non-empty
+    # placeholders keep the full application graph in the bundle so CI
+    # verifies the real app. Values differ from production only as string
+    # literals; the deployed frontend receives real values exclusively from
+    # the hosting platform's environment (e.g. Vercel dashboard), never
+    # from this file.
+    env:
+      VITE_SUPABASE_URL: https://placeholder.supabase.co
+      VITE_SUPABASE_ANON_KEY: placeholder-anon-key-for-build-verification-only
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
