@@ -18,9 +18,37 @@ from agents.models import TeamStrength, ValueBet
 from agents.goal_distribution_agent import GoalDistributionAgent
 from agents.kelly_agent import KellyAgent
 from football_api_client import FootballAPIClient
+from team_identity import resolve_canonical_id_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Predictor inputs are internal/user-facing display names (API callers and
+# Odds-API display names surfaced through find_all_value_bets), not a single
+# provider feed. No stable external team IDs exist at this boundary, so
+# resolution is by canonical/alias identity and unknown teams fail closed.
+PREDICTOR_TEAM_SOURCE = "internal"
+
+
+def resolve_predictor_team_id(team_name, supabase, source=PREDICTOR_TEAM_SOURCE,
+                              external_team_id=None):
+    """Resolve a predictor team name to (canonical_name, canonical_id).
+
+    Returns (None, None) when identity resolution fails, mirroring the
+    historical team-absent path (empty matches, None team_id) without
+    fabricating a team, statistics, or inputs. Never falls back to a
+    raw-name row lookup. external_team_id is accepted for callers that
+    hold a stable provider ID; the predictor's own call sites leave it
+    None (no IDs exist at this boundary).
+    """
+    try:
+        return resolve_canonical_id_db(
+            team_name, source=source, supabase=supabase,
+            external_team_id=external_team_id,
+        )
+    except ValueError as e:
+        logger.warning(f"Predictor team identity unresolved for {team_name!r}: {e}")
+        return None, None
 
 class FootyEdgePredictor:
     
@@ -57,10 +85,8 @@ class FootyEdgePredictor:
         if not self.supabase: return []
 
         try:
-            team_res = self.supabase.table("teams").select("id").eq("name", team_name).execute()
-            if not team_res.data: return []
-
-            team_id = team_res.data[0]['id']
+            _, team_id = resolve_predictor_team_id(team_name, self.supabase)
+            if team_id is None: return []
             h_res = self.supabase.table("matches").select("*").eq("home_team_id", team_id).order("match_date", desc=True).limit(limit).execute()
             a_res = self.supabase.table("matches").select("*").eq("away_team_id", team_id).order("match_date", desc=True).limit(limit).execute()
 
@@ -114,12 +140,9 @@ class FootyEdgePredictor:
         return all_value_bets
 
     async def predict_match(self, home_team: str, away_team: str, odds: Dict) -> Dict:
-        # Resolve team IDs for accurate Elo lookups
-        home_id_res = self.supabase.table("teams").select("id").eq("name", home_team).execute()
-        away_id_res = self.supabase.table("teams").select("id").eq("name", away_team).execute()
-        
-        home_id = home_id_res.data[0]['id'] if home_id_res.data else None
-        away_id = away_id_res.data[0]['id'] if away_id_res.data else None
+        # Resolve canonical team IDs for accurate Elo lookups
+        _, home_id = resolve_predictor_team_id(home_team, self.supabase)
+        _, away_id = resolve_predictor_team_id(away_team, self.supabase)
 
         home_matches = await self.get_team_matches(home_team)
         away_matches = await self.get_team_matches(away_team)

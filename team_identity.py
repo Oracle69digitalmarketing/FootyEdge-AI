@@ -60,6 +60,15 @@ class UnknownTeamIdentityError(ValueError):
     """
 
 
+class TeamIdentityConflictError(ValueError):
+    """Raised when identity mappings disagree about one canonical team.
+
+    Cases: same provider ID mapped to two teams, same alias mapped to
+    two teams, or provider mapping and alias pointing to different teams.
+    Never resolved by silently picking one side.
+    """
+
+
 def is_legacy_id(team_id: int) -> bool:
     return team_id in LEGACY_TEAM_IDS
 
@@ -109,10 +118,180 @@ __all__ = [
     "CANONICAL_TEAMS",
     "KNOWN_ALIASES",
     "LEGACY_TEAM_IDS",
+    "TeamIdentityConflictError",
     "UnknownTeamIdentityError",
     "canonicalize_name",
     "generate_canonical_id",
     "is_canonical_id_for_name",
     "is_legacy_id",
     "resolve_canonical_id",
+    "resolve_canonical_id_db",
 ]
+
+
+def _reject_legacy_id(team_id: int, context: str) -> int:
+    """Raise if a team ID belongs to the retired legacy namespace."""
+    if is_legacy_id(team_id):
+        raise ValueError(f"Legacy team ID {team_id} rejected ({context}).")
+    return team_id
+
+
+def _rows_of(result) -> list:
+    """Extract the row list from a Supabase select result (real or stub)."""
+    data = result.data if hasattr(result, "data") else result
+    return list(data or [])
+
+
+def _canonical_team_name(supabase, team_id: int) -> str:
+    """Return the stored canonical name for a mapped team ID.
+
+    The teams row owns the canonical spelling; alias/provider text must
+    never overwrite it. A mapping without a team row is a data conflict.
+    """
+    rows = _rows_of(
+        supabase.table("teams").select("id, name").eq("id", team_id).execute()
+    )
+    names = {row["name"] for row in rows}
+    if len(names) != 1:
+        raise TeamIdentityConflictError(
+            f"Mapped team ID {team_id} has no unique teams row."
+        )
+    (name,) = names
+    return canonicalize_name(name)
+
+
+def resolve_canonical_id_db(
+    raw_name: str,
+    source: str,
+    supabase,
+    external_team_id=None,
+    allow_create: bool = False,
+) -> tuple[str, int]:
+    """Resolve a provider team name to its canonical team via the database.
+
+    Single reusable policy boundary. Precedence:
+      1. explicit alias (team_aliases)
+      2. provider identity mapping (team_identity_sources, source + ID)
+      3. exact canonical team name (teams)
+      4. explicit controlled registration (allow_create=True)
+      5. otherwise raise UnknownTeamIdentityError
+
+    No fuzzy similarity, edit distance, token or substring matching:
+    every lookup is an exact match. Never returns a legacy ID.
+    Registration mints only the immutable SHA-256/12-hex namespace,
+    never overwrites an existing team, and never creates an alias
+    implicitly.
+    """
+    canonical = canonicalize_name(raw_name)
+
+    has_provider_id = external_team_id is not None and str(external_team_id) != ""
+    if has_provider_id:
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError("source is required with external_team_id.")
+        try:
+            supplied = int(str(external_team_id))
+        except (TypeError, ValueError):
+            supplied = None
+        if supplied is not None:
+            _reject_legacy_id(supplied, "supplied external_team_id")
+
+    mapped_team_id = None
+    if has_provider_id:
+        mapping_rows = _rows_of(
+            supabase.table("team_identity_sources")
+            .select("team_id")
+            .eq("source", source)
+            .eq("external_team_id", str(external_team_id))
+            .execute()
+        )
+        mapped_ids = {row["team_id"] for row in mapping_rows}
+        if len(mapped_ids) > 1:
+            raise TeamIdentityConflictError(
+                f"Provider identity ({source!r}, {external_team_id!r}) maps to "
+                f"multiple teams: {sorted(mapped_ids)}."
+            )
+        if mapped_ids:
+            (mapped_team_id,) = mapped_ids
+
+    alias_rows = _rows_of(
+        supabase.table("team_aliases").select("team_id").eq("alias", canonical).execute()
+    )
+    alias_ids = {row["team_id"] for row in alias_rows}
+    if len(alias_ids) > 1:
+        raise TeamIdentityConflictError(
+            f"Alias {canonical!r} maps to multiple teams: {sorted(alias_ids)}."
+        )
+    alias_team_id = next(iter(alias_ids), None)
+
+    if mapped_team_id is not None and alias_team_id is not None:
+        if mapped_team_id != alias_team_id:
+            raise TeamIdentityConflictError(
+                f"Provider identity ({source!r}, {external_team_id!r}) points to "
+                f"{mapped_team_id} but alias {canonical!r} points to "
+                f"{alias_team_id}."
+            )
+        team_id = _reject_legacy_id(mapped_team_id, "provider/alias mapping")
+        return _canonical_team_name(supabase, team_id), team_id
+    if mapped_team_id is not None:
+        team_id = _reject_legacy_id(mapped_team_id, "provider mapping")
+        return _canonical_team_name(supabase, team_id), team_id
+    if alias_team_id is not None:
+        team_id = _reject_legacy_id(alias_team_id, "alias mapping")
+        return _canonical_team_name(supabase, team_id), team_id
+
+    team_rows = _rows_of(
+        supabase.table("teams").select("id, name").eq("name", canonical).execute()
+    )
+    team_ids = {row["id"] for row in team_rows}
+    if len(team_ids) > 1:
+        raise TeamIdentityConflictError(
+            f"Canonical name {canonical!r} resolves to multiple team IDs: "
+            f"{sorted(team_ids)}."
+        )
+    if team_ids:
+        (team_id,) = team_ids
+        return canonical, _reject_legacy_id(team_id, "teams table")
+
+    if not allow_create:
+        raise UnknownTeamIdentityError(
+            f"Unknown team identity {canonical!r}: register an alias in "
+            "team_aliases/team_identity_sources or call with allow_create=True."
+        )
+
+    team_id = generate_canonical_id(canonical)
+    _reject_legacy_id(team_id, "registration")
+    try:
+        supabase.table("teams").insert({"id": team_id, "name": canonical}).execute()
+    except Exception:
+        existing = _rows_of(
+            supabase.table("teams").select("id, name").eq("name", canonical).execute()
+        )
+        if not existing:
+            raise
+        (team_id,) = {row["id"] for row in existing}
+        return canonical, _reject_legacy_id(team_id, "teams table")
+    if has_provider_id:
+        try:
+            supabase.table("team_identity_sources").insert(
+                {
+                    "team_id": team_id,
+                    "source": source,
+                    "external_team_id": str(external_team_id),
+                    "external_name": raw_name,
+                }
+            ).execute()
+        except Exception:
+            current = _rows_of(
+                supabase.table("team_identity_sources")
+                .select("team_id")
+                .eq("source", source)
+                .eq("external_team_id", str(external_team_id))
+                .execute()
+            )
+            current_ids = {row["team_id"] for row in current}
+            if current_ids != {team_id}:
+                raise TeamIdentityConflictError(
+                    f"Provider identity ({source!r}, {external_team_id!r}) "
+                    f"conflicts during registration: {sorted(current_ids)}."
+                )
+    return canonical, team_id

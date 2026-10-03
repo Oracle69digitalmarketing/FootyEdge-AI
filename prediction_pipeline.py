@@ -1,5 +1,4 @@
 import os
-import hashlib
 import numpy as np
 import pandas as pd
 import soccerdata as sd
@@ -12,6 +11,7 @@ import logging
 from agents.goal_distribution_agent import GoalDistributionAgent
 from agents.kelly_agent import KellyAgent
 from bet_selection import select_best_bet
+from team_identity import generate_canonical_id, resolve_canonical_id_db
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -52,24 +52,45 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def generate_deterministic_id(name: str) -> int:
-    """Canonical SHA-256/12-hex ID via team_identity policy.
+    """Backward-compatibility shim: delegates to the team_identity policy.
 
-    Self-contained (hashlib-only) so tests can load it in isolation.
-    Canonicalizes whitespace, resolves known canonical teams, else SHA-256/12-hex.
+    NOT used for pipeline team resolution (see ensure_fixture_teams, which
+    resolves via the DB-backed resolver and fails closed on unknowns).
     """
-    canonical = " ".join(name.strip().split())
-    known = {
-        "Arsenal": 221659396777490,
-        "Man City": 149534346580314,
-        "Real Madrid": 83469380690940,
-        "Barcelona": 6794002167939,
-        "Liverpool": 116955586910447,
-        "Bayern Munich": 18768778449461,
-    }
-    if canonical in known:
-        return known[canonical]
-    hash_obj = hashlib.sha256(canonical.encode('utf-8'))
-    return int(hash_obj.hexdigest()[:12], 16)
+    return generate_canonical_id(name)
+
+
+# Provider represented by this pipeline's fixture feed (soccerdata FBref).
+# FBref schedule payloads carry team names only — no stable external team
+# ID — so resolution is by canonical/alias identity; unknown teams fail
+# rather than minting a new identity during prediction.
+PIPELINE_TEAM_SOURCE = "fbref"
+
+
+def ensure_fixture_teams(home_name, away_name, league_name, supabase, source=PIPELINE_TEAM_SOURCE):
+    """Resolve both fixture teams to canonical identity and reuse team rows.
+
+    Uses resolve_canonical_id_db with allow_create=False: unknown or
+    conflicting identities raise (UnknownTeamIdentityError /
+    TeamIdentityConflictError) and the caller follows the existing
+    controlled per-fixture failure path. teams.name is always the
+    canonicalized name returned by the identity policy — never a raw
+    provider spelling — and teams.id is always the canonical SHA ID,
+    never a provider ID.
+    """
+    home_canonical, home_id = resolve_canonical_id_db(
+        home_name, source=source, supabase=supabase
+    )
+    away_canonical, away_id = resolve_canonical_id_db(
+        away_name, source=source, supabase=supabase
+    )
+    supabase.table("teams").upsert(
+        {"id": home_id, "name": home_canonical, "league_name": league_name}
+    ).execute()
+    supabase.table("teams").upsert(
+        {"id": away_id, "name": away_canonical, "league_name": league_name}
+    ).execute()
+    return (home_canonical, home_id), (away_canonical, away_id)
 
 def fetch_market_odds(league_key: str):
     """Fetches real-time market data directly from The Odds API."""
@@ -133,12 +154,9 @@ def run_pipeline():
             for _, row in schedule.iterrows():
                 try:
                     h_name, a_name = row['home_team'], row['away_team']
-                    h_id = generate_deterministic_id(h_name)
-                    a_id = generate_deterministic_id(a_name)
-
-                    # Auto-Seed teams tables dynamically to resolve dependencies
-                    supabase.table("teams").upsert({"id": h_id, "name": h_name, "league_name": league}).execute()
-                    supabase.table("teams").upsert({"id": a_id, "name": a_name, "league_name": league}).execute()
+                    (h_canonical, h_id), (a_canonical, a_id) = ensure_fixture_teams(
+                        h_name, a_name, league, supabase, source=PIPELINE_TEAM_SOURCE
+                    )
 
                     match_payload = {
                         "home_team_id": h_id, "away_team_id": a_id, "match_date": row['match_date'].isoformat(),
