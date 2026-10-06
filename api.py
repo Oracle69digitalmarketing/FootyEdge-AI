@@ -576,6 +576,12 @@ try:
 except Exception as exc:  # admin routes must never break core startup
     logger.warning("admin router not mounted: %s", type(exc).__name__)
 
+try:
+    from telegram_api import router as telegram_router
+    app.include_router(telegram_router)
+except Exception as exc:  # telegram routes must never break core startup
+    logger.warning("telegram router not mounted: %s", type(exc).__name__)
+
 # Static file serving
 dist_path = os.path.join(os.path.dirname(__file__), "dist")
 if os.path.exists(dist_path):
