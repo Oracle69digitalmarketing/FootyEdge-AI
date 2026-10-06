@@ -1061,3 +1061,137 @@ class TestSourceContracts:
         source = (ROOT / "telegram_api.py").read_text()
         assert "/api/webhooks/telegram" in source
         assert "/api/telegram/link-token" in source
+
+
+# --------------------------------------------------------------------------
+# Objective 9.2: application-integration reconciliation.
+# --------------------------------------------------------------------------
+
+NESTED_PAYLOAD = {
+    "response": [
+        {"fixture": {"id": "m1", "date": "2026-10-06T19:00:00Z"},
+         "teams": {"home": {"name": "Arsenal", "id": None, "logo": None},
+                   "away": {"name": "Chelsea", "id": None, "logo": None}},
+         "league": {"name": "Premier League", "id": "soccer_epl"},
+         "goals": {"home": None, "away": None},
+         "status": {"long": "Upcoming"},
+         "live_odds": {}},
+        {"fixture": {"id": "m2", "date": "2026-10-06T21:00:00Z"},
+         "teams": {"home": {"name": "Real Madrid", "id": None},
+                   "away": {"name": "Barcelona", "id": None}},
+         "league": {"name": "La Liga", "id": "soccer_spain"},
+         "goals": {"home": None, "away": None},
+         "status": {"long": "Upcoming"}},
+    ]
+}
+
+
+def _normalize():
+    return _load_telegram_api().normalize_provider_matches
+
+
+class TestAsyncRunnerSupport:
+    def test_async_fetcher_is_awaited(self):
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+        calls = []
+
+        async def _async_fetch():
+            calls.append(1)
+            return [{"home_team": "A", "away_team": "B"}]
+
+        runners = Runners(fetch_predictions=_async_fetch)
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/predictions"),
+            secret_valid=True,
+            identity_fn=lambda uid: starter_identity(uid), runners=runners))
+        assert result.outcome == "processed"
+        assert calls == [1]
+        assert any("A vs B" in text for _, text in sender.sent)
+
+    def test_sync_fetcher_still_supported(self):
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+        runners = Runners(fetch_predictions=lambda: [
+            {"home_team": "A", "away_team": "B"}])
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/predictions"),
+            secret_valid=True,
+            identity_fn=lambda uid: starter_identity(uid), runners=runners))
+        assert result.outcome == "processed"
+
+
+class TestProviderNormalization:
+    def test_nested_shape_normalized(self):
+        rows = _normalize()(NESTED_PAYLOAD)
+        assert rows == [
+            {"home_team": "Arsenal", "away_team": "Chelsea",
+             "league": "Premier League", "kickoff": "2026-10-06T19:00:00Z"},
+            {"home_team": "Real Madrid", "away_team": "Barcelona",
+             "league": "La Liga", "kickoff": "2026-10-06T21:00:00Z"},
+        ]
+
+    def test_empty_response_yields_empty(self):
+        assert _normalize()({"response": []}) == []
+
+    def test_malformed_shapes_yield_empty(self):
+        assert _normalize()(None) == []
+        assert _normalize()([]) == []
+        assert _normalize()({}) == []
+        assert _normalize()({"response": None}) == []
+        assert _normalize()({"response": [None, "junk", 42]}) == []
+
+    def test_missing_keys_yield_none_teams(self):
+        assert _normalize()({"response": [{}]}) == [
+            {"home_team": None, "away_team": None,
+             "league": "", "kickoff": ""}]
+
+    def test_no_invented_data(self):
+        rows = _normalize()(NESTED_PAYLOAD)
+        text = format_matches(rows)
+        assert "Arsenal vs Chelsea" in text
+        assert "Real Madrid vs Barcelona" in text
+
+
+class TestTodayEndToEnd:
+    def test_today_uses_normalized_provider_source(self):
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+
+        async def _provider_fetch():
+            return _normalize()(NESTED_PAYLOAD)
+
+        runners = Runners(fetch_today=_provider_fetch)
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/today"),
+            secret_valid=True,
+            identity_fn=lambda uid: starter_identity(uid), runners=runners))
+        assert result.outcome == "processed"
+        assert any("Arsenal vs Chelsea" in text for _, text in sender.sent)
+
+    def test_today_empty_source_safe(self):
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+        runners = Runners(fetch_today=lambda: [])
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/today"),
+            secret_valid=True,
+            identity_fn=lambda uid: starter_identity(uid), runners=runners))
+        assert result.outcome == "processed"
+        assert any("No matches" in text for _, text in sender.sent)
+
+    def test_today_fetcher_failure_is_failed_outcome(self):
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+
+        def _boom():
+            raise RuntimeError("provider down")
+
+        runners = Runners(fetch_today=_boom)
+        with pytest.raises(TelegramError):
+            run(process_update(
+                store, sender, raw_body=make_update(text="/today"),
+                secret_valid=True,
+                identity_fn=lambda uid: starter_identity(uid),
+                runners=runners))
+        assert store.completed[1] == ("failed", "handler_error")

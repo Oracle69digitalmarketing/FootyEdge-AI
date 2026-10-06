@@ -149,19 +149,63 @@ def telegram_identity(supabase: Any, user_id: str) -> Optional[TelegramIdentity]
         return None
 
 
+def normalize_provider_matches(response: Any) -> List[Dict[str, Any]]:
+    """Map the football provider payload to formatter-ready match dicts.
+
+    The provider client returns {"response": [nested match objects]} with
+    teams/fixture/league nesting; the Telegram formatter consumes flat
+    home_team/away_team/league/kickoff dicts. This mapping lives in the
+    Telegram boundary (presentation concern): the domain client is
+    untouched and no fixture data is invented — unknown shapes yield [].
+    """
+    if not isinstance(response, dict):
+        return []
+    raw = response.get("response")
+    if not isinstance(raw, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for match in raw:
+        if not isinstance(match, dict):
+            continue
+        teams = match.get("teams") if isinstance(match.get("teams"), dict) else {}
+        fixture = match.get("fixture") if isinstance(match.get("fixture"), dict) else {}
+        league = match.get("league") if isinstance(match.get("league"), dict) else {}
+        home = teams.get("home") if isinstance(teams.get("home"), dict) else {}
+        away = teams.get("away") if isinstance(teams.get("away"), dict) else {}
+        normalized.append({
+            "home_team": home.get("name"),
+            "away_team": away.get("name"),
+            "league": league.get("name", ""),
+            "kickoff": fixture.get("date", ""),
+        })
+    return normalized
+
+
 def _production_runners(supabase: Any) -> Runners:
     """Wire read-only domain fetches. Lazy api imports avoid a cycle."""
-    def _fetch_today() -> List[Dict[str, Any]]:
+    async def _fetch_today() -> List[Dict[str, Any]]:
         from api import football_client  # noqa: E402
 
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        return list(football_client.get_matches_by_date(day) or [])
+        try:
+            return normalize_provider_matches(
+                await football_client.get_matches_by_date(day))
+        except Exception as exc:
+            logger.warning("telegram: today fetch failed: %s",
+                           type(exc).__name__)
+            return []
 
-    def _fetch_matches() -> List[Dict[str, Any]]:
+    async def _fetch_matches() -> List[Dict[str, Any]]:
         from api import football_client  # noqa: E402
 
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        return list(football_client.get_matches_by_date(day) or [])
+        try:
+            return normalize_provider_matches(
+                await football_client.get_matches_by_date(day))
+        except Exception as exc:
+            logger.warning("telegram: matches fetch failed: %s",
+                           type(exc).__name__)
+            return []
 
     def _fetch_predictions() -> List[Dict[str, Any]]:
         res = supabase.table("predictions").select("*").order(
@@ -311,4 +355,4 @@ class SupabaseTelegramStore(TelegramStore):
             logger.warning("telegram: touch failed: %s", type(exc).__name__)
 
 
-__all__ = ["router", "telegram_identity"]
+__all__ = ["router", "telegram_identity", "normalize_provider_matches"]

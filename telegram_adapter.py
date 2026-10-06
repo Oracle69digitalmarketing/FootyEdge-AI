@@ -231,10 +231,24 @@ class Runners:
     Deliberately narrow: read-only match/prediction fetches only. There is
     intentionally no bet/portfolio/payment/admin runner anywhere in this
     module, so Telegram structurally cannot reach those capabilities.
+
+    Fetchers may be plain (synchronous) or async callables; the adapter
+    awaits awaitables so both the sync Supabase client and the async
+    football client can be reused without adapter-side duplication.
     """
-    fetch_today: Callable[[], List[Dict[str, Any]]] = lambda: []
-    fetch_matches: Callable[[], List[Dict[str, Any]]] = lambda: []
-    fetch_predictions: Callable[[], List[Dict[str, Any]]] = lambda: []
+    fetch_today: Callable[[], Any] = lambda: []
+    fetch_matches: Callable[[], Any] = lambda: []
+    fetch_predictions: Callable[[], Any] = lambda: []
+
+
+async def _resolve_fetcher(fetcher: Callable[[], Any]) -> List[Dict[str, Any]]:
+    """Run one capability fetcher, awaiting it only if it is async."""
+    import inspect
+
+    result = fetcher()
+    if inspect.isawaitable(result):
+        result = await result
+    return result if isinstance(result, list) else []
 
 
 # --------------------------------------------------------------------------
@@ -606,10 +620,12 @@ async def process_update(
 
         if command in ("/today", "/matches"):
             fetcher = runners.fetch_today if command == "/today" else runners.fetch_matches
-            return await _answer(format_matches(fetcher()), "processed")
-        if command == "/predictions":
-            return await _answer(format_predictions(runners.fetch_predictions()),
+            return await _answer(format_matches(await _resolve_fetcher(fetcher)),
                                  "processed")
+        if command == "/predictions":
+            return await _answer(format_predictions(
+                await _resolve_fetcher(runners.fetch_predictions)),
+                "processed")
 
         return await _answer(_UNKNOWN_MESSAGE, "ignored",
                              error_code="unreachable_command")
