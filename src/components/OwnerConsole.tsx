@@ -13,6 +13,15 @@ import {
 } from 'lucide-react';
 import AdminMetrics from '../pages/AdminMetrics';
 import { PLANS } from '../lib/access';
+import {
+  formatStatus,
+  shortId,
+  useOwnerBilling,
+  type BillingEvent,
+  type BillingOverview,
+  type BillingSubscription,
+  type BillingUser,
+} from '../lib/ownerBilling';
 import { cn } from '../lib/utils';
 
 type SectionId =
@@ -43,9 +52,12 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ReactNode }[] = [
 /**
  * Owner console (platform-level control surface).
  * Composes the existing AdminMetrics view under "Product Metrics" instead of
- * duplicating it. Every section without a real backend shows an explicit
- * empty/coming-soon state — no fabricated users, revenue, usage or health
- * figures anywhere in this file.
+ * duplicating it. Commercial sections (Overview, Users, Subscriptions,
+ * Activity & Audit) render ONLY data returned by the read-only
+ * /api/admin/billing/* endpoints; anything unavailable renders an explicit
+ * "Not yet available" state — no fabricated users, revenue, usage or health
+ * figures anywhere in this file. Visibility here is UX only: every endpoint
+ * independently rejects non-owner/admin callers.
  */
 export default function OwnerConsole({ ownerEmail }: { ownerEmail: string }) {
   const [section, setSection] = useState<SectionId>('overview');
@@ -83,24 +95,14 @@ export default function OwnerConsole({ ownerEmail }: { ownerEmail: string }) {
 
       <div className="bg-[#111] border border-zinc-800 rounded-3xl p-6 sm:p-8">
         {section === 'overview' && <Overview email={ownerEmail} go={setSection} />}
-        {section === 'users' && (
-          <EmptyState
-            title="User management is not connected yet"
-            body="Listing accounts requires the upcoming admin API. No accounts are shown here, and nothing here modifies any user."
-          />
-        )}
-        {section === 'subscriptions' && (
-          <EmptyState
-            title="No subscription backend yet"
-            body="Plans are architecture definitions only. There are no subscription records to display, and none are created from this console."
-          />
-        )}
+        {section === 'users' && <UsersSection />}
+        {section === 'subscriptions' && <SubscriptionsSection />}
         {section === 'plans' && <PlansSection />}
         {section === 'metrics' && <AdminMetrics />}
         {section === 'api' && (
           <EmptyState
-            title="API usage is not metered yet"
-            body="Commercial API access is a Business-tier concept. Usage metering does not exist yet, so there is nothing to report."
+            title="Usage metering is not yet enabled"
+            body="Commercial API access is a Business-tier concept. No usage metering exists yet, so there is nothing to report — and nothing here invents usage figures."
           />
         )}
         {section === 'data' && (
@@ -115,12 +117,7 @@ export default function OwnerConsole({ ownerEmail }: { ownerEmail: string }) {
             body="Deployment health is observed in the hosting provider, not in this console. Nothing here restarts or migrates anything."
           />
         )}
-        {section === 'activity' && (
-          <EmptyState
-            title="No audit trail yet"
-            body="Administrative actions will be recorded here once the audit log exists. This console currently performs no mutating actions."
-          />
-        )}
+        {section === 'activity' && <EventsSection />}
         {section === 'settings' && (
           <EmptyState
             title="Platform settings live outside this console"
@@ -133,25 +130,43 @@ export default function OwnerConsole({ ownerEmail }: { ownerEmail: string }) {
 }
 
 function Overview({ email, go }: { email: string; go: (s: SectionId) => void }) {
+  const state = useOwnerBilling<BillingOverview>('/api/admin/billing/overview');
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="border border-zinc-800 rounded-2xl p-5">
           <p className="text-xs uppercase tracking-widest text-zinc-500 font-semibold">Signed in</p>
           <p className="mt-1 text-sm text-zinc-100 break-all">{email}</p>
-          <p className="mt-1 text-xs text-orange-500 font-semibold">Role: owner (bootstrap)</p>
+          <p className="mt-1 text-xs text-orange-500 font-semibold">Role: owner/admin (server-verified)</p>
         </div>
         <div className="border border-zinc-800 rounded-2xl p-5">
           <p className="text-xs uppercase tracking-widest text-zinc-500 font-semibold">Commercial tiers</p>
           <p className="mt-1 text-sm text-zinc-100">Starter · Growth · Business · Enterprise</p>
-          <p className="mt-1 text-xs text-zinc-500">Definitions only — no billing yet</p>
+          <p className="mt-1 text-xs text-zinc-500">Test-mode billing via Paystack (no live charges)</p>
         </div>
         <div className="border border-zinc-800 rounded-2xl p-5">
           <p className="text-xs uppercase tracking-widest text-zinc-500 font-semibold">Authorization basis</p>
-          <p className="mt-1 text-sm text-zinc-100">Bootstrap mapping</p>
-          <p className="mt-1 text-xs text-zinc-500">Durable profiles.role checks pending RLS work</p>
+          <p className="mt-1 text-sm text-zinc-100">Server role check</p>
+          <p className="mt-1 text-xs text-zinc-500">Each admin endpoint verifies owner/admin independently</p>
         </div>
       </div>
+
+      {state.status === 'loading' && <LoadingState label="Loading commercial overview…" />}
+      {state.status === 'forbidden' && (
+        <EmptyState
+          title="Not authorized"
+          body="The server did not recognize this session as owner/admin, so no commercial metrics are shown. Visibility in this console never grants access."
+        />
+      )}
+      {state.status === 'unavailable' && (
+        <EmptyState
+          title="Not yet available"
+          body="Commercial overview could not be loaded from the admin API. No figures are shown rather than estimated ones."
+        />
+      )}
+      {state.status === 'ok' && <OverviewMetrics overview={state.data} />}
+
       <div className="flex flex-wrap gap-2">
         <button onClick={() => go('metrics')} className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-sm hover:border-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-orange-500/70">
           Open Product Metrics (admin tools)
@@ -164,12 +179,246 @@ function Overview({ email, go }: { email: string; go: (s: SectionId) => void }) 
   );
 }
 
+function OverviewMetrics({ overview }: { overview: BillingOverview }) {
+  const cards: { label: string; value: number | string }[] = [
+    { label: 'Total users', value: overview.total_users },
+    { label: 'Users with subscriptions', value: overview.users_with_subscriptions },
+    { label: 'Starter users', value: overview.starter_users },
+    { label: 'Growth subscriptions', value: overview.plan_counts.growth },
+    { label: 'Business subscriptions', value: overview.plan_counts.business },
+    { label: 'Enterprise subscriptions', value: overview.plan_counts.enterprise },
+    { label: 'Past-due subscriptions', value: overview.status_counts['past_due'] ?? 0 },
+    { label: 'Canceled subscriptions', value: overview.status_counts['canceled'] ?? 0 },
+  ];
+  return (
+    <div>
+      <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-500">Commercial overview — actual records only</h3>
+      <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {cards.map((c) => (
+          <div key={c.label} className="border border-zinc-800 rounded-2xl p-5">
+            <p className="text-xs uppercase tracking-widest text-zinc-500 font-semibold">{c.label}</p>
+            <p className="mt-1 text-2xl font-extrabold tracking-tight">{c.value}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-zinc-600">
+        Counts are derived from profiles/subscriptions records. No revenue, MRR, conversion or churn is shown — the database does not support those calculations.
+      </p>
+    </div>
+  );
+}
+
+function UsersSection() {
+  const state = useOwnerBilling<{ users: BillingUser[]; count: number }>('/api/admin/billing/users');
+
+  if (state.status === 'loading') return <LoadingState label="Loading users…" />;
+  if (state.status === 'forbidden') {
+    return (
+      <EmptyState
+        title="Not authorized"
+        body="The server did not recognize this session as owner/admin, so no accounts are shown."
+      />
+    );
+  }
+  if (state.status === 'unavailable') {
+    return (
+      <EmptyState
+        title="Not yet available"
+        body="User records could not be loaded from the admin API. No accounts are shown, and nothing here modifies any user."
+      />
+    );
+  }
+  if (state.data.users.length === 0) {
+    return (
+      <EmptyState
+        title="No users found"
+        body="The admin API returned zero profiles. Nothing here modifies any user."
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-zinc-400 leading-relaxed">
+        Commercial/account state per user ({state.data.count} shown). Read-only — nothing here modifies any user, role, or subscription.
+      </p>
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+        <table className="w-full min-w-[760px] text-sm bg-[#111]">
+          <caption className="sr-only">User commercial state</caption>
+          <thead>
+            <tr className="border-b border-zinc-800 text-left">
+              <Th>User</Th>
+              <Th>Role</Th>
+              <Th>Plan</Th>
+              <Th>Status</Th>
+              <Th>Period end</Th>
+              <Th>Provider</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/80">
+            {state.data.users.map((u, i) => (
+              <tr key={u.user_id ?? u.email ?? `row-${i}`}>
+                <td className="px-5 py-3 text-zinc-200" title={u.user_id ?? ''}>
+                  <span className="block font-semibold">{u.email ?? shortId(u.user_id)}</span>
+                  <span className="block text-xs text-zinc-500">{shortId(u.user_id)}</span>
+                </td>
+                <td className="px-5 py-3 text-zinc-400">{u.role}</td>
+                <td className="px-5 py-3 text-zinc-400 capitalize">{u.effective_plan}</td>
+                <td className="px-5 py-3 text-zinc-400">{formatStatus(u.subscription_status)}</td>
+                <td className="px-5 py-3 text-zinc-400">{u.current_period_end ?? '—'}</td>
+                <td className="px-5 py-3 text-zinc-400">{u.provider ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionsSection() {
+  const state = useOwnerBilling<{ subscriptions: BillingSubscription[]; count: number }>(
+    '/api/admin/billing/subscriptions'
+  );
+
+  if (state.status === 'loading') return <LoadingState label="Loading subscriptions…" />;
+  if (state.status === 'forbidden') {
+    return (
+      <EmptyState
+        title="Not authorized"
+        body="The server did not recognize this session as owner/admin, so no subscription records are shown."
+      />
+    );
+  }
+  if (state.status === 'unavailable') {
+    return (
+      <EmptyState
+        title="Not yet available"
+        body="Subscription records could not be loaded from the admin API. None are created from this console."
+      />
+    );
+  }
+  if (state.data.subscriptions.length === 0) {
+    return (
+      <EmptyState
+        title="No subscription records"
+        body="There are no subscription rows. Subscription state is written only by verified Paystack webhooks — never from this console."
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-zinc-400 leading-relaxed">
+        Actual subscription records ({state.data.count} shown). Read-only — there are no plan/status controls here.
+      </p>
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+        <table className="w-full min-w-[760px] text-sm bg-[#111]">
+          <caption className="sr-only">Subscription records</caption>
+          <thead>
+            <tr className="border-b border-zinc-800 text-left">
+              <Th>User</Th>
+              <Th>Plan</Th>
+              <Th>Status</Th>
+              <Th>Period start</Th>
+              <Th>Period end</Th>
+              <Th>Provider</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/80">
+            {state.data.subscriptions.map((s) => (
+              <tr key={s.id}>
+                <td className="px-5 py-3 text-zinc-200" title={s.user_id}>{shortId(s.user_id)}</td>
+                <td className="px-5 py-3 text-zinc-400 capitalize">{s.plan}</td>
+                <td className="px-5 py-3 text-zinc-400">
+                  {formatStatus(s.status)}
+                  {s.status === 'canceled' && s.current_period_end && Date.parse(s.current_period_end) > Date.now() && (
+                    <span className="block text-xs text-zinc-500">period still active</span>
+                  )}
+                  {s.status === 'canceled' && (!s.current_period_end || Date.parse(s.current_period_end) <= Date.now()) && (
+                    <span className="block text-xs text-zinc-500">period ended</span>
+                  )}
+                </td>
+                <td className="px-5 py-3 text-zinc-400">{s.current_period_start ?? '—'}</td>
+                <td className="px-5 py-3 text-zinc-400">{s.current_period_end ?? '—'}</td>
+                <td className="px-5 py-3 text-zinc-400">{s.provider ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function EventsSection() {
+  const state = useOwnerBilling<{ events: BillingEvent[]; count: number }>('/api/admin/billing/events');
+
+  if (state.status === 'loading') return <LoadingState label="Loading provider events…" />;
+  if (state.status === 'forbidden') {
+    return (
+      <EmptyState
+        title="Not authorized"
+        body="The server did not recognize this session as owner/admin, so no provider events are shown."
+      />
+    );
+  }
+  if (state.status === 'unavailable') {
+    return (
+      <EmptyState
+        title="Not yet available"
+        body="Provider events could not be loaded from the admin API. Raw provider payloads are never displayed here."
+      />
+    );
+  }
+  if (state.data.events.length === 0) {
+    return (
+      <EmptyState
+        title="No provider events recorded"
+        body="No webhook deliveries have been recorded in subscription_events. This audit trail is append-only and read-only."
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-zinc-400 leading-relaxed">
+        Provider-event audit trail ({state.data.count} shown). Read-only metadata — raw payloads are never exposed, and events cannot be edited from here.
+      </p>
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+        <table className="w-full min-w-[760px] text-sm bg-[#111]">
+          <caption className="sr-only">Provider event history</caption>
+          <thead>
+            <tr className="border-b border-zinc-800 text-left">
+              <Th>Provider</Th>
+              <Th>Event</Th>
+              <Th>Status</Th>
+              <Th>Event ID</Th>
+              <Th>Subscription</Th>
+              <Th>Recorded</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/80">
+            {state.data.events.map((e) => (
+              <tr key={`${e.provider}:${e.provider_event_id}`}>
+                <td className="px-5 py-3 text-zinc-200">{e.provider}</td>
+                <td className="px-5 py-3 text-zinc-400">{e.event_type}</td>
+                <td className="px-5 py-3 text-zinc-400">{e.processing_status}</td>
+                <td className="px-5 py-3 text-zinc-400" title={e.provider_event_id}>{shortId(e.provider_event_id, 12)}</td>
+                <td className="px-5 py-3 text-zinc-400">{e.subscription_id ?? '—'}</td>
+                <td className="px-5 py-3 text-zinc-400">{e.created_at}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function PlansSection() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-zinc-400 leading-relaxed">
-        Commercial tier definitions. No prices, no checkout, no payment processing —
-        availability states are honest: only Starter is usable today.
+        Current commercial configuration (same tiers as the product page). Billing runs in Paystack test mode —
+        no live charges. This console cannot change plans or activate subscriptions.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {PLANS.map((p) => (
@@ -178,6 +427,7 @@ function PlansSection() {
               <h3 className="font-bold">{p.name}</h3>
               <span className="text-[11px] font-bold uppercase tracking-widest text-orange-500">{p.statusLabel}</span>
             </div>
+            <p className="text-2xl font-extrabold tracking-tight">{p.price}</p>
             <p className="text-sm text-zinc-500">{p.tagline}</p>
             <ul className="text-sm text-zinc-300 space-y-1 pt-1">
               {p.capabilities.map((c) => (
@@ -191,12 +441,24 @@ function PlansSection() {
   );
 }
 
+function Th({ children }: { children: React.ReactNode }) {
+  return <th scope="col" className="px-5 py-4 font-semibold text-zinc-400">{children}</th>;
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="py-10 text-center" role="status">
+      <p className="text-sm text-zinc-400">{label}</p>
+    </div>
+  );
+}
+
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="text-center py-10 space-y-3">
       <p className="text-lg font-bold">{title}</p>
       <p className="text-sm text-zinc-400 max-w-xl mx-auto leading-relaxed">{body}</p>
-      <p className="text-xs uppercase tracking-widest text-zinc-600 font-semibold pt-2">Coming soon — no placeholder data shown</p>
+      <p className="text-xs uppercase tracking-widest text-zinc-600 font-semibold pt-2">No placeholder data shown</p>
     </div>
   );
 }

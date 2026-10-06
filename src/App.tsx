@@ -9,7 +9,7 @@ import PlayersList from './components/PlayersList';
 import PredictionsDashboard from './pages/PredictionsDashboard';
 import ProductPage from './components/product/ProductPage';
 import OwnerConsole from './components/OwnerConsole';
-import { canViewOwnerConsole, planDisplayName, resolveAccess } from './lib/access';
+import { canViewOwnerBilling, planDisplayName, resolveAccess } from './lib/access';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -107,7 +107,7 @@ export default function App() {
           <NavItem active={activeTab === 'portfolio'} onClick={() => setActiveTab('portfolio')} icon={<Layers size={20} />} label="My Portfolio" />
           <NavItem active={activeTab === 'acca'} onClick={() => setActiveTab('acca')} icon={<Send size={20} />} label="Acca Builder" />
           <NavItem active={activeTab === 'how-to-use'} onClick={() => setActiveTab('how-to-use')} icon={<HelpCircle size={20} />} label="How to Use" />
-          {canViewOwnerConsole(access) && (
+          {canViewOwnerBilling(access) && (
             <NavItem active={activeTab === 'owner'} onClick={() => setActiveTab('owner')} icon={<Crown size={20} />} label="Owner Console" />
           )}
         </nav>
@@ -136,7 +136,7 @@ export default function App() {
         {activeTab === 'portfolio' && <Portfolio />}
         {activeTab === 'acca' && <AccaBuilder />}
         {activeTab === 'how-to-use' && <HowToUse />}
-        {activeTab === 'owner' && canViewOwnerConsole(access) && <OwnerConsole ownerEmail={user.email} />}
+        {activeTab === 'owner' && canViewOwnerBilling(access) && <OwnerConsole ownerEmail={user.email} />}
       </main>
     </div>
   );

@@ -220,6 +220,10 @@ export default function ProductPage() {
               Four tiers describe where FootyEdge is going. Only Starter is usable today;
               the rest are honest statuses — not things you can buy yet.
             </p>
+            <p role="note" className="mt-4 text-sm text-zinc-300 bg-[#111] border border-zinc-800 rounded-2xl px-5 py-4 max-w-3xl leading-relaxed">
+              Pricing shown here reflects the current proposed FootyEdge AI commercial
+              structure. Online billing and checkout are not yet enabled.
+            </p>
             <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
               {PLANS.map((p) => (
                 <div key={p.id} className="bg-[#111] border border-zinc-800 rounded-3xl p-6 space-y-3 flex flex-col">
@@ -227,6 +231,7 @@ export default function ProductPage() {
                     <h3 className="text-lg font-bold">{p.name}</h3>
                     <span className="text-[11px] font-bold uppercase tracking-widest text-orange-500">{p.statusLabel}</span>
                   </div>
+                  <p className="text-2xl font-extrabold tracking-tight">{p.price}</p>
                   <p className="text-sm text-zinc-500">{p.tagline}</p>
                   <ul className="text-sm text-zinc-300 space-y-1.5 pt-1 flex-1">
                     {p.capabilities.map((c) => (
@@ -237,11 +242,12 @@ export default function ProductPage() {
                     href="#access"
                     className="inline-flex items-center justify-center gap-2 mt-2 border border-zinc-700 text-zinc-100 text-sm font-semibold px-4 py-2.5 rounded-xl hover:border-zinc-500 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-orange-500/70"
                   >
-                    {p.id === 'starter' ? 'Explore' : p.statusLabel} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                    {planCtaLabel(p.id)} <ArrowRight className="w-4 h-4" aria-hidden="true" />
                   </a>
                 </div>
               ))}
             </div>
+            <PlanComparison />
           </div>
         </section>
 
@@ -335,6 +341,73 @@ export default function ProductPage() {
 }
 
 /* ---------- building blocks (same design tokens as the app) ---------- */
+
+function planCtaLabel(planId: string): string {
+  // Honest non-payment CTAs: every tier leads to the existing
+  // account/sign-in flow. No checkout exists.
+  switch (planId) {
+    case 'starter': return 'Get Started';
+    case 'growth': return 'Coming soon';
+    case 'business': return 'Request Access';
+    case 'enterprise': return 'Talk to FootyEdge';
+    default: return 'Learn more';
+  }
+}
+
+const COMPARISON_ROWS: { capability: string; starter: string; growth: string; business: string; enterprise: string }[] = [
+  { capability: 'Match intelligence', starter: 'Included', growth: 'Included', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Team analysis', starter: 'Included', growth: 'Included', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Player analysis', starter: 'Included', growth: 'Included', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Prediction analytics', starter: 'Included', growth: 'Expanded', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Value bets', starter: 'Controlled', growth: 'Expanded', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Portfolio', starter: 'Controlled', growth: 'Expanded', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Acca Builder', starter: 'Controlled', growth: 'Expanded', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Advanced analytics', starter: '—', growth: 'Included', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Extended AI capacity', starter: '—', growth: 'Included', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Higher usage limits', starter: '—', growth: 'Included', business: 'Included', enterprise: 'Custom' },
+  { capability: 'Commercial usage', starter: '—', growth: '—', business: 'Planned', enterprise: 'Negotiated' },
+  { capability: 'API access', starter: '—', growth: '—', business: 'Planned', enterprise: 'Negotiated' },
+  { capability: 'Data export', starter: '—', growth: '—', business: 'Planned', enterprise: 'Negotiated' },
+  { capability: 'Multiple seats', starter: '—', growth: '—', business: 'Planned', enterprise: 'Custom' },
+  { capability: 'Organization controls', starter: '—', growth: '—', business: 'Planned', enterprise: 'Custom' },
+];
+
+function PlanComparison() {
+  return (
+    <div className="mt-10">
+      <h3 className="text-xl font-bold">Compare plans</h3>
+      <p className="mt-2 text-sm text-zinc-500 max-w-3xl leading-relaxed">
+        “Planned” means designed but not yet available. Nothing on this page can be
+        purchased yet — online billing is not enabled.
+      </p>
+      <div className="mt-4 overflow-x-auto rounded-3xl border border-zinc-800">
+        <table className="w-full min-w-[640px] text-sm bg-[#111]">
+          <caption className="sr-only">Feature comparison across Starter, Growth, Business and Enterprise plans</caption>
+          <thead>
+            <tr className="border-b border-zinc-800 text-left">
+              <th scope="col" className="px-5 py-4 font-semibold text-zinc-400">Capability</th>
+              <th scope="col" className="px-5 py-4 font-bold">Starter <span className="block text-xs font-semibold text-zinc-500">Free</span></th>
+              <th scope="col" className="px-5 py-4 font-bold">Growth <span className="block text-xs font-semibold text-zinc-500">₦5,000/mo</span></th>
+              <th scope="col" className="px-5 py-4 font-bold">Business <span className="block text-xs font-semibold text-zinc-500">₦15,000/mo</span></th>
+              <th scope="col" className="px-5 py-4 font-bold">Enterprise <span className="block text-xs font-semibold text-zinc-500">Custom</span></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/80">
+            {COMPARISON_ROWS.map((r) => (
+              <tr key={r.capability}>
+                <th scope="row" className="px-5 py-3 font-semibold text-left text-zinc-200">{r.capability}</th>
+                <td className="px-5 py-3 text-zinc-400">{r.starter}</td>
+                <td className="px-5 py-3 text-zinc-400">{r.growth}</td>
+                <td className="px-5 py-3 text-zinc-400">{r.business}</td>
+                <td className="px-5 py-3 text-zinc-400">{r.enterprise}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function ValueCard({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
   return (

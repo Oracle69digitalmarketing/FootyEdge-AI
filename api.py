@@ -26,6 +26,23 @@ from env_guard import EnvGuardError, require_destructive_approval
 from football_api_client import FootballAPIClient
 from agents.strategy_agent import StrategyAgent
 
+# Entitlements (8F)
+from entitlements import (
+    EntitlementResult,
+    require_capability,
+    require_role,
+    get_entitlements,
+    CAP_VALUE_BETS,
+    CAP_ACCA_BUILDER,
+    CAP_PORTFOLIO,
+    CAP_AI_STRATEGY_ANALYSIS,
+    CAP_PREDICTIONS,
+    CAP_TEAMS,
+    CAP_PLAYERS,
+    CAP_DASHBOARD,
+    CAP_MATCH_INTELLIGENCE,
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
 
@@ -196,6 +213,7 @@ async def get_user_filtered_predictions(
     timeline: str = Query("daily", description="Options: daily, weekly, custom"),
     from_date: str = Query(None, alias="from_date", description="YYYY-MM-DD"),
     to_date: str = Query(None, alias="to_date", description="YYYY-MM-DD"),
+    _ent: EntitlementResult = Depends(require_capability(CAP_PREDICTIONS)),
     supabase: Client = Depends(get_supabase_client)
 ):
     """
@@ -247,7 +265,10 @@ async def get_user_filtered_predictions(
 
 @router.get("/api/teams")
 @router.get("/api/teams/")
-async def get_production_teams(supabase: Client = Depends(get_supabase_client)):
+async def get_production_teams(
+    _ent: EntitlementResult = Depends(require_capability(CAP_TEAMS)),
+    supabase: Client = Depends(get_supabase_client)
+):
     """Returns actual teams sorted alphabetically."""
     res = supabase.table("teams").select("*").order("name").execute()
     if not res.data and isinstance(supabase, MockSupabase):
@@ -255,7 +276,11 @@ async def get_production_teams(supabase: Client = Depends(get_supabase_client)):
     return res.data
 
 @router.get("/api/teams/{team_id}")
-async def get_team_detail(team_id: int, supabase: Client = Depends(get_supabase_client)):
+async def get_team_detail(
+    team_id: int,
+    _ent: EntitlementResult = Depends(require_capability(CAP_TEAMS)),
+    supabase: Client = Depends(get_supabase_client)
+):
     res = supabase.table("teams").select("*").eq("id", team_id).execute()
     if not res.data and isinstance(supabase, MockSupabase):
         return {"id": team_id, "name": "Mock Team", "country": "England", "league_name": "Premier League"}
@@ -263,7 +288,11 @@ async def get_team_detail(team_id: int, supabase: Client = Depends(get_supabase_
     return res.data[0]
 
 @router.get("/api/search/teams")
-async def search_teams(q: str = Query(...), supabase: Client = Depends(get_supabase_client)):
+async def search_teams(
+    q: str = Query(...),
+    _ent: EntitlementResult = Depends(require_capability(CAP_TEAMS)),
+    supabase: Client = Depends(get_supabase_client)
+):
     # Simple mock search
     res = supabase.table("teams").select("*").execute()
     teams = res.data or []
@@ -273,7 +302,10 @@ async def search_teams(q: str = Query(...), supabase: Client = Depends(get_supab
 
 @router.get("/api/players")
 @router.get("/api/players/")
-async def get_production_players(supabase: Client = Depends(get_supabase_client)):
+async def get_production_players(
+    _ent: EntitlementResult = Depends(require_capability(CAP_PLAYERS)),
+    supabase: Client = Depends(get_supabase_client)
+):
     """Read-only actual players feed."""
     res = supabase.table("players").select("*, teams(name)").limit(100).execute()
     if not res.data and isinstance(supabase, MockSupabase):
@@ -281,7 +313,11 @@ async def get_production_players(supabase: Client = Depends(get_supabase_client)
     return res.data
 
 @router.get("/api/players/{player_id}")
-async def get_player_detail(player_id: int, supabase: Client = Depends(get_supabase_client)):
+async def get_player_detail(
+    player_id: int,
+    _ent: EntitlementResult = Depends(require_capability(CAP_PLAYERS)),
+    supabase: Client = Depends(get_supabase_client)
+):
     res = supabase.table("players").select("*, teams(*)").eq("id", player_id).execute()
     if not res.data and isinstance(supabase, MockSupabase):
         return {"id": player_id, "name": "Mock Player", "teams": {"name": "Arsenal"}}
@@ -289,7 +325,10 @@ async def get_player_detail(player_id: int, supabase: Client = Depends(get_supab
     return res.data[0]
 
 @router.get("/api/value-bets")
-async def get_value_bets_dashboard(supabase: Client = Depends(get_supabase_client)):
+async def get_value_bets_dashboard(
+    _ent: EntitlementResult = Depends(require_capability(CAP_VALUE_BETS)),
+    supabase: Client = Depends(get_supabase_client)
+):
     """Fetches high EV advantages directly from Supabase."""
     res = supabase.table("value_bets").select("*").eq("status", "active").order("ev", desc=True).execute()
     if not res.data and isinstance(supabase, MockSupabase):
@@ -301,13 +340,21 @@ async def get_value_bets_dashboard(supabase: Client = Depends(get_supabase_clien
     return res.data
 
 @router.get("/api/bets/user/{user_id}")
-async def get_user_bets(user_id: str, supabase: Client = Depends(get_supabase_client)):
+async def get_user_bets(
+    user_id: str,
+    _ent: EntitlementResult = Depends(require_capability(CAP_PORTFOLIO)),
+    supabase: Client = Depends(get_supabase_client)
+):
     # Production contract: user_bets is the canonical table (no `bets` table in prod).
     res = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
     return res.data or []
 
 @router.post("/api/bets/record")
-async def record_bet(req: BetRecordRequest, supabase: Client = Depends(get_supabase_client)):
+async def record_bet(
+    req: BetRecordRequest,
+    _ent: EntitlementResult = Depends(require_capability(CAP_PORTFOLIO)),
+    supabase: Client = Depends(get_supabase_client)
+):
     try:
         data = {
             "user_id": req.user_id,
@@ -327,7 +374,10 @@ async def record_bet(req: BetRecordRequest, supabase: Client = Depends(get_supab
         return {"status": "error", "message": str(e)}
 
 @router.get("/api/dashboard/stats")
-async def get_dashboard_stats():
+async def get_dashboard_stats(
+    _ent: EntitlementResult = Depends(require_capability(CAP_DASHBOARD)),
+    supabase: Client = Depends(get_supabase_client)
+):
     """Calculates overall platform statistics."""
     if not supabase or isinstance(supabase, MockSupabase):
         return {
@@ -359,7 +409,10 @@ async def get_dashboard_stats():
         return {"total_predictions": 0, "active_value_bets": 0, "ai_accuracy": "N/A"}
 
 @router.get("/api/acca-builder")
-async def get_automated_accumulator_ticket(supabase: Client = Depends(get_supabase_client)):
+async def get_automated_accumulator_ticket(
+    _ent: EntitlementResult = Depends(require_capability(CAP_ACCA_BUILDER)),
+    supabase: Client = Depends(get_supabase_client)
+):
     """Greedy Combinator Algorithm for Accas."""
     try:
         res = supabase.table("value_bets") \
@@ -398,7 +451,10 @@ async def get_public_accuracy_audit_trail(supabase: Client = Depends(get_supabas
         raise HTTPException(status_code=500, detail=f"Failed to fetch public accuracy audit trail: {str(e)}")
 
 @router.get("/api/admin/metrics")
-async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client)):
+async def get_admin_model_metrics(
+    _ent: EntitlementResult = Depends(require_role("owner", "admin")),
+    supabase: Client = Depends(get_supabase_client)
+):
     """Computes system accuracy and Top 10 wins."""
     try:
         preds = supabase.table("predictions").select("*").execute().data
@@ -454,13 +510,19 @@ async def get_admin_model_metrics(supabase: Client = Depends(get_supabase_client
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/predict")
-async def predict_endpoint(request: PredictRequest):
+async def predict_endpoint(
+    request: PredictRequest,
+    _ent: EntitlementResult = Depends(require_capability(CAP_PREDICTIONS)),
+):
     from predictor import FootyEdgePredictor
     predictor = FootyEdgePredictor(football_client=football_client)
     return await predictor.predict_match(request.home_team, request.away_team, request.odds)
 
 @router.post("/api/analyze-strategy")
-async def analyze_strategy_endpoint(req: StrategyAnalyzeRequest):
+async def analyze_strategy_endpoint(
+    req: StrategyAnalyzeRequest,
+    _ent: EntitlementResult = Depends(require_capability(CAP_AI_STRATEGY_ANALYSIS)),
+):
     selections = strategy_agent.parse_strategy(req.text)
     return strategy_agent.analyze(selections, req.stake)
 
@@ -487,15 +549,32 @@ async def trigger_full_sync(x_cron_token: str = Header(None)):
 
 
 @router.get("/api/recent-predictions")
-async def recent_predictions(supabase: Client = Depends(get_supabase_client)):
+async def recent_predictions(
+    _ent: EntitlementResult = Depends(require_capability(CAP_PREDICTIONS)),
+    supabase: Client = Depends(get_supabase_client)
+):
     res = supabase.table("predictions").select("*").order("created_at", desc=True).limit(10).execute()
     return res.data or []
 
 @router.get("/api/matches")
-async def get_matches():
+async def get_matches(
+    _ent: EntitlementResult = Depends(require_capability(CAP_MATCH_INTELLIGENCE)),
+):
     return await football_client.get_matches_by_date(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
 app.include_router(router)
+
+try:
+    from billing_api import router as billing_router
+    app.include_router(billing_router)
+except Exception as exc:  # billing routes must never break core startup
+    logger.warning("billing router not mounted: %s", type(exc).__name__)
+
+try:
+    from admin_api import router as admin_router
+    app.include_router(admin_router)
+except Exception as exc:  # admin routes must never break core startup
+    logger.warning("admin router not mounted: %s", type(exc).__name__)
 
 # Static file serving
 dist_path = os.path.join(os.path.dirname(__file__), "dist")

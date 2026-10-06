@@ -45,61 +45,84 @@ export interface PlanInfo {
   id: Plan;
   name: string;
   tagline: string;
+  /**
+   * Proposed commercial price (8A model, presented in 8B).
+   * Display-only: billing is NOT implemented, and this value must never
+   * gate features or imply checkout exists.
+   */
+  price: string;
   /** Honest availability state — never presented as purchasable unless true. */
   status: 'available' | 'coming-soon' | 'request-access' | 'conversation';
   statusLabel: string;
   capabilities: string[];
 }
 
-/** Product-tier architecture. No prices, no payment claims, no fake limits. */
+/** Product-tier architecture. Prices are proposed only; no billing exists. */
 export const PLANS: PlanInfo[] = [
   {
     id: 'starter',
     name: 'Starter',
-    tagline: 'Entry-level individual FootyEdge access.',
+    tagline: 'Explore FootyEdge AI\u2019s football intelligence and core analysis workflows.',
+    price: 'Free',
     status: 'available',
     statusLabel: 'Available now',
     capabilities: [
-      'Core match intelligence',
-      'Team intelligence',
-      'Competition intelligence',
-      'Basic prediction analytics',
+      'Match intelligence',
+      'Team analysis',
+      'Player analysis',
+      'Core prediction analytics',
+      'Value-bet access at controlled usage',
+      'Portfolio workflows',
+      'Acca Builder',
+      'Public prediction ledger',
     ],
   },
   {
     id: 'growth',
     name: 'Growth',
-    tagline: 'For more serious individual users and analysts.',
+    tagline: 'For serious individual football analysts who need deeper analysis and higher personal usage.',
+    price: '\u20A65,000 / month',
     status: 'coming-soon',
     statusLabel: 'Coming soon',
     capabilities: [
       'Everything in Starter',
-      'Expanded analysis',
-      'Deeper product functionality',
+      'Advanced analytics',
+      'Higher usage limits',
+      'Expanded portfolio capacity',
+      'Extended AI analysis capacity',
+      'Deeper historical analysis',
     ],
   },
   {
     id: 'business',
     name: 'Business',
-    tagline: 'For teams and commercial users.',
+    tagline: 'For analysts, football media, research teams and commercial football workflows.',
+    price: '\u20A615,000 / month',
     status: 'request-access',
     statusLabel: 'Request access',
     capabilities: [
       'Everything in Growth',
-      'Business and team usage',
-      'API-oriented access',
+      'Higher organizational usage',
+      'Commercial usage',
+      'Multiple seats \u2014 planned',
+      'Organization controls \u2014 planned',
+      'API access \u2014 planned',
+      'Data export \u2014 planned',
     ],
   },
   {
     id: 'enterprise',
     name: 'Enterprise',
-    tagline: 'For organizations requiring customized access.',
+    tagline: 'For organizations requiring custom limits, integrations, API/data arrangements and organizational requirements.',
+    price: 'Custom',
     status: 'conversation',
-    statusLabel: 'Start a conversation',
+    statusLabel: 'Talk to FootyEdge',
     capabilities: [
+      'Custom usage requirements',
       'Custom integrations',
-      'Organizational access',
-      'Commercial support',
+      'API/data arrangements',
+      'Organization requirements',
+      'Negotiated commercial terms',
     ],
   },
 ];
@@ -139,6 +162,17 @@ export function resolveAccess(arg: {
 /** Owner console visibility. UX gate only — not authorization. */
 export function canViewOwnerConsole(ctx: AccessContext): boolean {
   return ctx.role === 'owner';
+}
+
+/**
+ * Owner/admin billing-console visibility (8.3 §18).
+ * Mirrors the API contract where owner == admin on all
+ * /api/admin/billing/* reads. UX gate only — every endpoint enforces
+ * owner/admin independently via the caller's JWT. Prefer this over
+ * canViewOwnerConsole for billing surfaces.
+ */
+export function canViewOwnerBilling(ctx: AccessContext): boolean {
+  return canViewAdminTools(ctx);
 }
 
 /** Admin tools visibility (owner includes admin tools via console composition). */
