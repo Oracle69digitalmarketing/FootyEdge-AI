@@ -480,12 +480,60 @@ class TestIdentity:
         assert seen == ["user-9"]
 
     def test_identity_lookup_failure_is_safe(self):
+        # 9.3D.3: missing identity must stay user-visible with a terminal
+        # state (ignored/identity_missing), never a silent strand at
+        # "received" and never a bare raise.
         store, sender = FakeStore(), FakeSender()
         link_sender(store)
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/status"),
+            secret_valid=True, identity_fn=lambda uid: None))
+        assert result.outcome == "ignored"
+        assert store.completed[1] == ("ignored", "identity_missing")
+        assert len(sender.sent) == 1
+        assert "Link your FootyEdge account first" in sender.sent[0][1]
+        for secret in ("user-1", "auth.users", "Traceback", "SELECT"):
+            assert secret not in sender.sent[0][1]
+
+    def test_identity_missing_on_linked_start_is_answered(self):
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/start"),
+            secret_valid=True, identity_fn=lambda uid: None))
+        assert result.outcome == "ignored"
+        assert store.completed[1] == ("ignored", "identity_missing")
+        assert len(sender.sent) == 1
+
+    def test_corrupt_mapping_is_answered_without_leak(self):
+        store, sender = FakeStore(), FakeSender()
+        store.by_telegram[111] = {"user_id": 12345,  # non-string: corrupt
+                                  "telegram_user_id": 111}
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/status"),
+            secret_valid=True,
+            identity_fn=lambda uid: starter_identity(uid)))
+        assert result.outcome == "ignored"
+        assert store.completed[1] == ("ignored", "identity_missing")
+        assert len(sender.sent) == 1
+
+    def test_post_claim_telegram_error_reaches_terminal_state(self):
+        # A TelegramError raised after a successful claim must still
+        # complete the update (failed) instead of stranding "received".
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+
+        def _raise(uid):
+            raise TelegramError("boom")
+
+        store.find_account = _raise  # type: ignore[method-assign]
         with pytest.raises(TelegramError):
             run(process_update(
                 store, sender, raw_body=make_update(text="/status"),
-                secret_valid=True, identity_fn=lambda uid: None))
+                secret_valid=True,
+                identity_fn=lambda uid: starter_identity(uid)))
+        assert store.completed[1] == ("failed", "handler_error")
+        assert sender.sent == []
 
 
 # --------------------------------------------------------------------------
@@ -596,6 +644,15 @@ class TestCommands:
         result, snd = self._run("/frobnicate")
         assert result.outcome == "ignored"
         assert len(snd.sent) == 1
+
+    def test_portfolio_rejected_exactly_as_before(self):
+        # 9.3D.3 scope lock: /portfolio stays outside the V1 command set
+        # with the exact unknown-command reply; no portfolio surface added.
+        for linked in (True, False):
+            result, snd = self._run("/portfolio", linked=linked)
+            assert result.outcome == "ignored"
+            assert snd.sent[0][1] == ("I don't recognize that command. "
+                                       "Try /help for what I can do.")
 
     def test_deferred_command_safe(self):
         for command in ("/valuebets", "/acca", "/bet", "/admin"):

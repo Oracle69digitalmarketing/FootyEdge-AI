@@ -539,6 +539,7 @@ async def process_update(
                             "update without update_id/sender",
                             retryable=False)
 
+    claimed = False
     try:
         claimed = store.claim_update(parsed.update_id, parsed.telegram_user_id)
     except Exception as exc:
@@ -596,7 +597,14 @@ async def process_update(
                 return await _answer(
                     "Welcome to FootyEdge AI.\n" + _UNLINKED_MESSAGE,
                     "ignored", error_code="unlinked")
-            identity = _resolve_identity(identity_fn, account)
+            try:
+                identity = _resolve_identity(identity_fn, account)
+            except TelegramError:
+                # Missing/unresolvable identity must stay user-visible:
+                # answer the safe unlinked flow instead of raising silently
+                # (which stranded the update at "received" with no reply).
+                return await _answer(_UNLINKED_MESSAGE, "ignored",
+                                     error_code="identity_missing")
             return await _answer(
                 f"Welcome back to FootyEdge AI.\nPlan: {identity.plan}\n"
                 "Try /status, /today or /predictions. /help lists commands.",
@@ -608,7 +616,13 @@ async def process_update(
         if account is None:
             return await _answer(_UNLINKED_MESSAGE, "ignored",
                                  error_code="unlinked")
-        identity = _resolve_identity(identity_fn, account)
+        try:
+            identity = _resolve_identity(identity_fn, account)
+        except TelegramError:
+            # Same guarantee as above: terminal state plus a safe reply,
+            # never a silent strand. No internals leak into the message.
+            return await _answer(_UNLINKED_MESSAGE, "ignored",
+                                 error_code="identity_missing")
 
         if command == "/status":
             return await _answer(format_status(identity.plan, True), "processed")
@@ -630,6 +644,16 @@ async def process_update(
         return await _answer(_UNKNOWN_MESSAGE, "ignored",
                              error_code="unreachable_command")
     except TelegramError:
+        # A handled failure must still leave a durable terminal state.
+        # Previously this bare re-raise skipped complete_update entirely,
+        # stranding claimed updates at "received" with no user response.
+        # Pre-claim failures (secret/parse/claim) have no row: skip those.
+        if claimed:
+            try:
+                store.complete_update(parsed.update_id, "failed",
+                                      "handler_error")
+            except Exception:
+                pass
         raise
     except Exception as exc:
         try:
