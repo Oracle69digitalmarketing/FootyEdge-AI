@@ -7,6 +7,7 @@ import HowToUse from './components/HowToUse';
 import TeamsList from './components/TeamsList';
 import PlayersList from './components/PlayersList';
 import PredictionsDashboard from './pages/PredictionsDashboard';
+import TelegramLink from './components/TelegramLink';
 import ProductPage from './components/product/ProductPage';
 import OwnerConsole from './components/OwnerConsole';
 import { canViewOwnerBilling, planDisplayName, resolveAccess } from './lib/access';
@@ -20,13 +21,14 @@ import {
   User,
   Layers,
   Send,
+  MessageCircle,
   HelpCircle
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'value' | 'players' | 'portfolio' | 'acca' | 'owner' | 'teams' | 'how-to-use'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'value' | 'players' | 'portfolio' | 'acca' | 'owner' | 'teams' | 'telegram' | 'how-to-use'>('dashboard');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -106,6 +108,7 @@ export default function App() {
           <NavItem active={activeTab === 'players'} onClick={() => setActiveTab('players')} icon={<User size={20} />} label="Players" />
           <NavItem active={activeTab === 'portfolio'} onClick={() => setActiveTab('portfolio')} icon={<Layers size={20} />} label="My Portfolio" />
           <NavItem active={activeTab === 'acca'} onClick={() => setActiveTab('acca')} icon={<Send size={20} />} label="Acca Builder" />
+          <NavItem active={activeTab === 'telegram'} onClick={() => setActiveTab('telegram')} icon={<MessageCircle size={20} />} label="Telegram" />
           <NavItem active={activeTab === 'how-to-use'} onClick={() => setActiveTab('how-to-use')} icon={<HelpCircle size={20} />} label="How to Use" />
           {canViewOwnerBilling(access) && (
             <NavItem active={activeTab === 'owner'} onClick={() => setActiveTab('owner')} icon={<Crown size={20} />} label="Owner Console" />
@@ -135,6 +138,7 @@ export default function App() {
         {activeTab === 'players' && <PlayersList />}
         {activeTab === 'portfolio' && <Portfolio />}
         {activeTab === 'acca' && <AccaBuilder />}
+        {activeTab === 'telegram' && <TelegramLink />}
         {activeTab === 'how-to-use' && <HowToUse />}
         {activeTab === 'owner' && canViewOwnerBilling(access) && <OwnerConsole ownerEmail={user.email} />}
       </main>
