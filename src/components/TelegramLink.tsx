@@ -29,6 +29,37 @@ function formatExpiry(totalSeconds: number): string {
   return totalSeconds === 1 ? '1 second' : `${totalSeconds} seconds`;
 }
 
+/**
+ * Diagnostic correlation only (9.3D.4C).
+ *
+ * Computes the same digest the backend stores (SHA-256 hex, first 12
+ * chars) over a client-side value and reports ONLY that non-reversible
+ * prefix to the browser console. Plaintext codes, full digests, user
+ * identifiers, and credentials are never logged. Failures are silent so
+ * diagnostics can never break the UI.
+ */
+async function clientDigestPrefix(value: string): Promise<string | null> {
+  try {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) return null;
+    const bytes = await subtle.digest('SHA-256', new TextEncoder().encode(value));
+    const hex = Array.from(new Uint8Array(bytes))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    return hex.slice(0, 12);
+  } catch {
+    return null;
+  }
+}
+
+function logClientDigest(event: string, prefix: string | null): void {
+  try {
+    console.debug(`${event} digest_prefix=${prefix ?? 'unavailable'}`);
+  } catch {
+    // Diagnostics must never break the UI.
+  }
+}
+
 const TelegramLink: React.FC = () => {
   const [link, setLink] = useState<LinkState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -85,6 +116,10 @@ const TelegramLink: React.FC = () => {
       }
       const valid = body as { code: string; expires_in_seconds: number };
       setLink({ code: valid.code, expiresInSeconds: valid.expires_in_seconds });
+      // Diagnostic: prefix of exactly what the API returned.
+      void clientDigestPrefix(valid.code).then((prefix) =>
+        logClientDigest('telegram_link_client_mint', prefix)
+      );
     } catch {
       // Never log the response body here: it may contain the one-time code.
       setLink(null);
@@ -98,6 +133,20 @@ const TelegramLink: React.FC = () => {
     if (!link) return;
     try {
       await navigator.clipboard.writeText(link.code);
+      // Diagnostic: prefix of exactly what was handed to the clipboard.
+      void clientDigestPrefix(link.code).then((prefix) =>
+        logClientDigest('telegram_link_client_copy', prefix)
+      );
+      // Diagnostic: prefix of what the clipboard actually holds now.
+      // Best-effort: permission denial only logs 'unavailable'.
+      try {
+        const pasted = await navigator.clipboard.readText();
+        void clientDigestPrefix(pasted).then((prefix) =>
+          logClientDigest('telegram_link_client_clipboard', prefix)
+        );
+      } catch {
+        logClientDigest('telegram_link_client_clipboard', null);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {

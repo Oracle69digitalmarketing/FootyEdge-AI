@@ -108,7 +108,12 @@ class TestComponentContract:
         assert "Array.isArray(body)" in source
 
     def test_never_maps_link_response(self):
-        assert ".map(" not in self._source()
+        # The only `.map(` in the component is the digest bytes-to-hex
+        # conversion; the link-token response itself is never mapped.
+        maps = [line for line in self._source().splitlines()
+                if ".map(" in line]
+        assert len(maps) == 1
+        assert "toString(16)" in maps[0]
 
     def test_code_not_persisted_or_leaked(self):
         source = self._source()
@@ -117,3 +122,38 @@ class TestComponentContract:
             assert forbidden not in source
         # No token material in URLs or storage keys.
         assert "access_token" not in source
+
+
+class TestClientDigestDiagnostics:
+    """9.3D.4C: browser-console correlation logs prefixes only."""
+
+    @staticmethod
+    def _source() -> str:
+        return COMPONENT.read_text()
+
+    def test_mint_copy_clipboard_markers_present(self):
+        source = self._source()
+        assert "telegram_link_client_mint" in source
+        assert "telegram_link_client_copy" in source
+        assert "telegram_link_client_clipboard" in source
+
+    def test_prefix_is_truncated_sha256(self):
+        source = self._source()
+        assert "SHA-256" in source
+        assert "slice(0, 12)" in source
+
+    def test_diagnostics_log_prefixes_never_secrets(self):
+        source = self._source()
+        # Every diagnostic console call formats a digest_prefix label;
+        # no console call interpolates the code, a full digest, a token,
+        # or user identifiers.
+        assert "digest_prefix=" in source
+        for line in source.splitlines():
+            if "console." in line:
+                assert "link.code" not in line
+                assert "valid.code" not in line
+                assert "access_token" not in line.lower()
+                assert "Authorization" not in line
+
+    def test_copy_still_writes_exact_state_value(self):
+        assert "writeText(link.code)" in self._source()
