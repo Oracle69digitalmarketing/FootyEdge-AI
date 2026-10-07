@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authHeaders } from '../lib/authFetch';
+import { messageForStatus, messageForFailure, BAD_RESPONSE_MESSAGE } from '../lib/apiError';
 
 export default function PredictionsDashboard() {
   const [predictions, setPredictions] = useState<any[]>([]);
@@ -11,11 +12,35 @@ export default function PredictionsDashboard() {
   const [totalBankroll, setTotalBankroll] = useState(1000);
   const [activeTab, setActiveTab] = useState<'predictions' | 'ledger'>('predictions');
   const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  // Independent per-feed error states: one forbidden feed must never
+  // poison the others or masquerade as a global sign-in failure.
+  const [predError, setPredError] = useState<string | null>(null);
+  const [accaError, setAccaError] = useState<string | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+
+  /** Fetch that degrades to null on network failure instead of throwing. */
+  const fetchFeed = async (url: string, headers: Record<string, string>): Promise<Response | null> => {
+    try {
+      return await fetch(url, { headers });
+    } catch {
+      return null;
+    }
+  };
+
+  /** Guarded JSON parse: malformed bodies become null, never a crash. */
+  const readJson = async (res: Response): Promise<unknown | null> => {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
-    setFetchError(null);
+    setPredError(null);
+    setAccaError(null);
+    setLedgerError(null);
     try {
       let url = `/api/daily-picks?timeline=${timeline}`;
       if (timeline === 'custom' && startDate && endDate) {
@@ -24,49 +49,82 @@ export default function PredictionsDashboard() {
 
       const headers = await authHeaders();
       const [predRes, accaRes, ledgerRes] = await Promise.all([
-        fetch(url, { headers }),
-        fetch('/api/acca-builder', { headers }),
-        fetch('/api/public-ledger', { headers })
+        fetchFeed(url, headers),
+        fetchFeed('/api/acca-builder', headers),
+        fetchFeed('/api/public-ledger', headers)
       ]);
 
-      // Non-2xx (e.g. 401/403 from entitlement enforcement) must not reach
-      // array state: the backend returns a JSON error object in that case.
-      const rejected = [predRes, accaRes, ledgerRes].find((r) => !r.ok);
-      if (rejected) {
+      // Daily picks: independent of the other feeds.
+      if (predRes === null) {
         setPredictions([]);
-        setAcca(null);
-        setLedger([]);
-        setFetchError(
-          rejected.status === 401 || rejected.status === 403
-            ? 'Please sign in again — this feed requires an authenticated session.'
-            : `Some feeds are temporarily unavailable (request failed with status ${rejected.status}).`
-        );
-        return;
+        setPredError(messageForFailure(new TypeError('network')));
+      } else if (!predRes.ok) {
+        // 401 and 403 intentionally produce different messages here.
+        setPredictions([]);
+        setPredError(messageForStatus(predRes.status));
+      } else {
+        const predData = await readJson(predRes);
+        // A truthy error object is still not an array: validate explicitly
+        // so a non-array payload can never reach a `.map()` call below.
+        if (!Array.isArray(predData)) {
+          setPredictions([]);
+          setPredError(BAD_RESPONSE_MESSAGE);
+        } else {
+          setPredictions(predData);
+        }
       }
 
-      const [predData, accaData, ledgerData] = await Promise.all([
-        predRes.json(),
-        accaRes.json(),
-        ledgerRes.json()
-      ]);
+      // Acca ticket: independent; a 403 only blanks this section with a
+      // plan message, never the whole dashboard.
+      if (accaRes === null) {
+        setAcca(null);
+        setAccaError(messageForFailure(new TypeError('network')));
+      } else if (!accaRes.ok) {
+        setAcca(null);
+        setAccaError(messageForStatus(accaRes.status));
+      } else {
+        const accaData = await readJson(accaRes);
+        if (
+          !accaData || typeof accaData !== 'object' || Array.isArray(accaData) ||
+          (accaData as { status?: unknown }).status !== 'success' ||
+          !Array.isArray((accaData as { selections?: unknown }).selections)
+        ) {
+          // 'insufficient_data' is a legitimate empty ticket, not an error.
+          if (accaData && typeof accaData === 'object' && !Array.isArray(accaData)) {
+            setAcca(null);
+          } else {
+            setAcca(null);
+            setAccaError(BAD_RESPONSE_MESSAGE);
+          }
+        } else {
+          setAcca(accaData);
+        }
+      }
 
-      // A truthy error object is still not an array: validate explicitly so
-      // a non-array payload can never reach a `.map()` call below.
-      const predList = Array.isArray(predData) ? predData : [];
-      const ledgerList = Array.isArray(ledgerData) ? ledgerData : [];
-      setPredictions(predList);
-      if (accaData && accaData.status === 'success' && Array.isArray(accaData.selections)) setAcca(accaData);
-      else setAcca(null);
-      setLedger(ledgerList);
-      if (!Array.isArray(predData) || !Array.isArray(ledgerData)) {
-        setFetchError('Some feeds returned an unexpected format and were skipped.');
+      // Accuracy ledger: independent of the other feeds.
+      if (ledgerRes === null) {
+        setLedger([]);
+        setLedgerError(messageForFailure(new TypeError('network')));
+      } else if (!ledgerRes.ok) {
+        setLedger([]);
+        setLedgerError(messageForStatus(ledgerRes.status));
+      } else {
+        const ledgerData = await readJson(ledgerRes);
+        if (!Array.isArray(ledgerData)) {
+          setLedger([]);
+          setLedgerError(BAD_RESPONSE_MESSAGE);
+        } else {
+          setLedger(ledgerData);
+        }
       }
     } catch (err) {
       console.error("Failed fetching dashboard data:", err);
       setPredictions([]);
       setAcca(null);
       setLedger([]);
-      setFetchError('Some feeds are temporarily unavailable. Please try again.');
+      setPredError(messageForFailure(err));
+      setAccaError(messageForFailure(err));
+      setLedgerError(messageForFailure(err));
     } finally {
       setLoading(false);
     }
@@ -142,10 +200,6 @@ export default function PredictionsDashboard() {
         </div>
       </div>
 
-      {fetchError && (
-        <p className="text-red-500 text-sm mt-2 mb-6 text-center">{fetchError}</p>
-      )}
-
       <div className="mb-10 flex border-b border-zinc-800 gap-8 text-sm font-black uppercase tracking-widest">
         <button onClick={() => setActiveTab('predictions')} className={`pb-4 transition-all ${activeTab === 'predictions' ? 'border-b-2 border-orange-500 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
           🎯 Value Selections
@@ -157,6 +211,12 @@ export default function PredictionsDashboard() {
 
       {activeTab === 'predictions' ? (
         <>
+          {accaError && (
+            <p className="text-red-500 text-sm mt-2 mb-6 text-center">{accaError}</p>
+          )}
+          {predError && (
+            <p className="text-red-500 text-sm mt-2 mb-6 text-center">{predError}</p>
+          )}
           {acca && Array.isArray(acca.selections) && (
             <div className="mb-12 rounded-[2rem] border border-orange-500/20 bg-gradient-to-br from-orange-950/10 to-zinc-950 p-8 shadow-2xl relative overflow-hidden group">
               <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-zinc-800 pb-6 mb-8 relative z-10">
@@ -245,6 +305,9 @@ export default function PredictionsDashboard() {
             <h3 className="text-3xl font-black text-white tracking-tight">📜 Accuracy Ledger</h3>
             <p className="text-sm text-zinc-500 font-medium">Verified historical performance audited against live scores.</p>
           </div>
+          {ledgerError && (
+            <p className="text-red-500 text-sm mt-2 mb-6 text-center">{ledgerError}</p>
+          )}
           <div className="overflow-x-auto rounded-2xl border border-zinc-800">
             <table className="w-full text-left text-sm text-zinc-400">
               <thead className="bg-zinc-900/50 text-[10px] text-zinc-500 border-b border-zinc-800 uppercase tracking-[0.2em] font-black">

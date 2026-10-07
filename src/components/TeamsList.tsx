@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Search, Loader2, Globe, Trophy, Users } from 'lucide-react';
 import TeamDetail from './TeamDetail';
 import { authHeaders } from '../lib/authFetch';
+import { messageForStatus, messageForFailure, BAD_RESPONSE_MESSAGE } from '../lib/apiError';
 
 interface Team {
   id: string;
@@ -29,27 +30,32 @@ const TeamsList: React.FC = () => {
             setError(null);
             const res = await fetch('/api/teams', { headers: await authHeaders() });
             // Non-2xx responses carry a JSON error object, not an array.
+            // 401 and 403 intentionally produce different messages here.
             if (!res.ok) {
                 setTeams([]);
-                setError(
-                  res.status === 401 || res.status === 403
-                    ? 'Please sign in again — the team directory requires an authenticated session.'
-                    : `Failed to load teams (${res.status})`
-                );
+                setError(messageForStatus(res.status));
                 setLoading(false);
                 return;
             }
-            const data = await res.json();
+            let data: unknown;
+            try {
+              data = await res.json();
+            } catch {
+              setTeams([]);
+              setError(BAD_RESPONSE_MESSAGE);
+              setLoading(false);
+              return;
+            }
             if (!Array.isArray(data)) {
                 setTeams([]);
-                setError('The team directory returned an unexpected format.');
+                setError(BAD_RESPONSE_MESSAGE);
             } else {
                 setTeams(data);
             }
             setLoading(false);
         } catch(e) {
             setTeams([]);
-            setError('The team directory is temporarily unavailable.');
+            setError(messageForFailure(e));
             setLoading(false);
         }
     }

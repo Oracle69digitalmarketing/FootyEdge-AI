@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authHeaders } from '../lib/authFetch';
+import { messageForStatus, messageForFailure, BAD_RESPONSE_MESSAGE } from '../lib/apiError';
 
 interface ValueBet {
   id?: string;
@@ -25,32 +26,35 @@ const ValueBets: React.FC = () => {
       try {
         setLoading(true);
         const response = await fetch('/api/value-bets', { headers: await authHeaders() });
-        
+
+        // 401 (expired session) and 403 (plan lacks this feature) get
+        // distinct messages via the shared classifier — never raw bodies.
         if (!response.ok) {
-          if (response.status === 401 || response.status === 403) {
-            throw new Error('Please sign in again — value bets require an authenticated session.');
-          }
-          const text = await response.text();
-          throw new Error(text.length > 100 ? `Failed to fetch bets (${response.status})` : text || 'Failed to fetch value bets');
+          throw new Error(messageForStatus(response.status));
         }
 
         const contentType = response.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("Invalid response format from server");
+          throw new Error(BAD_RESPONSE_MESSAGE);
         }
 
-        const data = await response.json();
+        let data: unknown;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error(BAD_RESPONSE_MESSAGE);
+        }
         // A truthy error object is still not an array: validate explicitly
         // so a non-array payload can never reach `valueBets.map()` below.
         if (!Array.isArray(data)) {
-          throw new Error("Invalid response format from server");
+          throw new Error(BAD_RESPONSE_MESSAGE);
         }
         setValueBets(data);
       } catch (err) {
-        if (err instanceof Error) {
-            setError(err.message);
+        if (err instanceof Error && !(err instanceof TypeError)) {
+          setError(err.message);
         } else {
-            setError('An unknown error occurred');
+          setError(messageForFailure(err));
         }
       } finally {
         setLoading(false);

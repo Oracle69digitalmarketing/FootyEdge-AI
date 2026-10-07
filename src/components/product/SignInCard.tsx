@@ -13,14 +13,28 @@ export default function SignInCard() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const submit = async () => {
+    if (busy) return;
     setError(null);
+    setNotice(null);
     setBusy(true);
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        if (data.session) {
+          // Session established: the app-level auth listener transitions
+          // into the authenticated shell. Never sign in a second time here.
+          setNotice('Signed in — opening FootyEdge…');
+        } else if (data.user) {
+          // No session: the account exists but confirmation is required
+          // before signing in. Say so explicitly instead of going silent.
+          setNotice('Account created. Check your email to confirm your account, then sign in.');
+        } else {
+          setNotice('Account created. Check your email to confirm your account, then sign in.');
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -72,6 +86,11 @@ export default function SignInCard() {
           {error}
         </p>
       )}
+      {notice && (
+        <p role="status" className="text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-900/40 rounded-xl px-4 py-3">
+          {notice}
+        </p>
+      )}
       <button
         onClick={submit}
         disabled={busy || !email || !password}
@@ -81,7 +100,7 @@ export default function SignInCard() {
         {isSignUp ? 'Create account' : 'Sign in'}
       </button>
       <button
-        onClick={() => { setIsSignUp(!isSignUp); setError(null); }}
+        onClick={() => { setIsSignUp(!isSignUp); setError(null); setNotice(null); }}
         className="w-full text-zinc-500 text-sm hover:text-white transition-colors rounded focus-visible:ring-2 focus-visible:ring-orange-500/60"
       >
         {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Create one'}

@@ -118,8 +118,9 @@ export default function App() {
         <div className="pt-6 border-t border-zinc-800 space-y-3">
           <div className="px-2">
             <p className="text-xs text-zinc-500 truncate" title={user.email}>{user.email}</p>
-            <p className="text-xs text-zinc-600">
+            <p className="text-xs text-zinc-600" title="Plan labels are display-only; feature access is checked server-side on every request.">
               Plan: {planDisplayName(access)}
+              {access.planIsPlaceholder && <span> · server-gated</span>}
               {access.role === 'owner' && <span className="text-orange-500 font-semibold"> · Owner</span>}
             </p>
           </div>

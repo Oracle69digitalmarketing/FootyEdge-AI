@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Shield, Search, Loader2 } from 'lucide-react';
 import PlayerDetail from './PlayerDetail';
 import { authHeaders } from '../lib/authFetch';
+import { messageForStatus, messageForFailure, BAD_RESPONSE_MESSAGE } from '../lib/apiError';
 
 interface Player {
   id: number;
@@ -30,26 +31,30 @@ const PlayersList: React.FC = () => {
       setError(null);
       const res = await fetch(`/api/players?limit=100`, { headers: await authHeaders() });
       // Non-2xx responses carry a JSON error object, not an array.
+      // 401 and 403 intentionally produce different messages here.
       if (!res.ok) {
         setPlayers([]);
-        setError(
-          res.status === 401 || res.status === 403
-            ? 'Please sign in again — the player database requires an authenticated session.'
-            : `Failed to load players (${res.status})`
-        );
+        setError(messageForStatus(res.status));
         return;
       }
-      const data = await res.json();
+      let data: unknown;
+      try {
+        data = await res.json();
+      } catch {
+        setPlayers([]);
+        setError(BAD_RESPONSE_MESSAGE);
+        return;
+      }
       if (!Array.isArray(data)) {
         setPlayers([]);
-        setError('The player database returned an unexpected format.');
+        setError(BAD_RESPONSE_MESSAGE);
         return;
       }
       setPlayers(data);
     } catch (err) {
       console.error("Failed to fetch players:", err);
       setPlayers([]);
-      setError('The player database is temporarily unavailable.');
+      setError(messageForFailure(err));
     } finally {
       setLoading(false);
     }

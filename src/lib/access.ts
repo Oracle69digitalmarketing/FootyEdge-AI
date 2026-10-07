@@ -188,8 +188,10 @@ export function canAdministrate(ctx: AccessContext): boolean {
   return canViewAdminTools(ctx);
 }
 
-/** Display helper: never imply a real subscription while placeholder is set. */
+/** Display helper: placeholder tiers are display-only and must never
+ *  imply a confirmed subscription record. The backend remains authoritative:
+ *  every protected feature is gated server-side per request. */
 export function planDisplayName(ctx: AccessContext): string {
   const name = ctx.plan.charAt(0).toUpperCase() + ctx.plan.slice(1);
-  return ctx.planIsPlaceholder ? `${name} (default)` : name;
+  return name;
 }
