@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authHeaders } from '../lib/authFetch';
 
 export default function PredictionsDashboard() {
   const [predictions, setPredictions] = useState<any[]>([]);
@@ -10,20 +11,38 @@ export default function PredictionsDashboard() {
   const [totalBankroll, setTotalBankroll] = useState(1000);
   const [activeTab, setActiveTab] = useState<'predictions' | 'ledger'>('predictions');
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       let url = `/api/daily-picks?timeline=${timeline}`;
       if (timeline === 'custom' && startDate && endDate) {
         url += `&from_date=${startDate}&to_date=${endDate}`;
       }
 
+      const headers = await authHeaders();
       const [predRes, accaRes, ledgerRes] = await Promise.all([
-        fetch(url),
-        fetch('/api/acca-builder'),
-        fetch('/api/public-ledger')
+        fetch(url, { headers }),
+        fetch('/api/acca-builder', { headers }),
+        fetch('/api/public-ledger', { headers })
       ]);
+
+      // Non-2xx (e.g. 401/403 from entitlement enforcement) must not reach
+      // array state: the backend returns a JSON error object in that case.
+      const rejected = [predRes, accaRes, ledgerRes].find((r) => !r.ok);
+      if (rejected) {
+        setPredictions([]);
+        setAcca(null);
+        setLedger([]);
+        setFetchError(
+          rejected.status === 401 || rejected.status === 403
+            ? 'Please sign in again — this feed requires an authenticated session.'
+            : `Some feeds are temporarily unavailable (request failed with status ${rejected.status}).`
+        );
+        return;
+      }
 
       const [predData, accaData, ledgerData] = await Promise.all([
         predRes.json(),
@@ -31,12 +50,23 @@ export default function PredictionsDashboard() {
         ledgerRes.json()
       ]);
 
-      setPredictions(predData || []);
-      if (accaData.status === 'success') setAcca(accaData);
+      // A truthy error object is still not an array: validate explicitly so
+      // a non-array payload can never reach a `.map()` call below.
+      const predList = Array.isArray(predData) ? predData : [];
+      const ledgerList = Array.isArray(ledgerData) ? ledgerData : [];
+      setPredictions(predList);
+      if (accaData && accaData.status === 'success' && Array.isArray(accaData.selections)) setAcca(accaData);
       else setAcca(null);
-      setLedger(ledgerData || []);
+      setLedger(ledgerList);
+      if (!Array.isArray(predData) || !Array.isArray(ledgerData)) {
+        setFetchError('Some feeds returned an unexpected format and were skipped.');
+      }
     } catch (err) {
       console.error("Failed fetching dashboard data:", err);
+      setPredictions([]);
+      setAcca(null);
+      setLedger([]);
+      setFetchError('Some feeds are temporarily unavailable. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -112,6 +142,10 @@ export default function PredictionsDashboard() {
         </div>
       </div>
 
+      {fetchError && (
+        <p className="text-red-500 text-sm mt-2 mb-6 text-center">{fetchError}</p>
+      )}
+
       <div className="mb-10 flex border-b border-zinc-800 gap-8 text-sm font-black uppercase tracking-widest">
         <button onClick={() => setActiveTab('predictions')} className={`pb-4 transition-all ${activeTab === 'predictions' ? 'border-b-2 border-orange-500 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
           🎯 Value Selections
@@ -123,7 +157,7 @@ export default function PredictionsDashboard() {
 
       {activeTab === 'predictions' ? (
         <>
-          {acca && (
+          {acca && Array.isArray(acca.selections) && (
             <div className="mb-12 rounded-[2rem] border border-orange-500/20 bg-gradient-to-br from-orange-950/10 to-zinc-950 p-8 shadow-2xl relative overflow-hidden group">
               <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-zinc-800 pb-6 mb-8 relative z-10">
                 <div className="space-y-1">

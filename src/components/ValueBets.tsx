@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authHeaders } from '../lib/authFetch';
 
 interface ValueBet {
   id?: string;
@@ -23,9 +24,12 @@ const ValueBets: React.FC = () => {
     const fetchValueBets = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/value-bets');
+        const response = await fetch('/api/value-bets', { headers: await authHeaders() });
         
         if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            throw new Error('Please sign in again — value bets require an authenticated session.');
+          }
           const text = await response.text();
           throw new Error(text.length > 100 ? `Failed to fetch bets (${response.status})` : text || 'Failed to fetch value bets');
         }
@@ -36,6 +40,11 @@ const ValueBets: React.FC = () => {
         }
 
         const data = await response.json();
+        // A truthy error object is still not an array: validate explicitly
+        // so a non-array payload can never reach `valueBets.map()` below.
+        if (!Array.isArray(data)) {
+          throw new Error("Invalid response format from server");
+        }
         setValueBets(data);
       } catch (err) {
         if (err instanceof Error) {

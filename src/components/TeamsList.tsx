@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Search, Loader2, Globe, Trophy, Users } from 'lucide-react';
 import TeamDetail from './TeamDetail';
+import { authHeaders } from '../lib/authFetch';
 
 interface Team {
   id: string;
@@ -17,6 +18,7 @@ interface Team {
 const TeamsList: React.FC = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<string | number | null>(null);
 
@@ -24,18 +26,39 @@ const TeamsList: React.FC = () => {
     const loadTeams = async () => {
         try {
             setLoading(true);
-            const res = await fetch('/api/teams');
+            setError(null);
+            const res = await fetch('/api/teams', { headers: await authHeaders() });
+            // Non-2xx responses carry a JSON error object, not an array.
+            if (!res.ok) {
+                setTeams([]);
+                setError(
+                  res.status === 401 || res.status === 403
+                    ? 'Please sign in again — the team directory requires an authenticated session.'
+                    : `Failed to load teams (${res.status})`
+                );
+                setLoading(false);
+                return;
+            }
             const data = await res.json();
-            setTeams(data || []);
+            if (!Array.isArray(data)) {
+                setTeams([]);
+                setError('The team directory returned an unexpected format.');
+            } else {
+                setTeams(data);
+            }
             setLoading(false);
-        } catch(e) { setLoading(false); }
+        } catch(e) {
+            setTeams([]);
+            setError('The team directory is temporarily unavailable.');
+            setLoading(false);
+        }
     }
     loadTeams();
   }, []);
 
-  const filteredTeams = teams.filter(t => 
-    t.name.toLowerCase().includes(query.toLowerCase()) || 
-    t.league_name?.toLowerCase().includes(query.toLowerCase())
+  const filteredTeams = teams.filter(t =>
+    (t.name ?? '').toLowerCase().includes(query.toLowerCase()) ||
+    (t.league_name ?? '').toLowerCase().includes(query.toLowerCase())
   );
 
   return (
@@ -55,6 +78,8 @@ const TeamsList: React.FC = () => {
           />
         </div>
       </div>
+
+      {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (

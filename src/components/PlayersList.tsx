@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Shield, Search, Loader2 } from 'lucide-react';
 import PlayerDetail from './PlayerDetail';
+import { authHeaders } from '../lib/authFetch';
 
 interface Player {
   id: number;
@@ -19,17 +20,36 @@ interface Player {
 const PlayersList: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
 
   const fetchPlayers = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/players?limit=100`);
+      setError(null);
+      const res = await fetch(`/api/players?limit=100`, { headers: await authHeaders() });
+      // Non-2xx responses carry a JSON error object, not an array.
+      if (!res.ok) {
+        setPlayers([]);
+        setError(
+          res.status === 401 || res.status === 403
+            ? 'Please sign in again — the player database requires an authenticated session.'
+            : `Failed to load players (${res.status})`
+        );
+        return;
+      }
       const data = await res.json();
+      if (!Array.isArray(data)) {
+        setPlayers([]);
+        setError('The player database returned an unexpected format.');
+        return;
+      }
       setPlayers(data);
     } catch (err) {
       console.error("Failed to fetch players:", err);
+      setPlayers([]);
+      setError('The player database is temporarily unavailable.');
     } finally {
       setLoading(false);
     }
@@ -39,9 +59,9 @@ const PlayersList: React.FC = () => {
     fetchPlayers();
   }, []);
 
-  const filteredPlayers = players.filter(p => 
-    p.name.toLowerCase().includes(query.toLowerCase()) || 
-    p.teams?.name.toLowerCase().includes(query.toLowerCase())
+  const filteredPlayers = players.filter(p =>
+    (p.name ?? '').toLowerCase().includes(query.toLowerCase()) ||
+    (p.teams?.name ?? '').toLowerCase().includes(query.toLowerCase())
   );
 
   return (
@@ -61,6 +81,8 @@ const PlayersList: React.FC = () => {
           />
         </div>
       </div>
+
+      {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
 
       {loading ? (
         <div className="flex justify-center py-20">
