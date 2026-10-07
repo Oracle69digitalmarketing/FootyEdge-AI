@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import sys
 import threading
 import types
@@ -534,6 +535,29 @@ class TestIdentity:
                 identity_fn=lambda uid: starter_identity(uid)))
         assert store.completed[1] == ("failed", "handler_error")
         assert sender.sent == []
+
+    def test_link_invalid_logs_digest_prefix_only(self, caplog):
+        # 9.3D.4B: lookup failure logs event + update_id + 12-hex-char
+        # presented-digest prefix; never the plaintext code or full hash.
+        # User-facing behavior is unchanged.
+        store, sender = FakeStore(), FakeSender()
+        code = "fresh-code-AbCDrone-9_4"
+        full = hashlib.sha256(code.encode("utf-8")).hexdigest()
+        with caplog.at_level(logging.WARNING, logger="telegram_adapter"):
+            result = run(process_update(
+                store, sender,
+                raw_body=make_update(text=f"/link {code}"),
+                secret_valid=True,
+                identity_fn=lambda uid: starter_identity(uid)))
+        assert result.outcome == "ignored"
+        assert store.completed[1] == ("ignored", "link_invalid")
+        assert len(sender.sent) == 1
+        assert "expired, already used, or unknown" in sender.sent[0][1]
+        joined = "\n".join(r.getMessage() for r in caplog.records)
+        assert "telegram_link_invalid" in joined
+        assert full[:12] in joined
+        assert code not in joined
+        assert full not in joined
 
 
 # --------------------------------------------------------------------------

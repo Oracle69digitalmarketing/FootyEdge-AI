@@ -681,6 +681,11 @@ async def _handle_link(store: TelegramStore, parsed: ParsedUpdate,
     now = datetime.now(timezone.utc)
     user_id = store.peek_link_token(digest, now)
     if user_id is None:
+        # Diagnostic only (9.3D.4B): non-reversible 12-hex-char prefix of
+        # the presented digest for safe correlation. Never log the
+        # plaintext code or the full digest.
+        logger.warning("telegram_link_invalid update_id=%s digest_prefix=%s",
+                       parsed.update_id, digest[:12])
         return await answer("That code is expired, already used, or unknown. "
                             "Generate a fresh code in FootyEdge and try again.",
                             "ignored", error_code="link_invalid")
@@ -701,6 +706,9 @@ async def _handle_link(store: TelegramStore, parsed: ParsedUpdate,
                             "ignored", error_code="link_user_taken")
     consumed = store.consume_link_token(digest, now)
     if consumed is None or str(consumed) != str(user_id):
+        # Same diagnostic as above: presented digest prefix only.
+        logger.warning("telegram_link_invalid update_id=%s digest_prefix=%s",
+                       parsed.update_id, digest[:12])
         return await answer("That code is expired, already used, or unknown. "
                             "Generate a fresh code in FootyEdge and try again.",
                             "ignored", error_code="link_invalid")
