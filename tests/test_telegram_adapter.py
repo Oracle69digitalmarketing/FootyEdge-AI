@@ -1236,11 +1236,24 @@ class TestProviderNormalization:
 
 class TestTodayEndToEnd:
     def test_today_uses_normalized_provider_source(self):
+        # Fixtures are dated to the current UTC day: /today only keeps
+        # kickoffs on today's date (regression: future fixtures must not
+        # appear). The date is computed at runtime so this never goes stale.
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        payload = {"response": [
+            {"fixture": {"id": "m1", "date": f"{today}T19:00:00Z"},
+             "teams": {"home": {"name": "Arsenal", "id": None, "logo": None},
+                       "away": {"name": "Chelsea", "id": None}},
+             "league": {"name": "Premier League", "id": "soccer_epl"},
+             "goals": {"home": None, "away": None},
+             "status": {"long": "Upcoming"}},
+        ]}
         store, sender = FakeStore(), FakeSender()
         link_sender(store)
 
         async def _provider_fetch():
-            return _normalize()(NESTED_PAYLOAD)
+            return _normalize()(payload)
 
         runners = Runners(fetch_today=_provider_fetch)
         result = run(process_update(
@@ -1276,3 +1289,94 @@ class TestTodayEndToEnd:
                 identity_fn=lambda uid: starter_identity(uid),
                 runners=runners))
         assert store.completed[1] == ("failed", "handler_error")
+
+
+# --------------------------------------------------------------------------
+# Objective 9.3D.9: Telegram match-date semantics.
+# --------------------------------------------------------------------------
+
+class TestTodayDateFiltering:
+    @staticmethod
+    def _window():
+        def row(home, away, kickoff):
+            return {"home_team": home, "away_team": away,
+                    "league": "EPL", "kickoff": kickoff}
+
+        return [
+            row("A", "B", "2026-10-07T11:30:00Z"),
+            row("C", "D", "2026-10-07T12:00:00+02:00"),
+            row("E", "F", "2026-10-08T00:30:00+02:00"),
+            row("G", "H", "2026-10-10T14:00:00Z"),
+            row("I", "J", "2026-10-11T14:00:00Z"),
+            row("K", "L", "2026-10-07T00:30:00+02:00"),
+            row("M", "N", ""),
+            row("O", "P", "not-a-date"),
+            row("Q", "R", None),
+            row("S", "T", "2026-10-07T12:00:00"),
+        ]
+
+    def test_today_keeps_only_requested_utc_date(self):
+        kept = ta.filter_matches_by_utc_date(self._window(), "2026-10-07")
+        assert [(m["home_team"], m["away_team"]) for m in kept] == [
+            ("A", "B"), ("C", "D"), ("E", "F"), ("S", "T")]
+
+    def test_no_match_day_yields_empty(self):
+        future_only = [m for m in self._window()
+                       if m["home_team"] in ("G", "H", "I", "J")]
+        assert ta.filter_matches_by_utc_date(future_only, "2026-10-07") == []
+        assert format_matches([], heading="Today's matches:") == \
+            "No matches scheduled for today."
+
+    def test_matches_heading_truthful(self):
+        text = format_matches(
+            [{"home_team": "G", "away_team": "H", "league": "EPL",
+              "kickoff": "2026-10-10T14:00:00Z"}],
+            heading="Upcoming matches:")
+        assert text.startswith("Upcoming matches:")
+        assert "Today's matches:" not in text
+
+    def test_non_list_input_yields_empty(self):
+        assert ta.filter_matches_by_utc_date(None, "2026-10-07") == []
+        assert ta.filter_matches_by_utc_date("junk", "2026-10-07") == []
+
+    def test_today_matches_distinction_same_fixture_set(self):
+        # Dates are derived from the runtime UTC day so the test can never
+        # go stale, yet never depends on which calendar day it is.
+        now = datetime.now(timezone.utc)
+        today = now.strftime("%Y-%m-%d")
+        tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        rows = [
+            {"home_team": "Home", "away_team": "Way", "league": "EPL",
+             "kickoff": f"{today}T12:00:00Z"},
+            {"home_team": "Future", "away_team": "Club", "league": "EPL",
+             "kickoff": f"{tomorrow}T12:00:00Z"},
+        ]
+
+        store, sender = FakeStore(), FakeSender()
+        link_sender(store)
+        result = run(process_update(
+            store, sender, raw_body=make_update(text="/today"),
+            secret_valid=True,
+            identity_fn=lambda uid: starter_identity(uid),
+            runners=Runners(fetch_today=lambda: rows,
+                            fetch_matches=lambda: rows)))
+        assert result.outcome == "processed"
+        body = sender.sent[0][1]
+        assert "Home vs Way" in body
+        assert "Future vs Club" not in body
+        assert "Today's matches:" in body
+
+        store2, sender2 = FakeStore(), FakeSender()
+        link_sender(store2)
+        result2 = run(process_update(
+            store2, sender2, raw_body=make_update(text="/matches"),
+            secret_valid=True,
+            identity_fn=lambda uid: starter_identity(uid),
+            runners=Runners(fetch_today=lambda: rows,
+                            fetch_matches=lambda: rows)))
+        assert result2.outcome == "processed"
+        body2 = sender2.sent[0][1]
+        assert "Home vs Way" in body2
+        assert "Future vs Club" in body2
+        assert body2.startswith("Upcoming matches:")
+        assert "Today's matches:" not in body2

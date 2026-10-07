@@ -450,10 +450,19 @@ def format_status(plan: str, linked: bool) -> str:
             "Use /today, /matches or /predictions.")
 
 
-def format_matches(matches: List[Dict[str, Any]]) -> str:
+def format_matches(matches: List[Dict[str, Any]],
+                   heading: str = "Today's matches:") -> str:
+    """Format a match list under an explicit heading.
+
+    The heading is caller-supplied so "/today" and "/matches" can never
+    share a misleading label: "/today" always means the current UTC date
+    (filtered upstream), "/matches" the upcoming provider window.
+    """
     if not matches:
-        return "No matches found for today yet. Try /matches for the latest list."
-    lines = ["Today's matches:"]
+        if heading.startswith("Upcoming"):
+            return "No upcoming matches found right now. Check back soon."
+        return "No matches scheduled for today."
+    lines = [heading]
     for match in matches[:20]:
         home = match.get("home_team", "?")
         away = match.get("away_team", "?")
@@ -463,6 +472,43 @@ def format_matches(matches: List[Dict[str, Any]]) -> str:
         tail = " ".join(part for part in (league, kickoff) if part)
         lines.append(f"- {head}" + (f" ({tail})" if tail else ""))
     return "\n".join(lines)
+
+
+def _parse_kickoff_day(value: Any) -> Optional[str]:
+    """UTC calendar date (YYYY-MM-DD) of a kickoff value, or None.
+
+    Accepts ISO-8601 with "Z" or explicit offsets; naive timestamps are
+    read as UTC. Unparseable or missing values yield None: callers drop
+    such rows instead of inventing a date.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).date().isoformat()
+
+
+def filter_matches_by_utc_date(matches: Any, day: str) -> List[Dict[str, Any]]:
+    """Keep normalized matches kicking off on UTC calendar date `day`.
+
+    Operates on the normalized contract (kickoff timestamp, with legacy
+    match_date accepted). Rows without a usable kickoff are dropped, never
+    dated by guesswork. Non-list input yields [].
+    """
+    if not isinstance(matches, list):
+        return []
+    kept: List[Dict[str, Any]] = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        raw = match.get("match_date", match.get("kickoff", ""))
+        if _parse_kickoff_day(raw) == day:
+            kept.append(match)
+    return kept
 
 
 def format_predictions(predictions: List[Dict[str, Any]]) -> str:
@@ -585,7 +631,7 @@ async def process_update(
             return await _answer(
                 "FootyEdge AI commands:\n/start - welcome\n/help - this list\n"
                 "/link <code> - connect your FootyEdge account\n/status - plan status\n"
-                "/today - today's matches\n/matches - latest matches\n/predictions - latest predictions",
+                "/today - today's matches\n/matches - upcoming matches\n/predictions - latest predictions",
                 "processed")
 
         if command == "/link":
@@ -634,8 +680,19 @@ async def process_update(
 
         if command in ("/today", "/matches"):
             fetcher = runners.fetch_today if command == "/today" else runners.fetch_matches
-            return await _answer(format_matches(await _resolve_fetcher(fetcher)),
-                                 "processed")
+            matches = await _resolve_fetcher(fetcher)
+            if command == "/today":
+                # The provider ignores the requested date and returns its
+                # upcoming-odds window, so filter to the current UTC date
+                # here: future fixtures must never be labeled as today's.
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                matches = filter_matches_by_utc_date(matches, today)
+                return await _answer(
+                    format_matches(matches, heading="Today's matches:"),
+                    "processed")
+            return await _answer(
+                format_matches(matches, heading="Upcoming matches:"),
+                "processed")
         if command == "/predictions":
             return await _answer(format_predictions(
                 await _resolve_fetcher(runners.fetch_predictions)),
@@ -763,6 +820,7 @@ __all__ = [
     "build_sender",
     "chunk_message",
     "escape_markdown_v2",
+    "filter_matches_by_utc_date",
     "format_matches",
     "format_predictions",
     "format_status",
