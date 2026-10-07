@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://footyedge-ai.onrender.com/api/$1" }
+    { "source": "/api/(.*)", "destination": "https://footyedge-ai-0oqo.onrender.com/api/$1" }
   ]
 }
