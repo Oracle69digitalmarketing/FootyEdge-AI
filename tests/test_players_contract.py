@@ -43,6 +43,11 @@ class TestPlayersReadContract:
     def test_registration_boundary_has_no_production_callers(self):
         import re
 
+        # Objective 10.2C.2 authorizes exactly one production caller of
+        # the registration boundary: player_sync.py (nightly
+        # API-Football squad sync). Any other production caller is a
+        # contract violation.
+        allowed = {"player_sync.py"}
         callers = []
         for path in ROOT.glob("*.py"):
             if path.name in ("player_identity.py",) or \
@@ -51,7 +56,9 @@ class TestPlayersReadContract:
             text = path.read_text()
             if re.search(r"\bregister_player\s*\(", text):
                 callers.append(path.name)
-        assert callers == [], callers
+        assert set(callers) <= allowed, callers
+        assert callers != [], \
+            "10.2C.2 requires player_sync.py to call register_player"
 
 
 class TestPlayersUiHonesty:

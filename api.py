@@ -77,6 +77,25 @@ async def lifespan(app: FastAPI):
         replace_existing=True
     )
 
+    # Task 4 (10.2C.2): Nightly API-Football squad sync at 3:30 AM.
+    # Players-only: uses player_sync.run_player_sync (register_player
+    # boundary, fail-soft). The-Odds-API prediction pipeline above is
+    # untouched. Lazy import keeps core startup intact if the players
+    # path is unavailable; any sync failure is contained in the job.
+    def _nightly_player_sync():
+        try:
+            from player_sync import run_player_sync
+            run_player_sync()
+        except Exception as exc:
+            logger.warning("nightly player sync skipped: %s", type(exc).__name__)
+
+    scheduler.add_job(
+        _nightly_player_sync,
+        trigger=CronTrigger(hour=3, minute=30),
+        id="nightly_player_sync",
+        replace_existing=True
+    )
+
     scheduler.start()
     yield
     scheduler.shutdown()
