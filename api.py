@@ -175,7 +175,9 @@ class PredictRequest(BaseModel):
     odds: Dict[str, float] = Field(default={})
 
 class BetRecordRequest(BaseModel):
-    user_id: str
+    # NOTE: no user_id field. Bet ownership is derived exclusively from
+    # the verified JWT identity (10.1A). Any client-supplied owner value
+    # in the body is ignored by pydantic and never consulted.
     match_id: Optional[int] = None
     market: str
     selection: str
@@ -346,7 +348,12 @@ async def get_user_bets(
     supabase: Client = Depends(get_supabase_client)
 ):
     # Production contract: user_bets is the canonical table (no `bets` table in prod).
-    res = supabase.table("user_bets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    # Ownership is JWT-bound (10.1A): the path id is accepted for route
+    # compatibility but NEVER authorizes access. A caller may only read
+    # their own bets; any other id is denied outright.
+    if str(user_id) != str(_ent.user_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    res = supabase.table("user_bets").select("*").eq("user_id", _ent.user_id).order("created_at", desc=True).execute()
     return res.data or []
 
 @router.post("/api/bets/record")
@@ -357,7 +364,9 @@ async def record_bet(
 ):
     try:
         data = {
-            "user_id": req.user_id,
+            # Owner comes exclusively from the verified JWT identity.
+            # No client-supplied user_id exists on the request model.
+            "user_id": _ent.user_id,
             "match_id": req.match_id,
             "market": req.market,
             "selection": req.selection,
@@ -370,8 +379,10 @@ async def record_bet(
         res = supabase.table("user_bets").insert(data).execute()
         return {"status": "success", "data": res.data[0] if res.data else data}
     except Exception as e:
-        logger.error(f"Bet record error: {e}")
-        return {"status": "error", "message": str(e)}
+        # Server-side signal only (exception type, never secrets or client
+        # data). The API response is a stable, non-revealing error.
+        logger.error("Bet record error: %s", type(e).__name__)
+        return {"status": "error", "message": "Could not record bet. Please try again."}
 
 @router.get("/api/dashboard/stats")
 async def get_dashboard_stats(
