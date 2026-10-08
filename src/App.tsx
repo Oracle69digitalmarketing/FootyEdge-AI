@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-import Portfolio from './components/Portfolio';
+import PortfolioView from './components/PortfolioView';
 import AccaBuilder from './components/AccaBuilder';
 import ValueBets from './components/ValueBets';
 import HowToUse from './components/HowToUse';
@@ -168,7 +168,7 @@ export default function App() {
         {activeTab === 'value' && <ValueBets />}
         {activeTab === 'teams' && <TeamsList />}
         {activeTab === 'players' && <PlayersList />}
-        {activeTab === 'portfolio' && <Portfolio />}
+        {activeTab === 'portfolio' && <PortfolioView />}
         {activeTab === 'acca' && <AccaBuilder />}
         {activeTab === 'telegram' && <TelegramLink />}
         {activeTab === 'how-to-use' && <HowToUse />}
