@@ -95,7 +95,13 @@ def sync_players(
     players_registered, skipped and failed per-team details, and the
     verified mapping list used.
     """
-    from player_identity import PlayerIdentityError, register_player
+    from player_identity import (
+        PlayerIdentityError,
+        append_team_history,
+        current_history_row,
+        fetch_player_history,
+        register_player,
+    )
 
     api = client if client is not None else ApiFootballClient()
     if not api.configured:
@@ -167,6 +173,7 @@ def sync_players(
             "status": "pending",
             "registered": 0,
             "skipped": 0,
+            "history_errors": [],
         }
         if external_id is None or team_id is None:
             entry.update({"status": "skipped", "reason": "incomplete_mapping"})
@@ -184,22 +191,51 @@ def sync_players(
             continue
         for player in squad:
             try:
-                register_player(
+                player_id, _canonical_name = register_player(
                     name=player["name"],
                     supabase=supabase,
                     source=SOURCE,
                     external_player_id=player["provider_player_id"],
                     team_id=int(team_id),
                 )
-                registered += 1
-                entry["registered"] += 1
             except PlayerIdentityError:
                 entry["skipped"] += 1
                 continue
             except Exception:
                 entry["skipped"] += 1
                 continue
-        entry["status"] = "ok"
+            # Membership is history-authoritative: ensure the current
+            # history row matches this squad's canonical team. New
+            # players already received their initial row inside
+            # register_player; previously mapped players whose team
+            # changed get exactly one appended row; unchanged
+            # memberships append nothing (idempotent re-sync).
+            try:
+                history = fetch_player_history(supabase, player_id)
+                current = current_history_row(history)
+                if current is None or current.get("team_id") != int(team_id):
+                    append_team_history(
+                        supabase, player_id=player_id, team_id=int(team_id))
+            except PlayerIdentityError as exc:
+                entry["skipped"] += 1
+                entry["history_errors"].append({
+                    "external_player_id": player["provider_player_id"],
+                    "reason": str(exc),
+                })
+                continue
+            except Exception as exc:
+                entry["skipped"] += 1
+                entry["history_errors"].append({
+                    "external_player_id": player["provider_player_id"],
+                    "reason": type(exc).__name__,
+                })
+                continue
+            registered += 1
+            entry["registered"] += 1
+        if entry["history_errors"]:
+            entry["status"] = "partial"
+        else:
+            entry["status"] = "ok"
         teams.append(entry)
 
     return {

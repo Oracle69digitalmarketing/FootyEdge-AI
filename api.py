@@ -25,6 +25,7 @@ from settle_bets import run_settlement
 from env_guard import EnvGuardError, require_destructive_approval
 from football_api_client import FootballAPIClient
 from agents.strategy_agent import StrategyAgent
+from player_team_membership import attach_current_teams
 
 # Entitlements (8F)
 from entitlements import (
@@ -327,11 +328,16 @@ async def get_production_players(
     _ent: EntitlementResult = Depends(require_capability(CAP_PLAYERS)),
     supabase: Client = Depends(get_supabase_client)
 ):
-    """Read-only actual players feed."""
-    res = supabase.table("players").select("*, teams(name)").limit(100).execute()
+    """Read-only actual players feed.
+
+    Current team ("teams") is resolved from player_team_history
+    (history-authoritative membership), not players.team_id. A player
+    with no history resolves to "teams": None (UI "Free Agent").
+    """
+    res = supabase.table("players").select("*").limit(100).execute()
     if not res.data and isinstance(supabase, MockSupabase):
         return [{"id": 1, "name": "Bukayo Saka", "teams": {"name": "Arsenal"}}]
-    return res.data
+    return await attach_current_teams(supabase, res.data or [])
 
 @router.get("/api/players/{player_id}")
 async def get_player_detail(
@@ -339,11 +345,13 @@ async def get_player_detail(
     _ent: EntitlementResult = Depends(require_capability(CAP_PLAYERS)),
     supabase: Client = Depends(get_supabase_client)
 ):
-    res = supabase.table("players").select("*, teams(*)").eq("id", player_id).execute()
+    """Read-only player detail; team resolved from membership history."""
+    res = supabase.table("players").select("*").eq("id", player_id).execute()
     if not res.data and isinstance(supabase, MockSupabase):
         return {"id": player_id, "name": "Mock Player", "teams": {"name": "Arsenal"}}
     if not res.data: raise HTTPException(status_code=404, detail="Player not found")
-    return res.data[0]
+    merged = await attach_current_teams(supabase, [res.data[0]])
+    return merged[0]
 
 @router.get("/api/value-bets")
 async def get_value_bets_dashboard(

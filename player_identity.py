@@ -562,6 +562,99 @@ def fetch_player_aliases(supabase, *, source: str | None = None) -> list:
     return [dict(row) for row in _rows_of(query.execute())]
 
 
+# --- Team-membership layer (history-authoritative; Objective 10.2C.2.2) ---
+#
+# Ownership: players owns identity (id, name); player_team_history owns
+# membership (player_id, team_id, ...). players.team_id is legacy and is
+# never read or written by this module. The current team of a player is
+# the history row with the greatest row id (see current_history_row).
+# History rows are append-only; re-registration of an unchanged
+# membership must not append, and a changed membership appends exactly
+# one row under serialized execution.
+
+
+def fetch_player_history(supabase, player_id: int) -> list:
+    """Fetch one player's membership-history rows (read-only)."""
+    player_id = _require_player_id(player_id)
+    if player_id is None:
+        raise ValueError("player_id is required to fetch membership history.")
+    return [
+        dict(row)
+        for row in _rows_of(
+            supabase.table("player_team_history")
+            .select("id, player_id, team_id")
+            .eq("player_id", player_id)
+            .execute()
+        )
+    ]
+
+
+def current_history_row(rows) -> dict | None:
+    """Return the current membership row: the one with the greatest id.
+
+    Ordering rule (deterministic): history.id is sequence-generated
+    server-side, so the greatest id is the most recently appended row.
+    Returns None when there are no rows.
+
+    Limitations (documented, not silently assumed): the schema defines
+    no currency marker — no UNIQUE(player_id), no partial unique index,
+    no is_current flag — and the writer never sets valid_from/valid_to
+    (both stay NULL) or closes prior rows. created_at is a server
+    default but is nullable and lower-resolution than id, so id wins.
+    Concurrent appends could both insert (no DB-level serialization
+    here); serialized execution (single nightly job) is the safeguard,
+    and each append re-reads latest first so a repeated sync with an
+    unchanged team appends nothing.
+
+    Fail-closed: several rows with none carrying an integer id is
+    ambiguous ordering evidence and raises PlayerIdentityConflictError
+    instead of picking a row. A lone row needs no ordering and is
+    returned as-is (callers compare — never invent — its team).
+    """
+    rows = list(rows or [])
+    if not rows:
+        return None
+    if len(rows) == 1 and isinstance(rows[0], dict):
+        # Nothing to order: a lone row is trivially current. (Its
+        # team_id is compared — never invented — by the caller.)
+        return dict(rows[0])
+    keyed = [row for row in rows
+             if isinstance(row, dict) and isinstance(row.get("id"), int)
+             and not isinstance(row.get("id"), bool)]
+    if not keyed:
+        raise PlayerIdentityConflictError(
+            "Cannot determine current membership: history rows carry "
+            "no integer row id; refusing to choose."
+        )
+    return dict(max(keyed, key=lambda row: row["id"]))
+
+
+def append_team_history(supabase, *, player_id: int, team_id: int) -> dict:
+    """Append one membership-history row (player_id, team_id).
+
+    Companion to register_player for team changes and initial
+    membership when no history row exists yet. Identity is never
+    touched here: no players insert/update, no mapping/alias writes.
+    Column guards (NOT NULL player_id/team_id, FKs to players/teams)
+    are enforced by the database; violations propagate to the caller,
+    which must report them explicitly rather than treating the player
+    as synchronized.
+    """
+    player_id = _require_player_id(player_id)
+    if player_id is None:
+        raise ValueError("player_id is required to record membership.")
+    if team_id is None or isinstance(team_id, bool) \
+            or not isinstance(team_id, int):
+        raise TypeError("team_id must be an integer teams.id.")
+    result = supabase.table("player_team_history").insert(
+        {"player_id": player_id, "team_id": team_id}
+    ).execute()
+    stored = _rows_of(result)
+    if stored:
+        return dict(stored[0])
+    return {"player_id": player_id, "team_id": team_id}
+
+
 __all__ = [
     "PlayerIdentityError",
     "UnknownPlayerIdentityError",
@@ -572,4 +665,7 @@ __all__ = [
     "fetch_players",
     "fetch_player_mappings",
     "fetch_player_aliases",
+    "fetch_player_history",
+    "current_history_row",
+    "append_team_history",
 ]
