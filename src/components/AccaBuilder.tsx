@@ -10,19 +10,29 @@ interface AccaBuilderProps {
 }
 
 const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGenerateCode, bankroll }) => {
-  const totalOdds = selections.reduce((acc, s) => acc * s.odds, 1).toFixed(2);
+  // Defensive: the slip list must always be iterable even if a parent
+  // supplies a non-array value; odds fall back to 0 instead of NaN.
+  const list = Array.isArray(selections) ? selections : [];
+  const oddOf = (s: any): number => {
+    const value = Number(s?.odds);
+    return Number.isFinite(value) ? value : 0;
+  };
+  const teamName = (side: any, fallback: string): string =>
+    String(side?.name ?? fallback);
+  const totalOdds = list.reduce((acc, s) => acc * oddOf(s), 1).toFixed(2);
   const [stake, setStake] = useState(1000);
   const [copied, setCopied] = useState(false);
+  const safeStake = Number.isFinite(stake) ? (stake as number) : 0;
 
   const formatAccaText = () => {
     let text = "FootyEdge AI Accumulator\n\n";
-    selections.forEach(s => {
-      text += `${s.match.homeTeam.name} vs ${s.match.awayTeam.name}\n`;
-      text += `Selection: ${s.market.replace('_', ' ')} @ ${s.odds}\n\n`;
+    list.forEach(s => {
+      text += `${teamName(s?.match?.homeTeam, 'TBD')} vs ${teamName(s?.match?.awayTeam, 'TBD')}\n`;
+      text += `Selection: ${String(s?.market ?? '').replace('_', ' ')} @ ${oddOf(s)}\n\n`;
     });
     text += `Total Odds: ${totalOdds}\n`;
-    text += `Stake: ₦${stake.toLocaleString()}\n`;
-    text += `Potential Return: ₦${(parseFloat(totalOdds) * stake).toLocaleString()}`;
+    text += `Stake: ₦${safeStake.toLocaleString()}\n`;
+    text += `Potential Return: ₦${(parseFloat(totalOdds) * safeStake).toLocaleString()}`;
     return text;
   };
 
@@ -51,7 +61,7 @@ const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGener
           <h3 className="font-bold">Acca Builder</h3>
         </div>
         <div className="flex items-center gap-2">
-          {selections.length > 0 && (
+          {list.length > 0 && (
             <>
               <button 
                 onClick={handleCopy}
@@ -69,12 +79,12 @@ const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGener
               </button>
             </>
           )}
-          <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest pl-2 border-l border-zinc-800">{selections.length} Selections</span>
+          <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest pl-2 border-l border-zinc-800">{list.length} Selections</span>
         </div>
       </div>
       
       <div className="p-6 space-y-4">
-        {selections.length === 0 ? (
+        {list.length === 0 ? (
           <div className="py-12 text-center space-y-4">
             <PlusCircle className="w-12 h-12 text-zinc-800 mx-auto" />
             <p className="text-zinc-500 text-sm">Add selections from matches to build your accumulator.</p>
@@ -82,11 +92,11 @@ const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGener
         ) : (
           <>
             <div className="space-y-3">
-              {selections.map((s, idx) => (
+              {list.map((s, idx) => (
                 <div key={idx} className="flex items-center justify-between bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 group">
                   <div>
-                    <p className="text-xs font-bold">{s.match.homeTeam.name} vs {s.match.awayTeam.name}</p>
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{s.market.replace('_', ' ')} @ {s.odds}</p>
+                    <p className="text-xs font-bold">{teamName(s?.match?.homeTeam, 'TBD')} vs {teamName(s?.match?.awayTeam, 'TBD')}</p>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{String(s?.market ?? '').replace('_', ' ')} @ {oddOf(s)}</p>
                   </div>
                   <button 
                     onClick={() => onRemove(idx)}
@@ -105,7 +115,7 @@ const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGener
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Potential Return</span>
-                <span className="text-xl font-bold text-green-500">₦{(parseFloat(totalOdds) * stake).toLocaleString()}</span>
+                <span className="text-xl font-bold text-green-500">₦{(parseFloat(totalOdds) * safeStake).toLocaleString()}</span>
               </div>
 
               <div className="flex items-center gap-4">
@@ -114,13 +124,13 @@ const AccaBuilder: React.FC<AccaBuilderProps> = ({ selections, onRemove, onGener
                   <input 
                     type="number" 
                     value={stake}
-                    onChange={(e) => setStake(Number(e.target.value))}
+                    onChange={(e) => setStake(Number(e.target.value) || 0)}
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-8 pr-4 text-sm focus:outline-none focus:border-orange-500"
                     placeholder="Stake"
                   />
                 </div>
                 <button 
-                  onClick={() => onGenerateCode(stake, parseFloat(totalOdds))}
+                  onClick={() => onGenerateCode(safeStake, parseFloat(totalOdds))}
                   className="bg-white text-black font-bold px-8 py-3 rounded-xl hover:bg-orange-500 hover:text-white transition-all shadow-lg shadow-orange-500/20"
                 >
                   Generate Code

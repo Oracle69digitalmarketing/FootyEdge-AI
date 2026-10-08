@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import PortfolioView from './components/PortfolioView';
-import AccaBuilder from './components/AccaBuilder';
+import AccaView from './components/AccaView';
 import ValueBets from './components/ValueBets';
 import HowToUse from './components/HowToUse';
 import TeamsList from './components/TeamsList';
@@ -169,7 +169,7 @@ export default function App() {
         {activeTab === 'teams' && <TeamsList />}
         {activeTab === 'players' && <PlayersList />}
         {activeTab === 'portfolio' && <PortfolioView />}
-        {activeTab === 'acca' && <AccaBuilder />}
+        {activeTab === 'acca' && <AccaView />}
         {activeTab === 'telegram' && <TelegramLink />}
         {activeTab === 'how-to-use' && <HowToUse />}
         {activeTab === 'owner' && canViewOwnerBilling(access) && <OwnerConsole ownerEmail={user.email} />}
