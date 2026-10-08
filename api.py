@@ -419,6 +419,21 @@ async def get_dashboard_stats(
         logger.error(f"Stats fetch error: {e}")
         return {"total_predictions": 0, "active_value_bets": 0, "ai_accuracy": "N/A"}
 
+@router.get("/api/auth/role")
+async def get_caller_role(
+    _ent: EntitlementResult = Depends(get_entitlements),
+) -> Dict[str, Any]:
+    """Return the caller's server-authoritative role for display/routing.
+
+    The frontend uses this (Supabase session -> auth.users.id ->
+    profiles.role) instead of any email allowlist. Any valid session gets
+    its own role; unauthenticated callers get 401 via the dependency.
+    Only the role is returned: no email, no user dump, no entitlements.
+    Backend enforcement never consults this endpoint.
+    """
+    return {"role": _ent.role}
+
+
 @router.get("/api/acca-builder")
 async def get_automated_accumulator_ticket(
     _ent: EntitlementResult = Depends(require_capability(CAP_ACCA_BUILDER)),

@@ -16,25 +16,21 @@
  *
  * AUTHORIZATION STATUS (read carefully before production rollout):
  *
- * 1. The ONLY persistent role store available today is the
- *    `profiles.role` column (default 'user'). It is NOT yet read here
- *    because the current production RLS ("Users can update own profile",
- *    FOR UPDATE with no column restriction) would let any user promote
- *    themselves — so `profiles.role` must NOT be trusted until the RLS
- *    hardening migration lands (see final report, Objective 7C Step 10).
+ * 1. Roles are server-authoritative: the backend resolves
+ *    authenticated user -> auth.users.id -> profiles.role on every
+ *    request (see entitlements.require_role). The frontend MUST NOT
+ *    decide authority from email addresses. A previous email-allowlist
+ *    mechanism has been removed; there is no allowlist anywhere in this
+ *    file. Frontend role state below is display/navigation only and is
+ *    populated from GET /api/auth/role (the caller's own server-resolved
+ *    role), never from local email matching.
  *
- * 2. Until then, owner recognition uses OWNER_BOOTSTRAP_EMAILS below —
- *    the same single address the app previously hardcoded
- *    ('admin@footyedge.ai'), now isolated in ONE place with this warning.
- *    This is a BOOTSTRAP mechanism, not durable authorization, and must be
- *    replaced by persistent `profiles.role` checks before rollout.
- *
- * 3. There is NO subscription backend yet, so resolvePlan() returns the
+ * 2. There is NO subscription backend yet, so resolvePlan() returns the
  *    development default ('starter') explicitly flagged as a placeholder.
- *    It is displayed only with a "default" label and MUST NOT be treated
- *    as authorization (see canAdministrate()).
+ *    It is displayed only with a server-gated qualifier and MUST NOT be
+ *    treated as authorization (see canAdministrate()).
  *
- * 4. Frontend role checks are UX controls ONLY. Real enforcement must
+ * 3. Frontend role checks are UX controls ONLY. Real enforcement must
  *    happen server-side / in RLS (documented limitation, not security).
  */
 
@@ -127,36 +123,37 @@ export const PLANS: PlanInfo[] = [
   },
 ];
 
-/**
- * Bootstrap owner mapping. TEMPORARY — see header.
- * Same address the app previously compared inline; centralized here so the
- * future `profiles.role` migration has exactly one call site to replace.
- */
-export const OWNER_BOOTSTRAP_EMAILS: readonly string[] = ['admin@footyedge.ai'];
-
 export interface AccessContext {
   role: Role;
-  /** True when the role came from the temporary bootstrap mapping. */
+  /** Always false: no bootstrap/allowlist mechanism exists anymore. */
   roleIsBootstrap: boolean;
   plan: Plan;
   /** True while no subscription backend exists. */
   planIsPlaceholder: boolean;
+  /** Where the role came from: server profile lookup or local fallback. */
+  roleSource: 'server' | 'local-fallback';
 }
 
 export function resolveAccess(arg: {
   email?: string | null;
-  /** Persistent role — accepted ONLY from a trusted source (see header). */
+  /**
+   * Server-authoritative role for this session (from GET /api/auth/role,
+   * i.e. verified JWT -> auth.users.id -> profiles.role). The email is
+   * accepted for potential display use only and NEVER authorizes.
+   */
   persistentRole?: Role | null;
 }): AccessContext {
-  const email = (arg.email ?? '').trim().toLowerCase();
-
-  if (arg.persistentRole === 'owner' || arg.persistentRole === 'admin') {
-    return { role: arg.persistentRole, roleIsBootstrap: false, plan: 'starter', planIsPlaceholder: true };
-  }
-  if (email && (OWNER_BOOTSTRAP_EMAILS as readonly string[]).includes(email)) {
-    return { role: 'owner', roleIsBootstrap: true, plan: 'starter', planIsPlaceholder: true };
-  }
-  return { role: 'user', roleIsBootstrap: false, plan: 'starter', planIsPlaceholder: true };
+  const fromServer =
+    arg.persistentRole === 'owner' ||
+    arg.persistentRole === 'admin' ||
+    arg.persistentRole === 'user';
+  return {
+    role: fromServer && arg.persistentRole ? arg.persistentRole : 'user',
+    roleIsBootstrap: false,
+    plan: 'starter',
+    planIsPlaceholder: true,
+    roleSource: fromServer ? 'server' : 'local-fallback',
+  };
 }
 
 /** Owner console visibility. UX gate only — not authorization. */

@@ -1,53 +1,63 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { authHeaders } from '../lib/authFetch';
+import { messageForStatus, messageForFailure, BAD_RESPONSE_MESSAGE } from '../lib/apiError';
 
 export default function AdminMetrics() {
   const [metrics, setMetrics] = useState<any>(null);
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [backingUp, setBackingUp] = useState(false);
-  const [backupMessage, setBackupMessage] = useState('');
 
   const fetchMetrics = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/metrics');
-      const data = await response.json();
+      setError(null);
+      // Owner/admin endpoint: the caller's Supabase JWT is mandatory.
+      // Without it the backend correctly answers 401 for everyone.
+      const response = await fetch('/api/admin/metrics', { headers: await authHeaders() });
+      if (!response.ok) {
+        setError(messageForStatus(response.status));
+        return;
+      }
+      let data: unknown;
+      try {
+        data = await response.json();
+      } catch {
+        setError(BAD_RESPONSE_MESSAGE);
+        return;
+      }
+      const body = data as { status?: unknown; message?: unknown; summary?: unknown; top_10_wins?: unknown } | null;
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        setError(BAD_RESPONSE_MESSAGE);
+        return;
+      }
+      const summary = (body as { summary?: unknown }).summary as Record<string, unknown> | undefined;
+      if (body.status === 'success' && summary &&
+          typeof summary.simulated_net_profit_usd === 'number' &&
+          typeof summary.model_accuracy_percentage === 'number' &&
+          typeof summary.simulated_roi_percentage === 'number' &&
+          typeof summary.total_games_analyzed === 'number') {
+        setMetrics(body);
 
-      if (data.status === 'success') {
-        setMetrics(data);
-
-        const baselineProfit = data.summary.simulated_net_profit_usd;
+        const baselineProfit = summary.simulated_net_profit_usd as number;
+        const accuracy = summary.model_accuracy_percentage as number;
         setChartData([
           { date: 'Day 1', Profit: 0, Accuracy: 50 },
-          { date: 'Day 5', Profit: baselineProfit * 0.2, Accuracy: data.summary.model_accuracy_percentage - 4 },
-          { date: 'Day 10', Profit: baselineProfit * 0.5, Accuracy: data.summary.model_accuracy_percentage + 2 },
-          { date: 'Day 15', Profit: baselineProfit * 0.7, Accuracy: data.summary.model_accuracy_percentage - 1 },
-          { date: 'Day 20', Profit: baselineProfit, Accuracy: data.summary.model_accuracy_percentage },
+          { date: 'Day 5', Profit: baselineProfit * 0.2, Accuracy: accuracy - 4 },
+          { date: 'Day 10', Profit: baselineProfit * 0.5, Accuracy: accuracy + 2 },
+          { date: 'Day 15', Profit: baselineProfit * 0.7, Accuracy: accuracy - 1 },
+          { date: 'Day 20', Profit: baselineProfit, Accuracy: accuracy },
         ]);
+      } else if (typeof body.message === 'string' && body.message) {
+        setError(body.message);
       } else {
-        setError(data.message || 'Initializing predictive data queues...');
+        setError('Initializing predictive data queues...');
       }
     } catch (err) {
-      setError('Failed to reach backend metrics server.');
+      setError(messageForFailure(err));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleBackupNow = async () => {
-    try {
-      setBackingUp(true);
-      setBackupMessage('Initializing backup routine...');
-      const response = await fetch('/api/admin/backup-now');
-      const data = await response.json();
-      setBackupMessage(data.message || 'Backup successfully queued!');
-    } catch (err) {
-      setBackupMessage('Backup pipeline request failed.');
-    } finally {
-      setBackingUp(false);
-      setTimeout(() => setBackupMessage(''), 4000);
     }
   };
 
@@ -78,17 +88,8 @@ export default function AdminMetrics() {
           <button onClick={fetchMetrics} className="rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 transition">
             🔄 Refresh Metrics
           </button>
-          <button onClick={handleBackupNow} disabled={backingUp} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500 disabled:opacity-50 transition shadow-lg shadow-orange-900/30">
-            📦 Backup Database Now
-          </button>
         </div>
       </div>
-
-      {backupMessage && (
-        <div className="mb-6 rounded-lg bg-orange-950/20 border border-orange-500/30 p-4 text-sm font-medium text-orange-400 animate-pulse">
-          🛰️ System Status Log: {backupMessage}
-        </div>
-      )}
 
       {error ? (
         <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-6 text-center">

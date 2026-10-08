@@ -11,6 +11,7 @@ import TelegramLink from './components/TelegramLink';
 import ProductPage from './components/product/ProductPage';
 import OwnerConsole from './components/OwnerConsole';
 import { canViewOwnerBilling, planDisplayName, resolveAccess } from './lib/access';
+import { authHeaders } from './lib/authFetch';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -28,6 +29,7 @@ import { cn } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
+  const [serverRole, setServerRole] = useState<'owner' | 'admin' | 'user' | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'value' | 'players' | 'portfolio' | 'acca' | 'owner' | 'teams' | 'telegram' | 'how-to-use'>('dashboard');
   const [loading, setLoading] = useState(true);
 
@@ -48,6 +50,35 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Server-authoritative role for display/navigation only. The role comes
+  // from GET /api/auth/role (verified JWT -> auth.users.id ->
+  // profiles.role); backend enforcement never consults this value.
+  // Fail closed for display: unknown until fetched, 'user' on any failure.
+  useEffect(() => {
+    if (!user) {
+      setServerRole(null);
+      return;
+    }
+    let live = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/role', { headers: await authHeaders() });
+        if (!res.ok) {
+          if (live) setServerRole('user');
+          return;
+        }
+        const body: unknown = await res.json().catch(() => null);
+        const role = (body as { role?: unknown } | null)?.role;
+        if (live) setServerRole(role === 'owner' || role === 'admin' ? role : 'user');
+      } catch {
+        if (live) setServerRole('user');
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [user]);
 
   const handleLogout = async () => {
     if (supabase) {
@@ -87,10 +118,10 @@ export default function App() {
   }
 
   // Access model: ROLE (owner/admin/user) and subscription PLAN are
-  // independent concepts (see src/lib/access.ts). Role recognition is
-  // currently a documented bootstrap mapping; plan is a labeled default
-  // until the subscription backend exists. Frontend checks are UX only.
-  const access = resolveAccess({ email: user?.email ?? null });
+  // independent concepts (see src/lib/access.ts). The role below comes
+  // from the server profile lookup. Frontend checks are UX only; every
+  // endpoint enforces independently server-side.
+  const access = resolveAccess({ email: user?.email ?? null, persistentRole: serverRole });
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0a] text-white">
