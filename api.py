@@ -647,6 +647,12 @@ try:
 except Exception as exc:  # telegram routes must never break core startup
     logger.warning("telegram router not mounted: %s", type(exc).__name__)
 
+try:
+    from whatsapp_api import router as whatsapp_router
+    app.include_router(whatsapp_router)
+except Exception as exc:  # whatsapp routes must never break core startup
+    logger.warning("whatsapp router not mounted: %s", type(exc).__name__)
+
 # Static file serving
 dist_path = os.path.join(os.path.dirname(__file__), "dist")
 if os.path.exists(dist_path):
