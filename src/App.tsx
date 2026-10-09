@@ -10,7 +10,8 @@ import PredictionsDashboard from './pages/PredictionsDashboard';
 import TelegramLink from './components/TelegramLink';
 import ProductPage from './components/product/ProductPage';
 import OwnerConsole from './components/OwnerConsole';
-import { canViewOwnerBilling, planDisplayName, resolveAccess } from './lib/access';
+import { canViewOwnerBilling, planDisplayName, resolveAccess, subscriptionStatusLabel } from './lib/access';
+import type { EntitlementsResponse } from './lib/access';
 import { authHeaders } from './lib/authFetch';
 import { 
   LayoutDashboard, 
@@ -30,6 +31,7 @@ import { cn } from './lib/utils';
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [serverRole, setServerRole] = useState<'owner' | 'admin' | 'user' | null>(null);
+  const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'value' | 'players' | 'portfolio' | 'acca' | 'owner' | 'teams' | 'telegram' | 'how-to-use'>('dashboard');
   const [loading, setLoading] = useState(true);
 
@@ -80,6 +82,41 @@ export default function App() {
     };
   }, [user]);
 
+  // Server-authoritative entitlements for display only. The payload comes
+  // from GET /api/auth/entitlements (verified JWT -> server-resolved
+  // profile and subscription). A missing or failed response is kept as
+  // null and shown as unavailable, never as a confirmed plan. Backend
+  // enforcement never consults this value.
+  useEffect(() => {
+    if (!user) {
+      setEntitlements(null);
+      return;
+    }
+    let live = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/entitlements', { headers: await authHeaders() });
+        if (!res.ok) {
+          if (live) setEntitlements(null);
+          return;
+        }
+        const body: unknown = await res.json().catch(() => null);
+        if (live) {
+          setEntitlements(
+            body !== null && typeof body === 'object' && !Array.isArray(body)
+              ? (body as EntitlementsResponse)
+              : null
+          );
+        }
+      } catch {
+        if (live) setEntitlements(null);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [user]);
+
   const handleLogout = async () => {
     if (supabase) {
       await supabase.auth.signOut();
@@ -119,9 +156,10 @@ export default function App() {
 
   // Access model: ROLE (owner/admin/user) and subscription PLAN are
   // independent concepts (see src/lib/access.ts). The role below comes
-  // from the server profile lookup. Frontend checks are UX only; every
+  // from the server profile lookup and the entitlements from the server
+  // entitlements endpoint. Frontend checks are UX only; every
   // endpoint enforces independently server-side.
-  const access = resolveAccess({ email: user?.email ?? null, persistentRole: serverRole });
+  const access = resolveAccess({ email: user?.email ?? null, persistentRole: serverRole, entitlements });
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0a] text-white">
@@ -150,9 +188,11 @@ export default function App() {
           <div className="px-2">
             <p className="text-xs text-zinc-500 truncate" title={user.email}>{user.email}</p>
             <p className="text-xs text-zinc-600" title="Plan labels are display-only; feature access is checked server-side on every request.">
-              Plan: {planDisplayName(access)}
+              {planDisplayName(access)} · {subscriptionStatusLabel(access)}
               {access.planIsPlaceholder && <span> · server-gated</span>}
+              {access.ownerPreview && <span className="text-orange-500 font-semibold"> · Owner Preview</span>}
               {access.role === 'owner' && <span className="text-orange-500 font-semibold"> · Owner</span>}
+              {access.role === 'admin' && <span className="text-zinc-400 font-semibold"> · Admin</span>}
             </p>
           </div>
           <button onClick={handleLogout} className="flex items-center gap-3 text-zinc-500 hover:text-red-500 transition-colors w-full p-2">

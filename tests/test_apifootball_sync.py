@@ -392,12 +392,19 @@ def test_free_plan_cycle_cap_enforced():
 # --- Scheduling + scope boundaries (static) ---
 
 
-def test_nightly_job_uses_existing_scheduler_pattern():
+def test_player_sync_job_not_scheduled_by_startup():
+    # Automatic nightly player syncs are disabled while membership data
+    # integrity is investigated: normal application startup must not
+    # register the player-sync job. run_player_sync() itself remains
+    # available for an explicitly authorized manual trigger.
     api_src = (_REPO / "api.py").read_text()
-    assert '"nightly_player_sync"' in api_src or "'nightly_player_sync'" in api_src
-    assert "hour=3" in api_src and "minute=30" in api_src
-    assert "run_player_sync" in api_src
-    assert "nightly_prediction_sync" in api_src  # existing odds job untouched
+    assert "nightly_player_sync" not in api_src
+    assert "run_player_sync" not in api_src
+    # Existing jobs are untouched.
+    assert "nightly_prediction_sync" in api_src
+    assert "daily_settlement" in api_src
+    assert "weekly_database_backup" in api_src
+    assert "hour=2" in api_src and "hour=5" in api_src
 
 
 def test_render_declares_key_name_without_value():

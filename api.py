@@ -78,24 +78,12 @@ async def lifespan(app: FastAPI):
         replace_existing=True
     )
 
-    # Task 4 (10.2C.2): Nightly API-Football squad sync at 3:30 AM.
-    # Players-only: uses player_sync.run_player_sync (register_player
-    # boundary, fail-soft). The-Odds-API prediction pipeline above is
-    # untouched. Lazy import keeps core startup intact if the players
-    # path is unavailable; any sync failure is contained in the job.
-    def _nightly_player_sync():
-        try:
-            from player_sync import run_player_sync
-            run_player_sync()
-        except Exception as exc:
-            logger.warning("nightly player sync skipped: %s", type(exc).__name__)
-
-    scheduler.add_job(
-        _nightly_player_sync,
-        trigger=CronTrigger(hour=3, minute=30),
-        id="nightly_player_sync",
-        replace_existing=True
-    )
+    # Player sync scheduling is intentionally NOT registered here.
+    # The sync implementation in player_sync remains available for an
+    # explicitly authorized manual/backfill trigger only; automatic
+    # nightly player syncs are disabled while membership data integrity
+    # is investigated. Prediction, settlement, and backup jobs above
+    # are unchanged.
 
     scheduler.start()
     yield
@@ -445,6 +433,30 @@ async def get_dashboard_stats(
     except Exception as e:
         logger.error(f"Stats fetch error: {e}")
         return {"total_predictions": 0, "active_value_bets": 0, "ai_accuracy": "N/A"}
+
+@router.get("/api/auth/entitlements")
+async def get_caller_entitlements(
+    _ent: EntitlementResult = Depends(get_entitlements),
+) -> Dict[str, Any]:
+    """Return the caller's display-safe effective entitlements.
+
+    Derived entirely from the server-resolved profile and subscription
+    (verified JWT -> auth.users.id -> profiles/subscriptions). No
+    client-supplied user ID, email, plan override, or preview flag is
+    accepted. Only the minimum display fields are returned: no service
+    credentials, provider payloads, or user lists. Commercial plan and
+    owner-preview access are reported as separate dimensions; preview
+    never mutates the subscription.
+    """
+    return {
+        "role": _ent.role,
+        "plan": _ent.plan,
+        "subscription_status": _ent.subscription.status if _ent.subscription else None,
+        "has_subscription": _ent.subscription is not None,
+        "capabilities": sorted(_ent.capabilities),
+        "owner_preview": _ent.owner_preview,
+    }
+
 
 @router.get("/api/auth/role")
 async def get_caller_role(

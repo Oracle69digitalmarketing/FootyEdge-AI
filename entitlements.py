@@ -10,6 +10,11 @@ Role and Plan are INDEPENDENT dimensions:
 
 A subscription row MAY NOT exist -> fallback to Starter.
 Unknown plan/status -> fail closed (Starter, no paid entitlements).
+
+Owner preview: the server-resolved owner role unlocks implemented
+capabilities for testing (owner_preview=True). It never changes the
+commercial plan, never grants planned capabilities, and never applies
+to non-owner roles.
 """
 
 from __future__ import annotations
@@ -243,6 +248,7 @@ class EntitlementResult:
     subscription: Optional[SubscriptionInfo]
     plan: Plan
     capabilities: FrozenSet[str]
+    owner_preview: bool = False
 
     def has(self, capability: str) -> bool:
         return capability in self.capabilities
@@ -356,6 +362,16 @@ def resolve_entitlements(supabase: Client, user_id: str, email: str) -> Entitlem
     # Starter capabilities always included
     all_caps = set(STARTER_CAPS) | paid_caps
 
+    # Owner preview (test access, never a subscription): the
+    # server-resolved owner role alone unlocks implemented capabilities
+    # for testing. Planned/unimplemented capabilities stay denied, the
+    # commercial plan is reported unchanged, and non-owner roles
+    # (including admins) are unaffected. No email, parameter, or
+    # frontend state participates: role comes only from profiles.
+    owner_preview = role == "owner"
+    if owner_preview:
+        all_caps |= set(IMPLEMENTED_CAPABILITIES)
+
     # Role-based administrative capabilities are NOT in the capability set.
     # They are checked separately via .is_owner() / .is_admin()
 
@@ -366,6 +382,7 @@ def resolve_entitlements(supabase: Client, user_id: str, email: str) -> Entitlem
         subscription=subscription,
         plan=plan,
         capabilities=frozenset(all_caps),
+        owner_preview=owner_preview,
     )
 
 

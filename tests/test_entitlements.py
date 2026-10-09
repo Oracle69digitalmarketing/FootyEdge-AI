@@ -443,3 +443,88 @@ def test_matrix_all_statuses_snapshot():
         subscriptions=[_sub(plan="growth", status="canceled", end=_past())],
     )
     assert resolve_entitlements(db, "u1", "u@example.com").plan == "starter"
+
+
+# ---------------------------------------------------------------------------
+# Owner preview (server-enforced, test access without paid subscription)
+# ---------------------------------------------------------------------------
+
+
+def _owner_db(role="owner", sub=None):
+    return FakeSupabase(
+        profiles=[{"id": "u1", "role": role}],
+        subscriptions=[sub] if sub is not None else [],
+    )
+
+
+def test_owner_without_subscription_remains_commercially_starter():
+    res = resolve_entitlements(_owner_db(), "u1", "o@example.com")
+    assert res.role == "owner"
+    assert res.plan == "starter"
+    assert res.subscription is None
+    assert res.owner_preview is True
+
+
+def test_owner_preview_grants_implemented_caps_only():
+    res = resolve_entitlements(_owner_db(), "u1", "o@example.com")
+    assert res.has(CAP_PORTFOLIO)
+    assert res.has(CAP_ACCA_BUILDER)
+    assert res.has(CAP_VALUE_BETS)
+    assert res.has(CAP_AI_STRATEGY_ANALYSIS)
+    for planned in (CAP_API_ACCESS, "data_export",
+                    "multiple_seats", "organization_controls"):
+        assert not res.has(planned), planned
+    assert set(res.capabilities) <= set(ALL_CAPABILITIES)
+
+
+def test_plain_starter_cannot_access_paid_caps():
+    db = FakeSupabase(profiles=[{"id": "u1", "role": "user"}])
+    res = resolve_entitlements(db, "u1", "u@example.com")
+    assert res.plan == "starter"
+    assert res.owner_preview is False
+    assert not res.has(CAP_PORTFOLIO)
+    assert not res.has(CAP_ACCA_BUILDER)
+
+
+def test_admin_without_subscription_gets_no_preview():
+    res = resolve_entitlements(_owner_db(role="admin"), "u1", "a@example.com")
+    assert res.role == "admin"
+    assert res.plan == "starter"
+    assert res.owner_preview is False
+    assert not res.has(CAP_PORTFOLIO)
+    assert res.is_admin()  # administrative rights unaffected
+
+
+def test_preview_never_mutates_subscription_state():
+    sub = _sub(plan="growth", status="expired", end=_past())
+    before = dict(sub)
+    db = FakeSupabase(profiles=[{"id": "u1", "role": "owner"}],
+                      subscriptions=[sub])
+    res = resolve_entitlements(db, "u1", "o@example.com")
+    assert res.plan == "starter"  # expired stays starter
+    assert res.owner_preview is True
+    assert db.table("subscriptions").rows == [before]
+    assert res.subscription is not None
+    assert res.subscription.plan == "growth"
+    assert res.subscription.status == "expired"
+
+
+def test_preview_derives_only_from_server_role():
+    # Same subscription, different roles: only owner previews.
+    sub = _sub(plan="starter", status="active", end=_future())
+    for role, expected in (("owner", True), ("admin", False), ("user", False)):
+        db = FakeSupabase(profiles=[{"id": "u1", "role": role}],
+                          subscriptions=[dict(sub)])
+        res = resolve_entitlements(db, "u1", "x@example.com")
+        assert res.owner_preview is expected, role
+
+
+def test_planned_caps_denied_even_for_paid_owner():
+    db = FakeSupabase(
+        profiles=[{"id": "u1", "role": "owner"}],
+        subscriptions=[_sub(plan="business", status="active", end=_future())],
+    )
+    res = resolve_entitlements(db, "u1", "o@example.com")
+    assert res.plan == "business"
+    assert res.owner_preview is True
+    assert not res.has(CAP_API_ACCESS)

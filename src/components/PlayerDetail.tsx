@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Shield, Globe, Award, Calendar, Activity, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { authHeaders } from '../lib/authFetch';
+import { messageForStatus, messageForFailure, BAD_RESPONSE_MESSAGE } from '../lib/apiError';
 
 interface PlayerDetailProps {
   playerId: string | number;
@@ -10,27 +12,86 @@ interface PlayerDetailProps {
 const PlayerDetail: React.FC<PlayerDetailProps> = ({ playerId, onClose }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let live = true;
     const fetchDetail = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/players/${playerId}`);
-        const json = await res.json();
-        setData(json);
+        setError(null);
+        setData(null);
+        const res = await fetch(`/api/players/${playerId}`, { headers: await authHeaders() });
+        // Non-2xx responses carry a JSON error object, not a player record.
+        // 401 and 403 intentionally produce different messages here.
+        if (!res.ok) {
+          if (live) {
+            setData(null);
+            setError(res.status === 404 ? 'Player not found.' : messageForStatus(res.status));
+          }
+          return;
+        }
+        let json: unknown;
+        try {
+          json = await res.json();
+        } catch {
+          if (live) {
+            setData(null);
+            setError(BAD_RESPONSE_MESSAGE);
+          }
+          return;
+        }
+        // Validate the record shape before rendering: an object with a
+        // valid id and name, and the returned id must match the request.
+        // Anything else is treated as a bad response, never rendered.
+        if (
+          typeof json !== 'object' || json === null || Array.isArray(json) ||
+          (typeof (json as any).id !== 'number' && typeof (json as any).id !== 'string') ||
+          typeof (json as any).name !== 'string' || (json as any).name.trim() === '' ||
+          String((json as any).id) !== String(playerId)
+        ) {
+          if (live) {
+            setData(null);
+            setError(BAD_RESPONSE_MESSAGE);
+          }
+          return;
+        }
+        if (live) setData(json);
       } catch (err) {
-        console.error(err);
+        if (live) {
+          setData(null);
+          setError(messageForFailure(err));
+        }
       } finally {
-        setLoading(false);
+        if (live) setLoading(false);
       }
     };
     fetchDetail();
+    return () => {
+      live = false;
+    };
   }, [playerId]);
 
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
         <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+        <div className="bg-[#111] border border-zinc-800 w-full max-w-md rounded-[2rem] p-10 text-center space-y-6 relative">
+          <button onClick={onClose} className="absolute top-6 right-6 w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center hover:bg-zinc-800 transition-all" aria-label="Close">
+            <X className="w-5 h-5 text-zinc-500" />
+          </button>
+          <p className="text-zinc-300 font-bold">{error}</p>
+          <button onClick={onClose} className="px-6 py-2 bg-zinc-900 border border-zinc-800 rounded-full text-zinc-300 text-sm font-bold hover:bg-zinc-800 transition-all">
+            Close
+          </button>
+        </div>
       </div>
     );
   }

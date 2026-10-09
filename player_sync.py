@@ -17,10 +17,12 @@ Scope boundaries (hard):
     without a verified provider_team_mapping row is skipped, never
     inferred from names.
 
-Scheduling reuses the existing ingestion infrastructure pattern:
-  - api.py APScheduler nightly job calls run_player_sync().
-  - Render cron and service env follow render.yaml (API_FOOTBALL_KEY
-    declared sync:false, value never in source).
+Scheduling: no automatic job is registered by default. api.py
+used to schedule run_player_sync() nightly; that registration is
+removed while membership data integrity is investigated.
+run_player_sync() remains available for an explicitly authorized
+manual/backfill trigger only. Render service env follows render.yaml
+(API_FOOTBALL_KEY declared sync:false, value never in source).
 """
 
 from __future__ import annotations
