@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -147,13 +148,28 @@ def _payload_hash(text: str) -> str:
 
 
 def match_reminder_key(match_id: Any, user_id: str) -> str:
-    """Idempotency key grain: one reminder per match per user."""
+    """Idempotency key grain: one reminder per match per user.
+
+    Raises ValueError when ``match_id`` is None: callers must skip the
+    event (``missing_event_id``) instead of queuing a key containing
+    "None", which would collapse distinct missing-id events under one
+    UNIQUE key.
+    """
+    if match_id is None:
+        raise ValueError("match_reminder_key requires a match id")
     return f"wa:match_update:{match_id}:{user_id}"
 
 
 def value_alert_key(match_id: Any, market: Any, selection: Any,
                     user_id: str) -> str:
-    """Idempotency key grain: one alert per (match, market, selection)."""
+    """Idempotency key grain: one alert per (match, market, selection).
+
+    Raises ValueError when any key segment is None, for the same
+    reason as :func:`match_reminder_key`.
+    """
+    if match_id is None or market is None or selection is None:
+        raise ValueError(
+            "value_alert_key requires match_id, market and selection")
     return f"wa:prediction_alert:{match_id}:{market}:{selection}:{user_id}"
 
 
@@ -218,10 +234,108 @@ def format_value_alert(home: str, away: str, market: str, selection: str,
     return " ".join(parts) + "."
 
 
+# Narrow unique-violation signals. Bare words such as "unique",
+# "duplicate", or "already exists" are NOT sufficient on their own:
+# validation text ("unique identifier required") and unrelated
+# failures ("duplicate check failed", "cache file already exists")
+# must propagate as errors. Only clearly identifiable violations
+# count: SQLSTATE 23505, the "duplicate key" / "unique constraint"
+# phrases, or "already exists" tied to a whole-word "key" reference
+# (PostgREST details read 'Key (col)=(val) already exists.').
+_DUP_KEY_RE = re.compile(r"\bduplicate key\b")
+_UNIQUE_CONSTRAINT_RE = re.compile(r"\bunique constraints?\b")
+_KEY_WORD_RE = re.compile(r"\bkey\b")
+
+
+def _unique_violation_text(lowered: str) -> bool:
+    """True when lowercased text clearly identifies a unique violation."""
+    if "23505" in lowered:
+        return True
+    if _DUP_KEY_RE.search(lowered):
+        return True
+    if _UNIQUE_CONSTRAINT_RE.search(lowered):
+        return True
+    if "already exists" in lowered and _KEY_WORD_RE.search(lowered):
+        return True
+    return False
+
+
+def _conflict_code(exc: Exception) -> bool:
+    """True when a structured code attribute reports SQLSTATE 23505."""
+    for attr in ("code", "pgcode", "sqlstate"):
+        try:
+            value = getattr(exc, attr, None)
+        except Exception:
+            continue
+        if value is not None and str(value).strip() == "23505":
+            return True
+    return False
+
+
+def _conflict_hint(exc: Exception) -> str:
+    """Best-effort structured conflict signal from a client error object.
+
+    Checks, in order: structured SQLSTATE ``23505`` (``code`` /
+    ``pgcode`` / ``sqlstate`` attributes), then clearly identifying
+    duplicate/unique-constraint evidence in details/hint/message/args
+    (see :func:`_unique_violation_text`). A bare HTTP ``status_code``
+    409 alone is deliberately NOT treated as a unique violation: 409
+    reports a generic conflict and, without SQLSTATE 23505 or clearly
+    identifying violation evidence, must propagate as a non-conflict
+    error. Returns the matched raw string (lowercased) or ``""``.
+    Never raises.
+    """
+    try:
+        if _conflict_code(exc):
+            return "23505"
+        for attr in ("details", "hint", "message"):
+            value = getattr(exc, attr, None)
+            if isinstance(value, str) and value:
+                lowered = value.lower()
+                if _unique_violation_text(lowered):
+                    return lowered
+        args = getattr(exc, "args", None)
+        if isinstance(args, tuple):
+            for part in args:
+                if isinstance(part, dict):
+                    for key in ("code", "details", "hint", "message"):
+                        value = part.get(key)
+                        if value is not None and str(value).strip() == "23505":
+                            return "23505"
+                        if isinstance(value, str):
+                            lowered = value.lower()
+                            if _unique_violation_text(lowered):
+                                return lowered
+                elif isinstance(part, str) and part:
+                    lowered = part.lower()
+                    if _unique_violation_text(lowered):
+                        return lowered
+    except Exception:
+        return ""
+    return ""
+
+
 def _is_conflict(exc: Exception) -> bool:
-    text = f"{type(exc).__name__} {exc}".lower()
-    return ("duplicate" in text or "already exists" in text
-            or "23505" in text or "unique" in text)
+    """True only for clearly identified unique-constraint violations.
+
+    Never raises. Structured SQLSTATE ``23505`` first, then the
+    narrowed text rules in :func:`_unique_violation_text` over
+    details/hint/message/dict args, then the same narrowed rules over
+    the legacy ``"Type: message"`` string as a fallback. A bare HTTP
+    409, generic "unique"/"duplicate"/"already exists" wording without
+    violation context, timeouts, connection drops, and generic
+    ValueErrors all return False so they propagate instead of being
+    misclassified as duplicates. Mock fakes without live PostgreSQL
+    exercise only the classification logic, not real constraint
+    behavior.
+    """
+    try:
+        if _conflict_hint(exc):
+            return True
+        text = f"{type(exc).__name__} {exc}".lower()
+        return _unique_violation_text(text)
+    except Exception:
+        return False
 
 
 def set_opt_in(db: Any, user_id: str, category: str,
@@ -319,6 +433,11 @@ def collect_due_notifications(
                               window_hours=reminder_window_hours):
             _skip("ineligible_match")
             continue
+        if match.get("id") is None:
+            # Required key segment missing: skip explicitly instead of
+            # queuing an idempotency key containing "None".
+            _skip("missing_event_id")
+            continue
         names = _team_names(db, match)
         if names is None:
             _skip("missing_teams")
@@ -343,6 +462,12 @@ def collect_due_notifications(
             continue
         if not eligible_value_bet(bet, matches_by_id, moment):
             _skip("ineligible_bet")
+            continue
+        if bet.get("id") is None or bet.get("match_id") is None \
+                or bet.get("market") is None or bet.get("selection") is None:
+            # Required key/entity segments missing: skip explicitly
+            # instead of queuing an idempotency key containing "None".
+            _skip("missing_event_id")
             continue
         home = bet.get("home_team")
         away = bet.get("away_team")
@@ -387,6 +512,18 @@ def _team_names(db: Any, match: Dict[str, Any]
 def _rows_of(result: Any) -> List[Dict[str, Any]]:
     data = result.data if hasattr(result, "data") else result
     return [dict(r) for r in (data or []) if isinstance(r, dict)]
+
+
+def _mark(db: Any, row_id: Any, values: Dict[str, Any]) -> None:
+    """Update a whatsapp_deliveries row by ID.
+
+    Never raises: failures are silently swallowed so callers never
+    crash from a bad mark write.
+    """
+    try:
+        db.table("whatsapp_deliveries").update(values).eq("id", row_id).execute()
+    except Exception:
+        pass
 
 
 def _backoff_seconds(attempts: int) -> int:
@@ -443,7 +580,9 @@ def _settle_claimed_row(db: Any, sender: Any, row: Dict[str, Any],
     Phone-missing rows are marked failed (unlinked). Ambiguous provider
     timeouts return the row to pending with attempts kept and last_error
     set, explicitly NOT counted as sent: at-least-once, never
-    exactly-once.
+    exactly-once. Failed phone-missing rows never auto-retry; use
+    requeue_unlinked_deliveries() explicitly after the account is
+    (re)linked.
     """
     row_id = row.get("id")
     max_attempts = int(row.get("max_attempts") or DEFAULT_MAX_ATTEMPTS)
@@ -639,14 +778,20 @@ def _conditional_claim(db: Any, row_id: Any, seen: Dict[str, Any],
 
     TEST-DOUBLES ONLY. Production uses the atomic claim_whatsapp_delivery()
     RPC (see CLAIM_RPC_NAME and _rpc_claim_next): a single SELECT ...
-    FOR UPDATE SKIP LOCKED + UPDATE call is the concurrency boundary.
-    This fallback preserves the same eligibility predicate
-    (pending, or sending with an expired lease, attempts < max) for db
-    doubles without an rpc() boundary. The re-read uses the cycle clock
-    (`now`) so frozen-time tests are deterministic. The final UPDATE
-    carries the expected prior status so a concurrent worker that already
-    claimed the row makes this update match zero rows instead of
-    overwriting its lease.
+    FOR UPDATE SKIP LOCKED + UPDATE call is the concurrency boundary, and
+    deliver_pending() always prefers it whenever the db handle exposes
+    rpc(). This fallback exists solely for db doubles without an rpc()
+    boundary (offline unit tests). It preserves the same eligibility
+    predicate (pending, or sending with an expired lease, attempts < max)
+    for those doubles. The re-read uses the cycle clock (`now`) so
+    frozen-time tests are deterministic. The final UPDATE carries the
+    expected prior status AND an attempts guard (attempts < max) so a
+    concurrent worker that already claimed/exhausted the row makes this
+    update match zero rows instead of overwriting its lease. The lease
+    (claimed_until) itself is revalidated on the re-read but cannot be
+    expressed atomically in the PostgREST builder chain (it would need
+    an OR: claimed_until IS NULL OR claimed_until <= now), which is why
+    this path must never be used in production with concurrent workers.
     """
     moment = now or _now()
     try:
@@ -662,7 +807,8 @@ def _conditional_claim(db: Any, row_id: Any, seen: Dict[str, Any],
         query = db.table("whatsapp_deliveries").update(
             {"status": "sending", "attempts": attempts,
              "claimed_until": _iso(lease_until)}).eq(
-            "id", row_id).eq("status", seen.get("status"))
+            "id", row_id).eq("status", seen.get("status")).lt(
+            "attempts", max_attempts)
         result = query.execute()
         rows = getattr(result, "data", None) or []
         if not rows:
@@ -670,15 +816,6 @@ def _conditional_claim(db: Any, row_id: Any, seen: Dict[str, Any],
     except Exception:
         return False
     return True
-
-
-def _mark(db: Any, row_id: Any, patch: Dict[str, Any]) -> None:
-    try:
-        db.table("whatsapp_deliveries").update(dict(patch)).eq(
-            "id", row_id).execute()
-    except Exception as exc:
-        logger.warning("whatsapp: outbox mark failed: %s",
-                       type(exc).__name__)
 
 
 def record_delivery_status(db: Any, provider_message_id: str, status: str,
@@ -711,6 +848,57 @@ def record_delivery_status(db: Any, provider_message_id: str, status: str,
                        type(exc).__name__)
         return False
     return True
+
+
+def requeue_unlinked_deliveries(db: Any, user_id: str) -> int:
+    """Requeue never-sent phone-missing outbox rows after (re)linking.
+
+    Moves rows for ``user_id`` with ``status == "failed"``,
+    ``last_error == "unlinked_or_no_number"`` and no
+    ``provider_message_id`` back to ``status == "pending"`` with
+    ``attempts`` reset to 0 and the lease/error cleared, so the next
+    delivery cycle can attempt them. Returns the number of rows
+    requeued. Never touches ``sent`` rows or rows with a provider id
+    (already handed to Meta: re-sending would risk duplicates), and
+    never touches failures with other errors. Idempotent: re-running
+    with no matching rows returns 0. Explicit call only — delivery
+    never auto-requeues — so a missed event stays failed until an
+    operator or link flow deliberately recovers it. Note: requeueing
+    does not revalidate event freshness — a requeued row is delivered
+    even if its match has since played or left the notification
+    window. Never raises.
+    """
+    if not isinstance(user_id, str) or not user_id:
+        return 0
+    try:
+        rows = _rows_of(db.table("whatsapp_deliveries").select("*").eq(
+            "user_id", user_id).eq("status", "failed").execute())
+    except Exception as exc:
+        logger.warning("whatsapp: requeue read failed: %s",
+                       type(exc).__name__)
+        return 0
+    requeued = 0
+    for row in rows:
+        if row.get("last_error") != "unlinked_or_no_number":
+            continue
+        if row.get("provider_message_id") not in (None, ""):
+            continue
+        try:
+            result = db.table("whatsapp_deliveries").update({
+                "status": "pending", "attempts": 0,
+                "claimed_until": None, "last_error": None}).eq(
+                    "id", row.get("id")).eq(
+                    "status", "failed").eq(
+                    "last_error", "unlinked_or_no_number").execute()
+            updated = _rows_of(result)
+            if not updated:
+                continue  # row changed under us: lost race
+        except Exception as exc:
+            logger.warning("whatsapp: requeue mark failed: %s",
+                           type(exc).__name__)
+            continue
+        requeued += 1
+    return requeued
 
 
 def run_notification_cycle(
@@ -755,8 +943,9 @@ __all__ = [
     "eligible_value_bet",
     "format_match_reminder",
     "format_value_alert",
-    "match_reminder_key",
+"match_reminder_key",
     "record_delivery_status",
+    "requeue_unlinked_deliveries",
     "run_notification_cycle",
     "set_opt_in",
     "value_alert_key",
