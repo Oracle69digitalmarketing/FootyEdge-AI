@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: footyedge-ai-staging
+    env: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: FOOTYEDGE_ENV
+        sync: false
+      - key: FOOTYEDGE_SUPABASE_HOST
+        sync: false
+      - key: PAYSTACK_MODE
+        sync: false
+    source: .

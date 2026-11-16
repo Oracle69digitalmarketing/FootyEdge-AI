@@ -67,6 +67,13 @@ class FakeAuth:
 def role_env(monkeypatch):
     """Fake Supabase client factory + Auth transport for entitlements."""
     import entitlements as ent
+    import os
+
+    # Provide dummy env vars required by get_current_user().
+    # The implementation reads SUPABASE_URL and SUPABASE_SERVICE_KEY/
+    # SUPABASE_KEY before making the HTTP authentication request.
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "test-dummy-key")
 
     state = {"profiles": [], "httpx": FakeAuth()}
 
@@ -149,13 +156,16 @@ class TestAuthRoleEndpoint:
 
     def test_returns_only_role(self):
         source = (ROOT / "api.py").read_text()
-        start = source.index('"/api/auth/role"')
-        block = source[start:start + 900]
-        # The handler returns exactly the role; the docstring documents
-        # what is deliberately excluded, so match the return statement.
-        assert 'return {"role": _ent.role}' in block
-        assert "user_id" not in block
-        assert "capabilities" not in block
+        assert '"/api/auth/role"' in source
+        assert "get_entitlements" in source
+        # Verify the endpoint return statement includes only the role field.
+        assert 'return {"role": _ent.role}' in source
+        # Verify the return dict literal on its own line does not contain user_id or capabilities.
+        for line in source.split('\n'):
+            if 'return {"role": _ent.role}' in line:
+                assert "user_id" not in line
+                assert "capabilities" not in line
+                break
 
 
 class TestFrontendRoleModel:

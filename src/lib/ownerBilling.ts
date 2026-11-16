@@ -28,6 +28,7 @@ export interface BillingOverview {
 export interface BillingUser {
   user_id: string | null;
   email: string | null;
+  full_name: string | null;
   role: string;
   effective_plan: string;
   subscription_status: string | null;
@@ -35,6 +36,34 @@ export interface BillingUser {
   current_period_start: string | null;
   current_period_end: string | null;
   created_at: string | null;
+  /** Authoritative profiles.created_at, passed through verbatim. */
+  registered_at: string | null;
+  /** True when registered_at lies within the trailing 7-day window. */
+  registered_recently: boolean;
+}
+
+export interface AccountActivityEvent {
+  id: number;
+  user_id: string | null;
+  event_type: string;
+  source: string;
+  dedupe_key: string | null;
+  created_at: string;
+}
+
+export interface UsageRow {
+  user_id: string | null;
+  event_count: number;
+  last_event_at: string | null;
+}
+
+export interface BillingUsage {
+  metering_enabled: boolean;
+  message: string;
+  activity_available: boolean;
+  total_usage_events: number;
+  activity: UsageRow[];
+  note?: string;
 }
 
 export interface BillingSubscription {
@@ -116,4 +145,26 @@ export function formatStatus(status: string | null | undefined): string {
 export function shortId(value: string | null | undefined, head = 8): string {
   if (!value) return '—';
   return value.length > head + 4 ? `${value.slice(0, head)}…` : value;
+}
+
+/** Factual labels for recorded account-activity event types.
+ *  Unknown types are shown verbatim — never mapped to a guess. */
+export function eventLabel(type: string): string {
+  switch (type) {
+    case 'account.registered': return 'Registered';
+    case 'session.authenticated_observed': return 'Authentication observed';
+    case 'usage.predict_requested': return 'Prediction run';
+    case 'usage.bet_recorded': return 'Bet recorded';
+    case 'usage.strategy_analyzed': return 'Strategy analyzed';
+    case 'usage.acca_generated': return 'Acca generated';
+    default: return type || '—';
+  }
+}
+
+/** Display one ISO timestamp without inventing a timezone. */
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const t = Date.parse(value);
+  if (Number.isNaN(t)) return value;
+  return new Date(t).toUTCString();
 }

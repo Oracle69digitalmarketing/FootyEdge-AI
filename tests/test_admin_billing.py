@@ -219,10 +219,12 @@ def test_16_status_counts_accurate():
 
 
 def test_17_unavailable_usage_is_honest():
-    assert usage_summary() == {
-        "metering_enabled": False,
-        "message": "Usage metering is not yet enabled.",
-    }
+    result = usage_summary()
+    assert result["metering_enabled"] is False
+    assert result["message"] == "Usage metering is not yet enabled."
+    assert result["activity_available"] is True
+    assert result["total_usage_events"] == 0
+    assert result["activity"] == []
 
 
 # ---------------------------------------------------------------------------

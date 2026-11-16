@@ -44,6 +44,9 @@ from entitlements import (
     CAP_MATCH_INTELLIGENCE,
 )
 
+# Server-observed account activity (best-effort, never breaks features)
+from account_activity import observe_session, record_usage
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
 
@@ -201,7 +204,7 @@ async def health_check():
         "status": "operational",
         "supabase_connected": not isinstance(supabase, MockSupabase),
         "scheduler_running": scheduler.running,
-        "environment": "production"
+        "environment": os.environ.get("FOOTYEDGE_ENV", "production")
     }
 
 @router.get("/api/cron-trigger")
@@ -377,6 +380,9 @@ async def record_bet(
     _ent: EntitlementResult = Depends(require_capability(CAP_PORTFOLIO)),
     supabase: Client = Depends(get_supabase_client)
 ):
+    # Genuine usage signal: an entitled user just recorded a bet.
+    # Best-effort; recording never breaks the feature.
+    record_usage(_ent.user_id, "portfolio")
     try:
         data = {
             # Owner comes exclusively from the verified JWT identity.
@@ -448,6 +454,8 @@ async def get_caller_entitlements(
     owner-preview access are reported as separate dimensions; preview
     never mutates the subscription.
     """
+    # Server-observed authentication (best-effort; deduped per UTC day).
+    observe_session(_ent.user_id)
     return {
         "role": _ent.role,
         "plan": _ent.plan,
@@ -470,6 +478,8 @@ async def get_caller_role(
     Only the role is returned: no email, no user dump, no entitlements.
     Backend enforcement never consults this endpoint.
     """
+    # Server-observed authentication (best-effort; deduped per UTC day).
+    observe_session(_ent.user_id)
     return {"role": _ent.role}
 
 
@@ -479,6 +489,8 @@ async def get_automated_accumulator_ticket(
     supabase: Client = Depends(get_supabase_client)
 ):
     """Greedy Combinator Algorithm for Accas."""
+    # Genuine usage signal: an entitled user just generated an acca.
+    record_usage(_ent.user_id, "acca_builder")
     try:
         res = supabase.table("value_bets") \
             .select("id, home_team, away_team, market, selection, odds, ev") \
@@ -579,6 +591,8 @@ async def predict_endpoint(
     request: PredictRequest,
     _ent: EntitlementResult = Depends(require_capability(CAP_PREDICTIONS)),
 ):
+    # Genuine usage signal: an entitled user just invoked prediction.
+    record_usage(_ent.user_id, "predictions")
     from predictor import FootyEdgePredictor
     predictor = FootyEdgePredictor(football_client=football_client)
     return await predictor.predict_match(request.home_team, request.away_team, request.odds)
@@ -588,6 +602,8 @@ async def analyze_strategy_endpoint(
     req: StrategyAnalyzeRequest,
     _ent: EntitlementResult = Depends(require_capability(CAP_AI_STRATEGY_ANALYSIS)),
 ):
+    # Genuine usage signal: an entitled user just invoked strategy analysis.
+    record_usage(_ent.user_id, "ai_strategy_analysis")
     selections = strategy_agent.parse_strategy(req.text)
     return strategy_agent.analyze(selections, req.stake)
 
