@@ -44,7 +44,7 @@ END$$;
 DO $$
 BEGIN
     IF current_setting('app.env', true) = 'staging' THEN
-        CREATE POLY "Self-service profile update" ON public.profiles
+        CREATE POLICY "Self-service profile update" ON public.profiles
             FOR UPDATE TO authenticated
             USING (auth.uid() = id)
             WITH CHECK (role = 'user' OR auth.uid() = id);
