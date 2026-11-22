@@ -32,13 +32,15 @@ def test_verify_disambiguation_goal_fields_exist():
 
 def test_verify_disambiguation_date_format():
     """Test that match dates are in valid format."""
-    from datetime import date
+    from data.ingestion import _parse_date
     matches, _ = load_all_matches()
     for m in matches:
         if m.date is not None:
-            # Verify date can be compared
-            assert m.date <= date.today() or m.date.year >= 2000, \
-                f"invalid date format: {m.date}"
+            # Use _parse_date helper to parse string dates
+            parsed = _parse_date(m.date)
+            assert parsed is not None, f"invalid date format: {m.date}"
+            # Dates should be after 2000
+            assert parsed.year >= 2000, f"date too old: {m.date}"
     print(f"PASS: date format valid for {len(matches)} matches")
 
 
