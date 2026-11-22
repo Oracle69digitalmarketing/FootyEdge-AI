@@ -48,6 +48,10 @@ from entitlements import (
 from account_activity import observe_session, record_usage
 
 logging.basicConfig(level=logging.INFO)
+
+# Server-observed account activity (best-effort, never breaks features)
+from account_activity import observe_session, record_usage
+MOCK_SUPPABASE = False
 logger = logging.getLogger("main")
 
 # Scheduler setup
