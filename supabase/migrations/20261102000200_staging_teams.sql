@@ -43,8 +43,20 @@ BEGIN
     IF current_setting('app.env', true) = 'staging' THEN
         CREATE POLICY "Admin full team access" ON public.teams
             FOR ALL TO authenticated
-            USING (role = 'admin' OR role = 'owner')
-            WITH CHECK (role = 'admin' OR role = 'owner');
+            USING (
+                EXISTS (
+                    SELECT 1 FROM public.profiles
+                    WHERE profiles.id = auth.uid()
+                      AND profiles.role IN ('admin', 'owner')
+                )
+            )
+            WITH CHECK (
+                EXISTS (
+                    SELECT 1 FROM public.profiles
+                    WHERE profiles.id = auth.uid()
+                      AND profiles.role IN ('admin', 'owner')
+                )
+            );
     ELSE
         RAISE NOTICE 'Staging teams admin policy skipped: not running in staging environment';
     END IF;
