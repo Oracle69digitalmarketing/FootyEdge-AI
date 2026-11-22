@@ -307,4 +307,28 @@ async def billing_events(
     return {"events": [sanitize_event(r) for r in rows], "count": len(rows)}
 
 
+
+def admin_probe_endpoint(
+    _ent: EntitlementResult = Depends(ADMIN_GUARD),
+) -> Dict[str, Any]:
+    """Admin authorization probe.
+
+    POST is the primary shape (an admin "checks whether they can
+    administer"); GET is provided so a browser link works without a
+    preflight. Both call the same guarded handler: no body is read, no
+    state is mutated except one append-only audit row recording this
+    access, and the response is a stable capability descriptor.
+    """
+    # Record the sensitive admin access (append-only, best-effort).
+    record_admin_probe(
+        _ent.user_id,
+        action=ADMIN_PROBE_ACTION,
+        target="/api/admin/probe",
+    )
+    return {
+        "authorized": True,
+        "role": _ent.role,
+        "user_id": _ent.user_id,
+        "probe": "admin.authorization",
+    }
 __all__ = ["router"]
