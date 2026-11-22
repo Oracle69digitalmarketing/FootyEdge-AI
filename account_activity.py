@@ -94,27 +94,22 @@ def record_event(
         return False
 
 
-def record_usage(
-    user_id: str,
-    *,
-    capability: str,
-    action: str,
-) -> bool:
-    """Record a usage event for a given capability and action.
+def record_usage(user_id: Optional[str], capability: str) -> bool:
+    """Record a real, entitled feature call (vocabulary, no payload).
 
-    Maps to usage.predict_requested, usage.bet_recorded,
-    usage.strategy_analyzed or usage.acca_generated.
+    One row per real call: usage counts are the genuine number of
+    observed invocations (no per-day collapsing, no estimates).
     """
     mapping = {
-        "predict_requested": EVENT_USAGE_PREDICT,
-        "bet_recorded": EVENT_USAGE_BET,
-        "strategy_analyzed": EVENT_USAGE_STRATEGY,
-        "acca_generated": EVENT_USAGE_ACCA,
+        "predictions": EVENT_USAGE_PREDICT,
+        "portfolio": EVENT_USAGE_BET,
+        "ai_strategy_analysis": EVENT_USAGE_STRATEGY,
+        "acca_builder": EVENT_USAGE_ACCA,
     }
-    event = mapping.get(action)
+    event = mapping.get(capability)
     if event is None:
         logger.warning(
-            "account_activity: unknown usage action %r", action
+            "account_activity: unknown capability %r", capability
         )
         return False
     return record_event(user_id, event, source="api")
