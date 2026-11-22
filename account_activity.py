@@ -54,109 +54,75 @@ KNOWN_EVENT_TYPES = frozenset({
     EVENT_USAGE_ACCA,
 })
 
-SOURCE_API = "api"
+# --- fixed admin action vocabulary -------------------------------------------
+ADMIN_PROBE_ACTION = "admin.authorization"
 
-# Bound for any free descriptor we allow on audit rows.
-_TARGET_MAX_LEN = 200
+KNOWN_ADMIN_ACTIONS = frozenset({ADMIN_PROBE_ACTION})
 
-# --- fixed action vocabulary (admin_actions) --------------------------------
-ADMIN_PROBE_ACTION = "admin.auth_probe"
-OWNER_PROVISIONING_ACTION = "owner_provisioning.one_shot"
-
-KNOWN_ADMIN_ACTIONS = frozenset({
-    ADMIN_PROBE_ACTION,
-    OWNER_PROVISIONING_ACTION,
-})
-
-
-def _client() -> Any:
-    """Existing service-role server client (lazy: avoids import cycle)."""
-    from api import get_supabase_client  # noqa: E402
-
-    return get_supabase_client()
-
+# --- helpers ---------------------------------------------------------------
 
 def _bound_target(target: Optional[str]) -> Optional[str]:
+    """Bound the target string to prevent runaway storage."""
     if target is None:
         return None
-    text = str(target)[:_TARGET_MAX_LEN]
-    return text or None
+    return target[:512] if len(target) > 512 else target
 
 
 def record_event(
     user_id: Optional[str],
     event_type: str,
-    *,
-    source: str = SOURCE_API,
+    source: str = "api",
     dedupe_key: Optional[str] = None,
 ) -> bool:
-    """Best-effort append to public.account_events.
-
-    Returns True when the write was issued. Never raises: a recording
-    failure is logged by exception type (never with the payload) and
-    swallowed. Unknown event types and missing identities are refused
-    up front (unknown vocabulary must not reach the database).
-    """
-    if not user_id or event_type not in KNOWN_EVENT_TYPES:
-        logger.warning(
-            "account_activity: refusing unknown event (type=%s)", event_type
-        )
+    """Append an account-events row (best-effort, never raises)."""
+    if event_type not in KNOWN_EVENT_TYPES:
+        logger.warning("account_activity: refusing unknown event type %r", event_type)
         return False
     row: Dict[str, Any] = {
-        "user_id": str(user_id),
+        "user_id": str(user_id) if user_id else None,
         "event_type": event_type,
         "source": source,
-        "dedupe_key": (str(dedupe_key)[:256] if dedupe_key is not None else None),
+        "dedupe_key": dedupe_key,
     }
     try:
-        (
-            _client()
-            .table("account_events")
-            .insert(row)
-            .on_conflict("user_id,event_type,dedupe_key", ignore_duplicates=True)
-            .execute()
-        )
+        (_client().table("account_events").insert(row).execute())
         return True
-    except Exception as exc:  # observability must never break the feature
+    except Exception as exc:
         logger.warning(
-            "account_activity: %s write failed: %s", event_type, type(exc).__name__
+            "account_activity: account_events write failed: %s", type(exc).__name__
         )
         return False
 
 
-def observe_session(user_id: Optional[str]) -> bool:
-    """Record that the API just verified this user's JWT (once per UTC day).
+def record_usage(
+    user_id: str,
+    *,
+    capability: str,
+    action: str,
+) -> bool:
+    """Record a usage event for a given capability and action.
 
-    This is "authentication was observed by the API", not a login assert:
-    Supabase auth happens at the edge, so the only safe server-side
-    signal is a verified request bearing the user's token.
-    """
-    if not user_id:
-        return False
-    day = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
-    return record_event(
-        user_id,
-        EVENT_SESSION_OBSERVED,
-        dedupe_key=f"day:{day}",
-    )
-
-
-def record_usage(user_id: Optional[str], capability: str) -> bool:
-    """Record a real, entitled feature call (vocabulary, no payload).
-
-    One row per real call: usage counts are the genuine number of
-    observed invocations (no per-day collapsing, no estimates).
+    Maps to usage.predict_requested, usage.bet_recorded,
+    usage.strategy_analyzed or usage.acca_generated.
     """
     mapping = {
-        "predictions": EVENT_USAGE_PREDICT,
-        "portfolio": EVENT_USAGE_BET,
-        "ai_strategy_analysis": EVENT_USAGE_STRATEGY,
-        "acca_builder": EVENT_USAGE_ACCA,
+        "predict_requested": EVENT_USAGE_PREDICT,
+        "bet_recorded": EVENT_USAGE_BET,
+        "strategy_analyzed": EVENT_USAGE_STRATEGY,
+        "acca_generated": EVENT_USAGE_ACCA,
     }
-    event = mapping.get(str(capability))
+    event = mapping.get(action)
     if event is None:
+        logger.warning(
+            "account_activity: unknown usage action %r", action
+        )
         return False
-    return record_event(user_id, event)
+    return record_event(user_id, event, source="api")
+
+
+def observe_session(user_id: str, target: Optional[str] = None) -> bool:
+    """Record a session-authenticated-observed event (best-effort)."""
+    return record_event(user_id, EVENT_SESSION_OBSERVED, source="api", dedupe_key=user_id)
 
 
 def record_admin_probe(
@@ -196,8 +162,6 @@ __all__ = [
     "EVENT_USAGE_STRATEGY",
     "KNOWN_ADMIN_ACTIONS",
     "KNOWN_EVENT_TYPES",
-    "OWNER_PROVISIONING_ACTION",
-    "SOURCE_API",
     "observe_session",
     "record_admin_probe",
     "record_event",
