@@ -49,8 +49,7 @@ from account_activity import observe_session, record_usage
 
 logging.basicConfig(level=logging.INFO)
 
-# Server-observed account activity (best-effort, never breaks features)
-from account_activity import observe_session, record_usage
+# Server-observed account activity is enabled (MOCK_SUPPABASE=False).
 MOCK_SUPPABASE = False
 logger = logging.getLogger("main")
 
