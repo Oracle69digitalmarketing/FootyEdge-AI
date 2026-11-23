@@ -657,8 +657,9 @@ except Exception as exc:  # billing routes must never break core startup
 try:
     from admin_api import router as admin_router
     app.include_router(admin_router)
-except Exception as exc:  # admin routes must never break core startup
-    logger.warning("admin router not mounted: %s", type(exc).__name__)
+except Exception as exc:  # admin routes are mandatory — fail startup if missing
+    logger.error("admin router failed to mount: %s", type(exc).__name__)
+    raise
 
 try:
     from telegram_api import router as telegram_router
